@@ -1,0 +1,722 @@
+Metadata-Version: 2.4
+Name: jarvis-mk50
+Version: 50.0.0
+Summary: J.A.R.V.I.S — MK50 Hybrid: asisten AI personal (suara, visi, gestur, agent otonom)
+License: CC-BY-NC-4.0
+Project-URL: Documentation, https://github.com/segerwirman/h/tree/main/docs
+Requires-Python: <3.13,>=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: PyQt6>=6.6
+Requires-Dist: PyQt6-WebEngine>=6.6
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: structlog>=24.1
+Requires-Dist: numpy>=2.0
+Requires-Dist: pillow>=10.0
+Requires-Dist: requests>=2.31
+Requires-Dist: psutil>=5.9
+Requires-Dist: cryptography>=42.0
+Requires-Dist: keyring>=25.0
+Requires-Dist: fastapi>=0.110
+Requires-Dist: uvicorn[standard]>=0.29
+Requires-Dist: python-multipart>=0.0.9
+Requires-Dist: qrcode[pil]>=7.4
+Requires-Dist: pywin32; sys_platform == "win32"
+Requires-Dist: comtypes; sys_platform == "win32"
+Requires-Dist: pycaw; sys_platform == "win32"
+Requires-Dist: win10toast; sys_platform == "win32"
+Requires-Dist: pywinauto; sys_platform == "win32"
+Provides-Extra: voice
+Requires-Dist: sounddevice>=0.4; extra == "voice"
+Requires-Dist: google-genai>=1.0; extra == "voice"
+Requires-Dist: google-generativeai; extra == "voice"
+Requires-Dist: pyaudio>=0.2.13; extra == "voice"
+Requires-Dist: av; extra == "voice"
+Requires-Dist: faster-whisper; extra == "voice"
+Requires-Dist: SpeechRecognition>=3.10; extra == "voice"
+Provides-Extra: vision
+Requires-Dist: opencv-python>=4.9; extra == "vision"
+Requires-Dist: ultralytics>=8.2; extra == "vision"
+Requires-Dist: lap>=0.5.12; extra == "vision"
+Requires-Dist: mediapipe>=0.10; extra == "vision"
+Requires-Dist: mss>=9.0; extra == "vision"
+Provides-Extra: agent
+Requires-Dist: playwright>=1.44; extra == "agent"
+Requires-Dist: trafilatura>=1.9; extra == "agent"
+Requires-Dist: beautifulsoup4>=4.12; extra == "agent"
+Requires-Dist: ddgs>=9.0; extra == "agent"
+Requires-Dist: pyautogui>=0.9; extra == "agent"
+Requires-Dist: pyperclip>=1.8; extra == "agent"
+Requires-Dist: pygetwindow>=0.0.9; extra == "agent"
+Requires-Dist: send2trash>=1.8; extra == "agent"
+Requires-Dist: youtube-transcript-api>=0.6; extra == "agent"
+Requires-Dist: google-auth>=2.29; extra == "agent"
+Requires-Dist: google-auth-oauthlib>=1.2; extra == "agent"
+Requires-Dist: google-api-python-client>=2.125; extra == "agent"
+Requires-Dist: python-telegram-bot>=21.0; extra == "agent"
+Requires-Dist: pymupdf>=1.24; extra == "agent"
+Requires-Dist: python-docx>=1.1; extra == "agent"
+Requires-Dist: python-pptx>=0.6; extra == "agent"
+Requires-Dist: croniter>=2.0; extra == "agent"
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+Requires-Dist: ruff>=0.6; extra == "dev"
+Provides-Extra: all
+Requires-Dist: jarvis-mk50[agent,dev,vision,voice]; extra == "all"
+
+<div align="center">
+
+# ⚛ J.A.R.V.I.S — MK50 Hybrid
+
+**Just A Rather Very Intelligent System**
+
+Asisten AI personal lintas platform: mendengar, melihat, mengingat,
+dan mengendalikan komputer Anda — lewat suara, ketikan, atau gestur tangan.
+
+`Python 3.11+` · `PyQt6` · `Gemini Live API` · `YOLOv8` · `MediaPipe`
+
+</div>
+
+---
+
+## Daftar Isi
+
+- [Apa Ini](#apa-ini)
+- [Instalasi](#instalasi)
+- [Menjalankan](#menjalankan)
+- [Kemampuan Lengkap](#kemampuan-lengkap)
+  - [1. Suara & Percakapan](#1-suara--percakapan)
+  - [2. Penglihatan](#2-penglihatan)
+  - [3. Kontrol Gestur](#3-kontrol-gestur)
+  - [4. Agent Otonom](#4-agent-otonom)
+  - [5. Memori](#5-memori)
+  - [6. Skills & Pembelajaran Mandiri](#6-skills--pembelajaran-mandiri)
+  - [7. Kontrol Komputer](#7-kontrol-komputer)
+  - [8. Browser & Web](#8-browser--web)
+  - [9. Berkas & Dokumen](#9-berkas--dokumen)
+  - [10. Kode & Pengembangan](#10-kode--pengembangan)
+  - [11. Penjadwalan](#11-penjadwalan)
+  - [12. Integrasi](#12-integrasi)
+  - [13. Antarmuka](#13-antarmuka)
+  - [14. Kendali Jarak Jauh](#14-kendali-jarak-jauh)
+  - [15. Ketahanan & Observabilitas](#15-ketahanan--observabilitas)
+- [Pintasan Keyboard](#pintasan-keyboard)
+- [Tabel Gestur](#tabel-gestur)
+- [Konfigurasi](#konfigurasi)
+- [Keamanan & Privasi](#keamanan--privasi)
+- [Arsitektur](#arsitektur)
+- [Pemecahan Masalah](#pemecahan-masalah)
+- [Kredit & Lisensi](#kredit--lisensi)
+
+---
+
+## Apa Ini
+
+Jarvis MK50 Hybrid adalah evolusi tiga generasi:
+
+| Generasi | Kontribusi |
+|---|---|
+| **Mark XLVIII** | Pipeline suara real-time Gemini Live, 20 aksi, HUD padat |
+| **Mark XLIX** | UI orb sinematik, visi di proses terpisah, gestur, hardening |
+| **MK50** | Agent otonom native — hingga 95 implementasi tool, agentic loop, memori berlapis, skills, cron, delegasi |
+
+Bedanya dengan asisten suara biasa: Jarvis **bukan chatbot yang punya tool**.
+Ia adalah agent yang merencanakan, mengeksekusi berlangkah-langkah,
+mengingat lintas sesi, dan belajar dari tugas yang sudah dikerjakan.
+
+### Legenda status
+
+Setiap kemampuan di bawah diberi tanda:
+
+- ✅ **Aktif** — jalan secara default
+- ⚙️ **Opt-in** — sudah ada, mati secara default, nyalakan lewat `config.yaml`
+- 🔑 **Butuh kredensial** — perlu API key / OAuth
+- 🧪 **Eksperimental** — ada, tapi belum sepenuhnya terverifikasi
+
+---
+
+## Instalasi
+
+### Prasyarat
+
+| | |
+|---|---|
+| **OS** | Windows 10/11, macOS, atau Linux |
+| **Python** | 3.11 atau 3.12 |
+| **Mikrofon** | wajib untuk interaksi suara |
+| **Kamera** | opsional (visi, gestur, analisis kalori) |
+| **GPU** | opsional — YOLO otomatis fallback ke CPU |
+| **API Key** | Gemini (gratis) — wajib |
+
+### Langkah
+
+```bash
+git clone <url-repo-anda>
+cd jarvis
+
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# macOS / Linux
+source .venv/bin/activate
+
+pip install -r requirements.txt
+pip install -r requirements-xlix.txt   # dependensi Mark XLIX/MK50
+
+cp .env.example .env                   # lalu isi yang diperlukan
+python scripts/first_run_wizard.py     # wizard konfigurasi awal
+```
+
+> **Catatan dependensi.** Beberapa paket spesifik OS tidak disertakan agar repo
+> tetap ringan. Bila muncul `ModuleNotFoundError`, pasang paketnya:
+> `pip install <nama_modul>`.
+
+### Kunci API
+
+| Kunci | Wajib | Lokasi |
+|---|---|---|
+| Gemini | ✅ ya | `config/api_keys.json` atau wizard |
+| OpenAI / Anthropic / lokal | tidak | Settings ⚙ di aplikasi → keyring |
+| Telegram, Home Assistant, Spotify, YouTube | tidak | `.env` / keyring |
+
+**Semua file kunci sudah ada di `.gitignore`.** Jangan pernah menaruh rahasia
+di `config.yaml` — file itu ikut ter-commit.
+
+---
+
+## Menjalankan
+
+```bash
+python -m jarvis.main               # asisten penuh: suara + UI + visi
+python -m jarvis.main --no-voice    # UI/NLP saja, tanpa sesi Gemini Live
+python -m jarvis.main --orb-test    # uji state machine orb, harness keyboard
+```
+
+Diagnostik:
+
+```bash
+python -m jarvis.core.health        # cek kesehatan seluruh subsistem
+python -m jarvis.core.wake          # kalibrasi & uji wake-word tepuk ganda
+python -m pytest tests/ -q          # jalankan test suite
+```
+
+---
+
+## Kemampuan Lengkap
+
+### 1. Suara & Percakapan
+
+| Kemampuan | Status | Detail |
+|---|---|---|
+| Percakapan suara real-time | ✅ | Gemini Live API, audio native, latensi rendah |
+| Suara Jarvis | ✅ | Prebuilt voice **Charon** |
+| Multi-bahasa otomatis | ✅ | Bicara bahasa apa pun; Jarvis mengikuti |
+| **Silent Language Memory** | ✅ | Bahasa Anda dideteksi sekali dan disimpan diam-diam; semua sesi & briefing berikutnya menyesuaikan |
+| Sapaan sadar bahasa | ✅ | Indonesia → *efendim/tuan*, Inggris → *sir* — tidak pernah tercampur |
+| Interupsi instan | ✅ | **ESC** atau tombol INTERRUPT; audio dipotong 50 ms → mic aktif <100 ms |
+| **Barge-in suara** | ✅ | Bicara saja untuk memotong — deteksi RMS mic, ambang 0.14, `tts_grace_ms` mencegah Jarvis memotong dirinya sendiri |
+| **Wake word tepuk ganda** | ✅ | Tepuk 2× untuk membangunkan. Kalibrasi ambient, adaptive noise floor, crest factor, spectral check, debounce + cooldown |
+| Input hibrida | ✅ | Ketik atau bicara, bebas berganti kapan saja |
+| Briefing pagi | ⚙️ | Sapaan + jam + berita + cuaca saat boot pertama. `boot.morning_briefing_enabled: true` |
+| Check-in proaktif | ✅ | Setelah 15 menit hening, Jarvis menilai konteks dan menawarkan sesuatu yang berguna — diputuskan model, bukan aturan keras |
+| Persona | ✅ | `core/prompt.txt` — identitas dan aturan routing tool |
+
+### 2. Penglihatan
+
+| Kemampuan | Status | Detail |
+|---|---|---|
+| Tangkap layar | ✅ | "Apa yang ada di layarku?" — gambar dikirim ke sesi Gemini |
+| Kamera langsung | ✅ | Panel kamera (F6), satu pemilik kamera, snapshot on-demand |
+| **Konfirmasi visi instan** | ✅ | Jarvis langsung bilang *"Saya lihat layar Anda sekarang"* sementara gambar diambil — tidak ada keheningan canggung |
+| Deteksi objek YOLOv8 | ✅ | Model Open Images V7, ~600 kelas. Profil `fast`/`balanced`/`accurate` |
+| Akselerasi GPU | ✅ | Prioritas backend: TensorRT → CUDA → DirectML → ONNX-GPU → CPU |
+| Object tracking | ✅ | ByteTrack, persist antar-frame |
+| Pelacakan tangan | ✅ | MediaPipe, hingga 2 tangan |
+| **Analisis kalori makanan** | ✅ | Arahkan makanan ke kamera → hasil pop-up **di dalam frame kamera** + diucapkan |
+| **Kesadaran layar ambient** | ⚙️ | Jarvis memantau layar secara berkala dan bisa berkomentar proaktif. Denylist privasi, perceptual-hash change detection, sampling adaptif 2–30 dtk, retensi 200 snapshot/24 jam. `awareness.enabled: true` |
+| Guard echo visi | ✅ | Cooldown 4 dtk + flag busy mencegah Jarvis memicu ulang visi dari suaranya sendiri |
+| Ruang koordinat kanonik | ✅ | Kotak deteksi, landmark tangan, dan preview tidak pernah menyimpang arah |
+
+### 3. Kontrol Gestur
+
+⚙️ **Tidak pernah aktif secara default.** Aktifkan dengan **F8** atau ucapkan
+*"aktifkan kontrol gestur"*. Saat aktif, panel kamera menampilkan bingkai
+**merah ARMED**.
+
+Berhenti darurat: tahan telapak terbuka 3 detik (selalu aktif), atau lempar
+mouse ke sudut layar (pyautogui FAILSAFE).
+
+Filter One-Euro dipakai untuk menghaluskan kursor — bukan pemetaan mentah.
+
+### 4. Agent Otonom
+
+Inti MK50. Perintah multi-langkah otomatis masuk ke agent native.
+
+| Komponen | Detail |
+|---|---|
+| **Agentic loop** | `plan → llm.chat(tools) → eksekusi → ulangi`. Maks 50 iterasi, timeout 900 dtk |
+| **Registry tool** | Auto-discovery seluruh modul di `jarvis/agent/tools/` — hingga **95 implementasi tool**; jumlah aktif mengikuti dependency/config |
+| **Gate `available()`** | Kredensial hilang → tool dilewati, bukan crash |
+| **Eksekusi terkontrol** | Tool read-only paralel, tool penulis serial |
+| **Konfirmasi** | Operasi berisiko meminta persetujuan (timeout 300 dtk) |
+| **Sandbox** | `agent.workspace_root` membatasi operasi berkas; `allowed_paths` untuk perkecualian |
+| **Delegasi** | `delegate_task` menelurkan sub-agent (tanpa rekursi) |
+| **Refleksi** | `reflect.py` belajar dari tiap tugas di latar setelah selesai |
+| **Kompaksi konteks** | Otomatis pada 70% jendela 128k, menyimpan 10 giliran terakhir |
+| **Logging** | Setiap eksekusi tool → JSONL di `data/logs/tools.jsonl`, rollup harian |
+
+**Multi-provider LLM** 🔑 — Gemini, OpenAI, Anthropic, endpoint lokal
+OpenAI-compatible (LM Studio / Ollama / llama.cpp / vLLM), atau custom.
+Atur lewat ikon ⚙ → isi base URL + kunci + model → **SIMPAN** → **JADIKAN AKTIF**
+(tombol TEST untuk ping).
+
+**Routing per lane:**
+
+```
+light        → percakapan + tugas ringan     (default: Gemini)
+conversation → auto (mengikuti lane light)
+heavy        → tugas berat/agent             (provider terpisah)
+fallback     → [openrouter, local]           saat 402/kredit habis/timeout
+```
+
+Kunci Gemini **tidak** dipromosikan otomatis ke lane berat.
+
+**Model auxiliary** — 9 slot terpisah per side-task: `vision`, `reflect`,
+`compression`, `web_extract`, `title_gen`, `approval`, `curator_review`,
+`response_composer`, `embedding`.
+⚠️ Slot `embedding` **terkunci** — mengganti model merusak dimensi vektor
+memori yang sudah tersimpan.
+
+### 5. Memori
+
+Memori berlapis, persisten lintas sesi.
+
+| Lapis | Isi |
+|---|---|
+| **Working** | Ring buffer 40 item, tidak dipersistenkan |
+| **Episodic** | Apa yang terjadi, kapan — SQLite |
+| **Semantic** | Fakta tentang Anda — nama, kota, pekerjaan, preferensi, proyek, relasi, rencana |
+| **Procedural** | Makro & cara mengerjakan sesuatu |
+| **Reflective** | Pelajaran dari tugas yang sudah lewat |
+
+- **Penyimpanan diam-diam** ✅ — Jarvis menyimpan fakta personal tanpa
+  mengumumkannya. Cuaca, pengingat, dan pencarian **tidak** disimpan.
+- **Retrieval hybrid** ✅ — SQLite FTS5 + embedding vektor, skor berbobot:
+  semantic 1.0 · exact 0.9 · fuzzy 0.6 · recency 0.5
+- **Deduplikasi** ✅ — kejadian identik dalam 30 detik digabung
+- **Kompaksi** ✅ — 200 baris terlama diringkas jadi satu setelah melewati batas
+- **Retensi** ✅ — 180 hari / 20.000 baris
+- **Konsolidasi mingguan** ✅ — via cron
+
+### 6. Skills & Pembelajaran Mandiri
+
+Skill = folder berisi `SKILL.md` dengan frontmatter:
+
+```markdown
+---
+name: laporan-harian
+description: Menyusun ringkasan aktivitas harian
+triggers: [laporan, rekap, harian]
+category: Productivity
+---
+```
+
+- Hanya `name` + `description` yang masuk system prompt — badan skill
+  di-*lazy load* lewat tool `skill_view`. Konteks tetap hemat.
+- **Agent bisa membuat skill sendiri** lewat `skill_manage` → ditandai
+  `is_agent_created` → badge **learned**
+- **Telemetry penggunaan** ✅ — sidecar `.usage.json`, atomic write,
+  `usage = use + view + patch`
+- **Toggle** ✅ — `skills.disabled: [nama]` di `config.yaml`. Skill yang
+  dimatikan **tidak masuk system prompt sama sekali**
+- **Curator** ✅ — siklus hidup skill hasil belajar:
+  tak dipakai 14 hari → `stale` · 45 hari → diarsipkan ke `.archive/`.
+  **Tidak pernah menghapus**, selalu bisa dipulihkan. Jalan tiap 24 jam.
+- **MCP** ⚙️ — server Model Context Protocol eksternal (stdio) via
+  `mcp.servers` di `config.yaml`. `mcp_list` tetap tersedia saat daftar kosong,
+  sedangkan `mcp_connect` menguji koneksi secara eksplisit tanpa memperlambat
+  boot.
+- **Prompt Library** ✅ — agent dapat membuat, membaca, dan menyimpan prompt
+  secara atomik ke folder tetap `prompts/` melalui `prompt_save`,
+  `prompt_read`, dan `prompt_list`.
+
+### 7. Kontrol Komputer
+
+| Kemampuan | Detail |
+|---|---|
+| Buka aplikasi | Nama aplikasi apa pun, lintas OS |
+| Volume & kecerahan | Naik/turun/set nilai |
+| WiFi | Nyala/mati |
+| Daya | Restart, shutdown, kunci layar |
+| Jendela | Fokus, fullscreen, tutup, atur posisi |
+| Keyboard | Ketik teks, kombinasi tombol, tekan tombol tunggal |
+| Mouse | Klik, klik ganda, klik kanan, gerak, scroll |
+| Clipboard | Salin, tempel |
+| Screenshot | Simpan ke path |
+| **Cari elemen di layar** | `screen_find` / `screen_click` — temukan elemen dari deskripsi bahasa alami |
+| **CUA native** | `computer_observe` mengambil screenshot dan meminta model vision menunjukkan koordinat; klik, ketik, tombol, scroll, dan drag dijalankan driver native dengan validasi batas layar |
+| Desktop | Wallpaper (berkas atau URL), rapikan, bersihkan, statistik |
+| Mode gelap | Toggle |
+| **Nol jendela terminal** | Monkey-patch `CREATE_NO_WINDOW` di **setiap** subprocess. Tidak ada kedipan CMD/PowerShell — pernah |
+
+### 8. Browser & Web
+
+**Kontrol browser** — Chrome, Edge, Firefox, Opera, Opera GX, Brave, Vivaldi,
+Safari. Beberapa browser bisa berjalan bersamaan.
+
+Aksi: `go_to`, `search`, `click`, `type`, `smart_click`, `smart_type`,
+`fill_form`, `scroll`, `get_text`, `get_url`, `press`, `new_tab`, `close_tab`,
+`screenshot`, `back`, `forward`, `reload`, `switch`, `list_browsers`, `close_all`
+— plus mode incognito.
+
+**Browser tertanam** — QtWebEngine di dalam aplikasi; Jarvis mengontrol
+halaman langsung (navigasi + injeksi). Playwright Python untuk otomasi agent,
+snapshot ber-referensi, context persisten (`idle_close_s: 900`). Context yang
+tertutup dipulihkan satu kali secara otomatis. Tool tab native dapat
+mendaftar, membuat, berpindah, dan menutup tab; `browser_media` mengontrol
+play, pause, mute, volume, serta tombol lewati iklan pada media aktif.
+
+**Pencarian web multi-mode:**
+
+| Mode | Untuk |
+|---|---|
+| `search` | umum (default) |
+| `news` | berita terbaru — Gemini Grounded ‖ DuckDuckGo **paralel, tercepat menang** |
+| `research` | jawaban mendalam & komprehensif |
+| `price` | harga produk |
+| `compare` | perbandingan berdampingan (harga/spesifikasi/ulasan/fitur) |
+
+Hasil ditampilkan di panel konten dengan timestamp. Berita mengembalikan
+**URL artikel asli**, bukan beranda situs. Locale default: `id-ID`,
+`Asia/Jakarta`.
+
+**Peringkas halaman** ✅ — hanya untuk konten dari browser, tidak pernah
+untuk obrolan. Sumber URL selalu dicantumkan. Format: 3–5 poin + satu kalimat
+kesimpulan, dalam Bahasa Indonesia.
+
+### 9. Berkas & Dokumen
+
+**Manajemen berkas:** list, buat berkas/folder, hapus, pindah, salin, ganti
+nama, baca, tulis, cari, berkas terbesar, penggunaan disk, rapikan desktop.
+Jalan pintas path: `desktop`, `downloads`, `documents`, `home`.
+
+**Pemroses berkas** — seret & lepas ke antarmuka (atau F3), lalu perintahkan:
+
+| Jenis | Aksi |
+|---|---|
+| Gambar | describe · ocr · resize · compress · convert · info |
+| PDF | summarize · extract_text · to_word · info |
+| Word / teks | summarize · fix · reformat · translate · word_count · to_bullet |
+| CSV / Excel | analyze · stats · filter · sort · convert |
+| JSON / XML | validate · format · analyze · to_csv |
+| Kode | explain · review · fix · optimize · run · document · test |
+| Audio | transcribe · trim · convert · info |
+| Video | trim · extract_audio · extract_frame · compress · transcribe · convert |
+| Arsip | list · extract |
+| Presentasi | summarize · extract_text · analyze |
+
+Batas unggah 25 MB. Dokumen panjang diringkas hierarkis (chunk 8000 karakter).
+DOCX ditangani `python-docx` dengan resolusi tipe lewat signature berkas.
+
+### 10. Kode & Pengembangan
+
+| Tool | Kemampuan |
+|---|---|
+| `code_helper` | tulis · edit · jelaskan · jalankan · build. Timeout 30 dtk default |
+| `dev_agent` | **Proyek multi-berkas dari nol**: merencanakan, menulis semua berkas, memasang dependensi, membuka VSCode, menjalankan, dan memperbaiki error sendiri |
+| `code_exec` | Eksekusi kode terkontrol |
+| `terminal` | Perintah shell dengan timeout & konfirmasi |
+
+### 11. Penjadwalan
+
+- **Pengingat OS-native** ✅ — Windows Task Scheduler / macOS LaunchAgent /
+  Linux systemd. Notifikasi muncul walau Jarvis tertutup.
+- **Cron agent** ✅ — `croniter` + persistensi SQLite. Buat, daftar, ubah,
+  jeda, lanjutkan, jalankan sekarang. Bisa dilampiri skill.
+- **Konsolidasi memori mingguan** ✅ — terjadwal otomatis.
+
+### 12. Integrasi
+
+| Integrasi | Status | Detail |
+|---|---|---|
+| **Telegram** | 🔑 ⚙️ | Kendalikan Jarvis dari HP. **Whitelist wajib** — `TG_ALLOWED_IDS`; user non-whitelist diabaikan total. Pesan suara sampai 20 MiB. Toggle Telegram menyelaraskan gateway dan status menjelaskan kredensial/gate yang masih menghalangi startup |
+| **Home Assistant** | 🔑 | Kontrol perangkat rumah pintar |
+| **Spotify** | 🔑 | 9 tool: playback, cari, playlist, library. OAuth PKCE |
+| **YouTube (kontrol)** | ✅ | Putar, cari, ringkas video, info, trending per negara |
+| **YouTube (Data API)** | 🔑 ⚙️ | Baca komentar/live chat. Balasan default **draft**, `auto_send: false`, konfirmasi wajib. Kuota diawasi |
+| **Live comments** | ⚙️ | Antrean komentar multi-platform + analisis sentimen, batas 3 balasan/menit, dedup 120 dtk, backoff eksponensial |
+| **Relay.app** | ⚙️ | Webhook aman: HMAC/token, replay guard 300 dtk, dedup, circuit breaker. Read-only |
+| **Instagram / Facebook / X** | ⚙️ | Terdaftar, mati secara default |
+| **Email (IMAP)** | 🔑 ⚙️ | **Read-only.** Kredensial via env, bukan config |
+| **Pencari penerbangan** | ✅ | Google Flights — asal, tujuan, tanggal, pulang, penumpang, kelas kabin |
+| **Cuaca** | ✅ | Data langsung, dipersonalisasi dari memori |
+| **Pesan & telepon WhatsApp Web** | ⚙️ 🧪 | Profil Chrome khusus, allowlist nama/alias, konfirmasi wajib, fuzzy match konservatif di dalam allowlist, serta audio bridge opsional. Lihat [panduan WhatsApp](docs/WHATSAPP_WEB_AUTOMATION.md) |
+| **Kirim pesan** | ⚙️ | Adapter native Telegram dan WhatsApp Web; tidak bergantung pada Hermes |
+| **Pembaru game** | ✅ | Steam & Epic: pasang, unduh, perbarui, daftar terpasang, status unduhan, jadwalkan, shutdown-setelah-selesai |
+| **Generasi gambar** | 🔑 🧪 | `gpt-image-2` / `imagen-4.0`. ⚠️ Lihat catatan di §Pemecahan Masalah |
+
+### 13. Antarmuka
+
+**Orb** — pengganti HUD lama. Renderer manual, redraw 16 ms (60 fps).
+
+| State | Diameter | Warna | Perilaku |
+|---|---|---|---|
+| IDLE | 280 | biru gelap | partikel melayang |
+| LISTENING | 320 | cyan | partikel reaktif audio |
+| THINKING | 300 | biru muda | partikel mengorbit |
+| SPEAKING | 140 | cyan | **docked** + waveform radial 24 bar |
+| EXECUTING | 140 | hijau | docked + cincin progres |
+| ERROR | 200 | merah | 3 kedipan |
+
+Ditambah: halo aperture 3 lapis dengan arc & node yang berputar, spectral
+ticks, tampilan arc-reactor Mark L (bloom 3 lapis, 60 tick reticle,
+12 segmen koil), parallax mengikuti kursor, dan **glow sentimen** yang
+menggeser hue halus sesuai nada percakapan.
+
+**ContentStage** — satu panel aktif dengan cross-fade 250 ms. State:
+`EMPTY` / `LOADING` / `ACTIVE` / `ERROR`. Panel terdaftar per nama:
+`browser`, `vision`, `content`, `capabilities`, `messaging`, `settings`.
+
+**ActionPanel** — bar ikon melayang di bawah-tengah: vision · upload ·
+spotify · home · awareness · focus_mode · palette · timeline · capabilities ·
+messaging · gateway_ops · settings.
+
+**Overlay:** statistik sistem (F1, atau hover tepi kiri), drawer log aktivitas
+(F2, hover tepi kanan), lembar unggah berkas (F3), panel visi (F6),
+command palette (F9), pop-up kalori di dalam frame kamera.
+
+**Tema** — `cyan_gold` (default), `stealth_dark`, `alert_red`.
+Seluruh warna, spacing, dan font dapat diubah dari `config.yaml`.
+
+**Notifikasi** — gaya blip minimalis, maksimum 4 tumpukan, 3,8 detik,
+ditempatkan agar **tidak pernah menutupi ContentStage**.
+
+**Aksesibilitas** — `reduced_motion: true` menonaktifkan rotasi halo dan
+meminimalkan parallax.
+
+**Panel Capabilities** — kelola skill & tool: pencarian, kategori, badge
+`learned`, penghitung penggunaan, toggle aktif/nonaktif, pengelompokan tool.
+Perubahan berlaku untuk **sesi baru**.
+
+**Monitor sistem** ✅ — CPU, RAM, GPU, suhu, uptime, jumlah proses.
+Peringatan suara terlokalisasi saat ambang batas terlampaui.
+
+### 14. Kendali Jarak Jauh
+
+Dashboard web lokal (FastAPI + WebSocket) untuk mengendalikan Jarvis dari HP.
+
+- **Loopback-only secara default** (`127.0.0.1:8000`)
+- LAN wajib opt-in eksplisit, wajib TLS, `lan_read_only: true`
+- Payload dienkripsi **AES-256-CBC** di lapisan aplikasi
+- Kunci sesi sekali pakai, kedaluwarsa 600 detik, dibuat lewat tombol
+  **REMOTE CONTROL**
+- Rate limit: auth 10/menit, perintah 30/menit
+- Endpoint: `/api/command`, `/api/upload`, `/api/wake`, `/auto-login`
+
+### 15. Ketahanan & Observabilitas
+
+- **Semua tahap eksternal ada batasnya** — tool 60 dtk
+  (`JARVIS_TOOL_TIMEOUT_S`), response watchdog 30 dtk, TTS watchdog 120 dtk.
+  Tool yang hang tidak bisa membekukan pipeline suara.
+- **State machine eksplisit** — IDLE → LISTENING → TRANSCRIBING → PROCESSING →
+  SPEAKING (+ WAKING/ERROR/RECOVERING), timeout per state.
+- **Correlation ID** per perintah + outcome eksplisit
+  (`success` / `timeout` / `tool_error` / …). Jarvis tidak pernah diam
+  tanpa penjelasan.
+- **Reconnect exponential backoff** — 3 → 6 → 12 → 60 dtk (dibatasi), dengan
+  status terlihat di UI.
+- **Isolasi state sesi** — seluruh flag visi & interupsi direset saat sesi
+  Gemini baru tersambung. State dari sesi yang crash tidak menular.
+- **Visi di proses terpisah** — crash YOLO/MediaPipe tidak menjatuhkan UI.
+- **Setiap subsistem opsional** — bobot/dependensi/kunci hilang → modul mati
+  senyap dengan satu baris log. Tidak ada hard-crash.
+- **Circuit breaker** pada integrasi eksternal.
+- Log: `logs/jarvis.log`, telemetry tool: `data/logs/tools.jsonl`
+  (rollup harian atau di atas 5 MiB).
+
+---
+
+## Pintasan Keyboard
+
+| Tombol | Aksi |
+|---|---|
+| **F1** | Overlay statistik sistem *(atau hover tepi kiri)* |
+| **F2** | Drawer log aktivitas *(atau hover tepi kanan)* |
+| **F3** | Lembar unggah berkas *(atau seret & lepas)* |
+| **F4** | Bisukan mikrofon |
+| **F5** | Timeline |
+| **F6** | Panel visi (kamera + YOLO + rangka tangan) |
+| **F7** | Mode fokus |
+| **F8** | Aktifkan / matikan kontrol gestur |
+| **F9** | Command palette |
+| **F11** | Layar penuh |
+| **ESC** | **Potong ucapan Jarvis** |
+| **Tab** | Terima teks bayangan prediktif di command bar |
+
+---
+
+## Tabel Gestur
+
+> Aktifkan dulu dengan **F8**. Bingkai merah **ARMED** = aktif.
+
+| Gestur | Aksi |
+|---|---|
+| Telapak terbuka | Gerakkan kursor (ujung telunjuk, filter One-Euro) |
+| Kepalan / kepalan→buka | Seret / lepas |
+| Jepit (jempol + telunjuk) | Klik kiri · dua kali <400 ms = klik ganda |
+| Jepit jempol + jari tengah | Klik kanan |
+| Tunjuk atas / bawah | Scroll |
+| Peace ✌ | Toggle mendengarkan |
+| Jempol atas / bawah | Konfirmasi / batal |
+| Dua telapak → kepalan | Interupsi (ESC) |
+| Usap kiri / kanan | Browser mundur / maju |
+| Bentuk L | Screenshot |
+| **Tahan telapak 3 detik** | **BERHENTI DARURAT** |
+
+---
+
+## Konfigurasi
+
+Seluruh tunable ada di **`config.yaml`** (777 baris). Kode sumber tidak
+mengandung magic number.
+
+| Section | Isi |
+|---|---|
+| `theme`, `themes` | Warna, font, preset tema |
+| `window`, `zones`, `motion` | Geometri & timing animasi |
+| `orb` | State machine visual, waveform, partikel, halo, arc-reactor |
+| `ui` | ContentStage, ActionPanel, notifikasi, parallax, overlay |
+| `hotkeys` | Semua pintasan *(F4/F11/ESC ditandai `do-not-regress`)* |
+| `llm` | Model live & teks, voice, timeout |
+| `routing` | Lane light/conversation/heavy + rantai fallback |
+| `agent` | Iterasi, timeout, konteks, sandbox, embedding, ack |
+| `auxiliary` | 9 slot model per side-task |
+| `curator` | Siklus hidup skill learned |
+| `skills`, `tools`, `mcp` | Toggle & pengelompokan |
+| `memory` | Dedup, kompaksi, retensi, bobot retrieval |
+| `vision`, `yolo`, `gestures` | Kamera, deteksi, gestur |
+| `awareness` | Kesadaran layar + denylist privasi |
+| `wake`, `voice` | Wake-word tepuk ganda, barge-in |
+| `browser`, `whatsapp_web`, `locale` | Otomasi web, WhatsApp, region ID |
+| `integrations`, `notifications` | Telegram, YouTube, HA, Spotify, sosial |
+| `dashboard` | Kendali jarak jauh & kebijakan LAN |
+| `logging`, `telemetry` | Log & rollup |
+| `release_controls` | Feature flag rollout |
+
+Baca nilai dengan pola bertitik: `config.get("orb.states.LISTENING.diameter", 320)`.
+
+---
+
+## Keamanan & Privasi
+
+**Ini asisten dengan akses terminal, desktop, dan berkas.** Perlakukan
+kredensialnya sesuai.
+
+| Aturan | Status |
+|---|---|
+| Rahasia **tidak pernah** di `config.yaml` | gunakan `.env`, keyring OS (`secrets_store.py`), atau `config/api_keys.json` — ketiganya di-gitignore |
+| Bot messaging **wajib allowlist** | Telegram dan WhatsApp tidak boleh menghubungi target di luar daftar izin |
+| `Allow all users` | hanya untuk pengembangan; memerlukan konfirmasi kedua |
+| Dashboard | loopback-only; LAN wajib opt-in + TLS + read-only |
+| Kesadaran layar | mati secara default; denylist memblokir jendela berisi `password`, `private`, `incognito`, `keepass`, `1password`; retensi 24 jam |
+| Email | read-only |
+| Balasan komentar | default draft, `auto_send: false` |
+| Operasi berisiko | meminta konfirmasi lewat registry |
+| Operasi berkas | dibatasi `workspace_root` |
+| Token OAuth | **hanya** di keyring, tidak pernah di YAML |
+
+Sudah masuk `.gitignore`: `.env*`, `config/api_keys.json`,
+`config/providers.json`, `config/youtube_oauth.json`, `google_token.json`,
+`**/spotify_tokens.json`, `config/browser_session.json`, `config/certs/`,
+`memory/long_term.json`, `**/.jarvis/secrets.dat`, semua `*.sqlite`,
+`data/`, `logs/`, bobot model.
+
+---
+
+## Arsitektur
+
+```
+jarvis/
+  main.py              entry point — python -m jarvis.main
+  ui/                  orb · stage · overlays · actionpanel · theme · window
+  core/                bus · router · boot · config · llm · log · state
+                       memory · wake · secrets_store · command_palette
+                       screen_awareness · element_model · health
+  agent/               loop · registry · session · dispatch · context
+                       providers · llm_client · schema · memory_store
+                       reflect · cron · skills · skill_usage · curator
+    tools/             hingga 95 implementasi tool auto-discovery
+    adapters/          ui · telegram
+    skills_data/       skill berbasis SKILL.md
+    prompts/
+  vision/              process · yolo · gestures · filters · food_calories
+  browser/             embed (QtWebEngine) · extract · skill_memory
+  nlp/                 assistant · chatbot · summarize · translation
+                       document · search · predictive · sentiment · email_filter
+  integrations/        relay · hermes (deprecated)
+
+actions/               20 aksi legacy Mark XLVIII (dipakai pipeline suara)
+core/                  stt · tts · voice_listener · reactor · camera_vision
+                       prompt.txt  ← persona Jarvis
+main.py                pipeline Gemini Live legacy (FROZEN, masih dipakai)
+ui.py                  HUD legacy Mark XLVIII (FROZEN)
+dashboard/             server FastAPI + halaman kendali jarak jauh
+config.yaml            SELURUH tunable
+docs/                  dokumentasi & catatan migrasi
+tests/                 test suite
+```
+
+**Aliran data:** subsistem berkomunikasi lewat `jarvis/core/bus.py`
+(publish/subscribe, di-marshal ke thread UI Qt) dan Qt signal.
+Tidak ada bridge JavaScript/TypeScript — semuanya Python dalam proses,
+kecuali visi yang sengaja dipisah ke proses sendiri.
+
+> **Catatan.** `main.py` dan `ui.py` di root adalah generasi Mark XLVIII yang
+> dibekukan namun masih dieksekusi sebagai pipeline suara. Fitur baru masuk ke
+> `jarvis/`, tidak pernah ke berkas root ini. Rencana penyatuan ada di
+> `AUDIT_REPORT.md`.
+
+---
+
+## Pemecahan Masalah
+
+| Gejala | Penyebab & solusi |
+|---|---|
+| `ModuleNotFoundError` | Dependensi spesifik OS tidak dibundel. `pip install <modul>` |
+| Wake word tidak merespons | Kalibrasi ulang: `python -m jarvis.core.wake`. Setel `wake.threshold_multiplier` / `min_abs_peak` |
+| Jarvis memotong dirinya sendiri | Naikkan `voice.barge_in.tts_grace_ms` atau `rms_threshold` |
+| Kamera tidak terbuka | Setel `vision.camera_index`. Pastikan tidak ada aplikasi lain memakai kamera |
+| Preview kamera terbalik | `vision.camera.preview_mirror` |
+| YOLO lambat | Turunkan ke profil `fast`, atau setel `yolo.cpu_fps_limit` |
+| Generasi gambar gagal | `image_generation.provider: openai_oauth` **belum terverifikasi** untuk `gpt-image-2`. Ganti ke `openai_api` dengan kunci API berbayar |
+| Agent tidak jalan | Cek `agent.enabled: true` dan ada provider aktif di ⚙ |
+| Berita muncul dalam bahasa Inggris | Setel `locale.news_market` / `locale.language` |
+| Gestur tidak merespons | Gestur mati secara default — tekan **F8** |
+| Perubahan skill tidak berlaku | Toggle skill/tool hanya berlaku untuk **sesi baru** |
+| Cek kesehatan menyeluruh | `python -m jarvis.core.health` |
+
+Detail lebih lanjut: `docs/TROUBLESHOOTING.md`, `docs/RELAY_SETUP.md`,
+`docs/YOUTUBE_API_SETUP.md`.
+
+---
+
+## Kredit & Lisensi
+
+Berbasis **MARK XLVIII** oleh **[FatihMakes]**
+— pipeline suara Gemini Live, HUD, dan sistem aksi awal.
+
+Dilisensikan **[Creative Commons BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)**
+— penggunaan pribadi dan non-komersial saja. Karya turunan mewarisi lisensi
+yang sama dan wajib mempertahankan atribusi ini.
+
+Mark XLIX / MK50 (orb, visi, gestur, agent native, memori, skills, cron,
+integrasi) dikembangkan di atas fondasi tersebut.
+
+Nama dan estetika "J.A.R.V.I.S" merupakan properti Marvel Entertainment /
+The Walt Disney Company. Ini proyek penggemar independen, tidak berafiliasi
+dengan, tidak didukung oleh, dan tidak terhubung dengan pihak mana pun tersebut.
+
+<div align="center">
+
+*"Sometimes you gotta run before you can walk."*
+
+</div>

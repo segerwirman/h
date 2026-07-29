@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Lint ────────────────────────────────────────────────────────────────
+  # Murah dan tanpa dependensi proyek — job ini harus SELALU hijau dan cepat.
+  # Aturan dipilih untuk menangkap cacat (nama tak terdefinisi, syntax error,
+  # bare except), bukan selera penulisan. Konfigurasi di pyproject.toml.
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: python -m pip install --upgrade "ruff>=0.6"
+      - name: Lint
+        run: python -m ruff check .
+
+  # ── Tests ───────────────────────────────────────────────────────────────
+  # windows-latest, BUKAN ubuntu. Ini disengaja: suite ini benar-benar
+  # mengimpor pywin32/pythoncom/win32com saat berjalan (diukur lewat
+  # sys.modules setelah run penuh), dan sebagian dependensi proyek memakai
+  # marker sys_platform == "win32". Di ubuntu suite ini tidak merepresentasikan
+  # apa pun yang dijalankan user.
+  #
+  # Instalasi memang berat (torch + mediapipe + ultralytics benar-benar
+  # ter-import saat run penuh) — karena itu pip di-cache.
+  pytest:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[voice,vision,agent,dev]"
+      - name: Run test suite
+        env:
+          # Qt tanpa display — tes UI menginstansiasi widget nyata.
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest tests/ -q

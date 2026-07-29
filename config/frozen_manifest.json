@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "algorithm": "sha256",
+  "baseline_commit": "094b696",
+  "description": "MK50 Frozen-zone integrity baseline. Text files use canonical LF bytes so checkout line-ending conversion cannot create false failures.",
+  "files": {
+    "main.py": {
+      "mode": "text-lf",
+      "sha256": "fd020047cdbcd85983e88a70e0e95e8eafc1c06830c027f32e262e914283026e"
+    },
+    "ui.py": {
+      "mode": "text-lf",
+      "sha256": "35e1a70f010170d03b274ffd5123602feafb082fcf63560a8dd00206cc8ace8b"
+    },
+    "core/stt.py": {
+      "mode": "text-lf",
+      "sha256": "17976dec1585d7f808a1e02bbb217a88093bf6085f61b39a9bb57d2131259b8e"
+    },
+    "core/tts.py": {
+      "mode": "text-lf",
+      "sha256": "c179c33de1890af8215e5cec4c6b58c450121c00e6d2b20607c34de967ce47ca"
+    },
+    "core/voice_listener.py": {
+      "mode": "text-lf",
+      "sha256": "9fa3bd832ac7cfd4434b77cd14a42cee271f948666ca87688fabed7e370d6665"
+    },
+    "core/prompt.txt": {
+      "mode": "text-lf",
+      "sha256": "812f2a3a2a3540e87e42c73f4ee962d39b1c6da2d9dbcc30e5df003ea3eee500"
+    },
+    "jarvis/core/wake.py": {
+      "mode": "text-lf",
+      "sha256": "0f6e0f05247a3a541d6ad0b51551594655abbb898aa065a568f4c2cd1ff760d7"
+    },
+    "jarvis/ui/theme.py": {
+      "mode": "text-lf",
+      "sha256": "99679d28eac7c792aa9449896207c47849d34a73901e63d8802a329789131624"
+    },
+    "jarvis/ui/orb.py": {
+      "mode": "text-lf",
+      "sha256": "e951993d5573c3e6b24d1f685fd976b454d761ae3908db296b1e28fee15bf866"
+    },
+    "config/jarvis.ico": {
+      "mode": "binary",
+      "sha256": "ea10c08932be8207a10bfd247dd8398242a1730d3ea1c89dbd7feba8d855828d"
+    }
+  }
+}

@@ -1,0 +1,221 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jarvis-mk50"
+version = "50.0.0"
+description = "J.A.R.V.I.S — MK50 Hybrid: asisten AI personal (suara, visi, gestur, agent otonom)"
+requires-python = ">=3.11,<3.13"
+license = { text = "CC-BY-NC-4.0" }
+readme = "readme.md"
+
+# ── Basis: yang dibutuhkan agar `python -m jarvis.main` bisa boot ────────────
+# Konsolidasi requirements.txt (Mark XLVIII) + requirements-xlix.txt (Mark
+# XLIX/MK50). Kedua berkas lama SENGAJA dipertahankan sampai instalasi bersih
+# dari pyproject ini dikonfirmasi berhasil — jangan hapus dulu.
+dependencies = [
+    # UI
+    "PyQt6>=6.6",
+    "PyQt6-WebEngine>=6.6",          # Chromium tertanam untuk ContentStage
+    # Fondasi
+    "pyyaml>=6.0",                   # config.yaml — sumber seluruh tunable
+    "structlog>=24.1",               # logging terstruktur → file + panel aktivitas
+    "numpy>=2.0",                    # lihat CATATAN numpy di bawah
+    "pillow>=10.0",
+    "requests>=2.31",
+    "psutil>=5.9",
+    # Rahasia & dashboard kendali jarak jauh
+    "cryptography>=42.0",
+    "keyring>=25.0",                 # jarvis/core/secrets_store.py
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",       # unggahan berkas dashboard
+    "qrcode[pil]>=7.4",              # QR pairing REMOTE CONTROL
+    # Windows-only — marker menjaga instalasi Linux/macOS tetap bersih
+    "pywin32; sys_platform == 'win32'",
+    "comtypes; sys_platform == 'win32'",
+    "pycaw; sys_platform == 'win32'",
+    "win10toast; sys_platform == 'win32'",
+    "pywinauto; sys_platform == 'win32'",
+]
+
+[project.optional-dependencies]
+
+# Pipeline suara: Gemini Live, wake-word tepuk ganda, voice-note Telegram.
+# do-not-regress — suara Jarvis bergantung penuh pada blok ini.
+voice = [
+    "sounddevice>=0.4",
+    "google-genai>=1.0",
+    "google-generativeai",
+    "pyaudio>=0.2.13",               # trigger wake double-clap (Modul 10)
+    "av",                            # dekode OGG voice-note
+    "faster-whisper",                # core/stt.py — WhisperSTT
+    # HILANG dari kedua requirements lama — core/voice_listener.py:4
+    # mengimpornya di tingkat modul, jadi ketiadaannya = ImportError keras.
+    "SpeechRecognition>=3.10",
+]
+
+# Visi: YOLOv8, pelacakan tangan, tangkap layar.
+vision = [
+    "opencv-python>=4.9",
+    "ultralytics>=8.2",              # YOLOv8 (+ ByteTrack via lap)
+    "lap>=0.5.12",                   # solver assignment ByteTrack
+    "mediapipe>=0.10",               # landmark tangan
+    "mss>=9.0",                      # tangkap layar
+]
+
+# Agent MK50: up to 95 tool implementations; runtime availability is gated.
+agent = [
+    "playwright>=1.44",              # otomasi browser agent
+    "trafilatura>=1.9",              # ekstraksi konten utama
+    "beautifulsoup4>=4.12",
+    "ddgs>=9.0",                     # pencarian web; duckduckgo-search = fallback lama
+    "pyautogui>=0.9",                # kontrol kursor (FAILSAFE ditegakkan)
+    "pyperclip>=1.8",
+    "pygetwindow>=0.0.9",
+    "send2trash>=1.8",
+    "youtube-transcript-api>=0.6",
+    "google-auth>=2.29",
+    "google-auth-oauthlib>=1.2",
+    "google-api-python-client>=2.125",
+    "python-telegram-bot>=21.0",
+    "pymupdf>=1.24",                 # ekstraksi PDF
+    "python-docx>=1.1",              # ekstraksi DOCX
+    "python-pptx>=0.6",              # ekstraksi PPTX
+    # HILANG dari kedua requirements lama, padahal penjadwalan cron
+    # dipromosikan di readme.md — jarvis/agent/cron.py:51.
+    "croniter>=2.0",
+]
+
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+# Kenyamanan: pasang semuanya sekaligus.
+all = ["jarvis-mk50[voice,vision,agent,dev]"]
+
+[project.scripts]
+jarvis = "jarvis.main:main"
+
+[project.urls]
+Documentation = "https://github.com/segerwirman/h/tree/main/docs"
+
+# ── Packaging ───────────────────────────────────────────────────────────────
+# Ini APLIKASI yang dijalankan dari pohon sumber, bukan library. Root berisi
+# banyak paket tingkat-atas (jarvis, core, dashboard, memory, scripts, config)
+# plus `actions/` yang bahkan TIDAK punya __init__.py — auto-discovery
+# setuptools akan gagal dengan "Multiple top-level packages discovered".
+# Maka cakupannya dibatasi eksplisit ke `jarvis*`.
+[tool.setuptools.packages.find]
+include = ["jarvis*"]
+namespaces = false
+
+# ── Ruff ────────────────────────────────────────────────────────────────────
+# Sengaja konservatif. Basis kode ini punya 859 tes yang lulus; linter tidak
+# boleh jadi sumber kebisingan baru. Zona FROZEN dikecualikan sepenuhnya —
+# berkasnya dilindungi config/frozen_manifest.json dan tidak boleh diubah
+# demi kerapian gaya.
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [
+    # hermes-agent-main/ dihapus 2026-07-27; entri dipertahankan agar clone
+    # lama yang masih memilikinya tidak tiba-tiba ikut ter-lint.
+    "hermes-agent-main",
+    ".hermes",
+    "__pycache__",
+    ".venv",
+    "data",
+    "logs",
+    # FROZEN — lihat config/frozen_manifest.json
+    "main.py",
+    "ui.py",
+    "core/stt.py",
+    "core/tts.py",
+    "core/voice_listener.py",
+    "jarvis/core/wake.py",
+    "jarvis/ui/theme.py",
+    "jarvis/ui/orb.py",
+]
+
+[tool.ruff.lint]
+# Dipilih agar CI menangkap CACAT, bukan selera penulisan. Basis kode ini
+# punya 859 tes yang lulus; linter yang merah karena gaya hanya akan
+# diabaikan orang, lalu regresi nyata ikut terlewat.
+select = [
+    "E9",    # syntax error / IO error — tidak bisa ditawar
+    "F",     # pyflakes: nama tak terdefinisi, variabel mati, f-string rusak
+    "E722",  # bare except — menelan KeyboardInterrupt/SystemExit
+]
+ignore = [
+    # Pola opsional-dependency ada di mana-mana: modul diimpor hanya untuk
+    # diuji ketersediaannya, lalu available() mengembalikan False.
+    "F401",
+    # Lazy-import disengaja — jarvis/main.py:73-203 melakukannya 15 kali agar
+    # tiap subsistem bisa gagal independen. Lihat AUDIT_FINDINGS_CODE.md §9e.
+    "E402",
+    # f-string tanpa placeholder: kosmetik murni, nol nilai deteksi cacat.
+    "F541",
+]
+# SENGAJA TIDAK dipilih: E701/E702/E401 (banyak-statement-satu-baris, titik
+# koma, impor gabungan — 142 kemunculan yang konsisten dan disengaja) serta
+# E741 (nama `l`/`I`). Menjadikannya error berarti me-reformat kode yang
+# bekerja tanpa satu pun bug ditemukan.
+
+# ── Utang yang SUDAH ADA — didaftarkan, bukan disembunyikan ─────────────────
+# Enam pelanggaran nyata di kode warisan. Sengaja TIDAK diperbaiki di commit
+# CI ini: berkas-berkas ini di luar lingkup sanitasi, dan mengubahnya demi
+# linter berarti menyentuh perilaku tanpa diminta. Didaftarkan per-berkas
+# supaya pelanggaran BARU di mana pun tetap membuat CI merah.
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F811", "F841"]
+
+# `except:` telanjang di parser metadata YouTube (:317, :323) — juga menelan
+# KeyboardInterrupt, sehingga Ctrl-C tidak responsif saat operasi video
+# panjang. Lihat AUDIT_FINDINGS_CODE.md §9c.
+"actions/youtube_video.py" = ["E722"]
+
+# `image_base64` dihitung lalu tidak pernah dipakai (:455) — sisa refactor ke
+# `image_bytes`. Menghapusnya membuang panggilan fungsi; perlu dibaca dulu.
+"actions/code_helper.py" = ["F841"]
+
+# `page = browser.new_page()` (:47) tidak pernah dipakai. BUKAN sekadar
+# variabel mati — assignment ini punya efek samping (membuat halaman), jadi
+# ini penanda kode mati di modul warisan. Jangan dihapus mekanis.
+"core/social_manager.py" = ["F841"]
+
+# `except ... as e` tanpa memakai `e` (:373).
+"jarvis/agent/tools/google_youtube.py" = ["F841"]
+
+# `pid = self._selected` (:1302) tidak terpakai — assignment mati murni.
+"jarvis/ui/panels.py" = ["F841"]
+
+# Konfigurasi pytest SENGAJA tidak ditaruh di sini. `pytest.ini` yang menang
+# secara presedensi, dan tests/test_architecture_inventory.py:11-13 menegaskan
+# berkas itu ada beserta isinya — dua sumber kebenaran hanya akan membingungkan.
+
+# ── CATATAN numpy (dipindahkan dari requirements-xlix.txt agar tidak hilang) ──
+# Spesifikasi awal menyarankan numpy<2.0 demi MediaPipe, tetapi lingkungan ini
+# menjalankan mediapipe 0.10.13 + ultralytics 8.4 + opencv 4.13 dengan baik di
+# numpy 2.5, dan build opencv/ultralytics yang terpasang JUSTRU MEMBUTUHKAN
+# numpy 2.x. Jangan turunkan versinya kecuali impor mediapipe benar-benar gagal
+# di mesin Anda.
+#
+# ── Kapabilitas opsional yang sengaja TIDAK dijadikan dependensi ─────────────
+# Ketiganya degrade dengan anggun bila tidak ada:
+#   faiss-cpu     → memori semantik (memory.faiss); nonaktif bila hilang
+#   pytesseract   → fallback OCR untuk screen awareness; pelacakan judul
+#                   jendela tetap bekerja tanpanya
+#   duckduckgo-search → nama paket lama; `ddgs` di atas menggantikannya,
+#                   actions/web_search.py:74-76 masih menerima keduanya
+#   pynvml        → statistik GPU (ui.py:116, actions/system_monitor.py:75,
+#                   jarvis/ui/overlays.py:127); semuanya impor ter-guard,
+#                   panel tetap jalan tanpa angka GPU
+#   matplotlib    → core/camera_vision.py:10, impor ter-guard
+#
+# Ditemukan lewat pengukuran: menjalankan seluruh suite lalu memeriksa
+# sys.modules. `croniter` dan `SpeechRecognition` TIDAK ada di kedua
+# requirements lama meski keduanya impor langsung — itulah sumber
+# "ModuleNotFoundError" yang diakui readme.md.

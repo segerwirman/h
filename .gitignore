@@ -1,0 +1,42 @@
+# bytecode & cache
+__pycache__/
+.pytest_cache/
+*.py[cod]
+
+# secrets & data pribadi
+.env
+.env.*
+!.env.example
+config/api_keys.json
+config/providers.json
+config/youtube_oauth.json
+google_token.json
+**/spotify_tokens.json
+config/browser_session.json
+config/command_history.json
+config/certs/
+memory/long_term.json
+
+# encrypted secrets-store fallback (including portable/worktree mirrors)
+.jarvis/.keyfile
+.jarvis/secrets.dat
+**/.jarvis/.keyfile
+**/.jarvis/secrets.dat
+
+# runtime data & log
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+data/
+logs/
+log_tail.txt
+
+# bobot model
+*.pt
+*.onnx
+
+# repo referensi (READ-ONLY, bukan bagian Jarvis)
+hermes-agent-main/
+
+# sidecar telemetry skill (runtime)
+jarvis/agent/skills_data/.usage.json

@@ -1,0 +1,35 @@
+# J.A.R.V.I.S Mark XLIX — additions on top of requirements.txt
+#
+# NOTE on numpy: the spec suggested numpy<2.0 for MediaPipe, but this
+# environment runs mediapipe 0.10.13 + ultralytics 8.4 + opencv 4.13 happily
+# on numpy 2.5, and the installed opencv/ultralytics builds REQUIRE numpy 2.x.
+# Do not downgrade unless mediapipe import actually fails on your machine.
+
+PyQt6>=6.6
+PyQt6-WebEngine>=6.6        # embedded Chromium for the ContentStage browser
+ultralytics>=8.2            # YOLOv8n object detection (+ ByteTrack via lap)
+lap>=0.5.12                 # ByteTrack assignment solver
+mediapipe>=0.10             # hand landmarks
+opencv-python>=4.9
+pyautogui>=0.9              # gesture cursor control (FAILSAFE enforced)
+trafilatura>=1.9            # main-content extraction for summarization
+structlog>=24.1             # structured logging → file + activity panel
+pyyaml>=6.0                 # config.yaml
+psutil>=5.9                 # sys-stats overlay
+google-genai>=1.0           # Gemini Live (voice) + text (summaries, NLP)
+sounddevice>=0.4            # mic pipeline (do-not-regress)
+
+pymupdf>=1.24               # PDF extraction (Modul 7)
+python-docx>=1.1            # DOCX extraction (Fase 4 — required for .docx upload)
+pyaudio>=0.2.13             # double-clap wake trigger (Modul 10)
+pytest>=8.0                 # test suite (tests/)
+
+# optional, enable extra capability:
+# faiss-cpu                 # semantic memory (memory.faiss); disabled if missing
+# keyring                   # OS keyring for live-comment platform tokens (redesign §15);
+#                            # jarvis.core.secrets_store falls back to env-vars-only without it
+# pytesseract                # OCR fallback for screen awareness (redesign §11); optional,
+#                            # window/title tracking works without it
+# pygetwindow                # already required transitively by game_updater.py — also
+#                            # powers jarvis.core.target_resolver's Windows adapter and
+#                            # jarvis.core.screen_awareness's foreground-window tracker

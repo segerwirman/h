@@ -1,0 +1,10 @@
+{
+  "contacts": [
+    {
+      "name": "Contoh Kontak",
+      "aliases": ["Nama panggilan", "Ejaan dari voice/STT"],
+      "phone": "6281234567890",
+      "allowed": false
+    }
+  ]
+}

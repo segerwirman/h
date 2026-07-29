@@ -1,0 +1,913 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# J.A.R.V.I.S — Mark XLIX configuration
+# Every tunable lives here. Source code contains zero magic numbers.
+# ═══════════════════════════════════════════════════════════════════════════
+
+theme:
+  base:       "#050810"
+  panel:      "#0a1018"
+  accent:     "#00e5ff"
+  accent_dim: "#0891b2"
+  secondary:  "#7dd3fc"
+  alert:      "#ff4444"
+  success:    "#4ade80"
+  text:       "#c8e6f5"
+  text_dim:   "#5a7a8a"
+  header_font: "Rajdhani"          # falls back to Segoe UI Light if absent
+  header_font_fallback: "Segoe UI Light"
+  mono_font:  "JetBrains Mono"
+  mono_font_fallback: "Consolas"
+
+window:
+  width: 1100
+  height: 760
+  min_width: 860
+  min_height: 600
+  title: "J.A.R.V.I.S — MARK XLIX"
+
+zones:
+  header_height: 48
+  input_height: 56
+
+motion:
+  transition_min_ms: 200
+  transition_max_ms: 350
+  dock_ms: 400
+  crossfade_ms: 250
+  orb_fade_in_ms: 800
+  tick_ms: 16
+
+ui:
+  # Boot default: hanya orb pada ContentStage kosong. Isi panel hanya bila
+  # pengguna memilih nama panel stage secara eksplisit (mis. "vision").
+  startup:
+    panel: null
+    show_briefing: false
+  content_stage:
+    empty_frame_visible: true
+    empty_frame_opacity: 42
+    frame_inset_px: 26
+    aperture_line_px: 72
+    frame_line_px: 1.0
+    crossfade_ms: 250
+    loading_indicator: "LOADING"
+    error_indicator: "CONTENT UNAVAILABLE"
+    loading_font_px: 9
+  info_panel:
+    card_border: false            # kartu INFO borderless (tanpa garis kotak)
+    orb_recenter_ms: 4000         # orb balik ke tengah setelah kartu tampil (0 = nonaktif)
+    max_cards: 12
+  orb:
+    transition:
+      docking_ms: 400
+      easing: "InOutCubic"
+    docking:
+      inset_px: 200
+      margin_right_px: 132
+      margin_bottom_px: 122
+      command_bar_clearance_px: 122
+    waveform:
+      jitter_min: 0.55
+      jitter_max: 1.0
+    speaking:
+      empty:
+        diameter: 300
+        waveform:
+          mode: radial
+          bars: 24
+          base_frequency_hz: 1.0
+          audio_reactive: true
+          attack_ms: 70
+          release_ms: 180
+          fallback_amplitude: 0.18
+          minimum_length_px: 2
+          length_ratio: 0.42
+          alpha_base: 110
+          alpha_range: 145
+          stroke_px: 2.6
+        particles:
+          enabled: true
+          mode: orbit
+          count: 48
+          orbit_layers: [1.18, 1.42]
+      active_content:
+        diameter: 140
+        docked: true
+        waveform:
+          mode: radial
+          bars: 24
+          minimum_length_px: 2
+          length_ratio: 0.42
+          alpha_base: 110
+          alpha_range: 145
+          stroke_px: 2.6
+        particles:
+          enabled: false
+          mode: none
+    halo_aperture:
+      enabled: true
+      full_size_only: true
+      radii: [1.32, 1.48, 1.66]
+      line_thickness: [1.0, 1.0, 1.0]
+      arc_gaps_deg: [42, 67, 31]
+      nodes: 6
+      node_radius_px: 2.0
+      rotation_dps: 2.0
+      opacity: 0.45
+      audio_response: 1.0
+      spectral_ticks: 18
+      spectral_tick_length_ratio: 0.12
+      spectral_tick_width_px: 1.0
+      start_offset_deg: 18
+      fade_ms: 180
+  task_deck:                     # AUDIT_REPORT §8.6 — dikonsumsi Fase 4-5
+    enabled: true
+    mini_strip_max: 3
+    mini_strip_height_px: 26
+    autohide_after_done_ms: 6000
+    progress_arc_in_halo: true   # false → pakai state EXECUTING klasik
+    speak_on_complete: true      # false → hanya notifikasi visual
+  boot:
+    cinematic_enabled: true
+    cinematic_duration_ms: 900
+    ready_label: "READY"
+    morning_briefing_enabled: false
+  fps: 60                       # orb redraw target → after(16)
+  reduced_motion: false          # true → halo/reticle rotation near-static, parallax minimal
+  parallax:
+    enabled: true
+    max_px: 6                   # max cursor-driven layer displacement
+    smoothing: 0.12              # 0..1, higher = snappier follow
+    reduced_motion_max_px: 1
+    pause_when_inactive: true
+  notifications:
+    style: blip                  # minimal dot + optional short label
+    dot_px: 8
+    duration_ms: 3800
+    max_stack: 4
+    chime_enabled: false
+    placement: "top_right"       # never overlaps ContentStage
+  sentiment_glow:
+    enabled: true
+    hue_shift_max_deg: 18        # subtle — audio remains dominant
+    intensity_max: 0.12
+    smoothing: 0.08
+  themes:
+    active: cyan_gold
+    presets:
+      cyan_gold:
+        background:   "#050810"
+        panel:        "#0a1018"
+        accent:       "#00e5ff"
+        accent_dim:   "#0891b2"
+        secondary:    "#7dd3fc"
+        alert:        "#ff4444"
+        success:      "#4ade80"
+        text:         "#c8e6f5"
+        text_dim:     "#5a7a8a"
+        orb_core:     "#eafcff"
+        glow:         "#00e5ff"
+        halo:         "#7dd3fc"
+        waveform:     "#00e5ff"
+        gold_accent:  "#e6b566"
+        log_colors:
+          ERROR:   "#ff4444"
+          WARNING: "#f5a623"
+          INFO:    "#5a7a8a"
+          DEBUG:   "#3a4a56"
+          USER:    "#7dd3fc"
+          AI:      "#00e5ff"
+      stealth_dark:
+        background:   "#020304"
+        panel:        "#08090b"
+        accent:       "#7a8288"
+        accent_dim:   "#4a5054"
+        secondary:    "#9aa2a8"
+        alert:        "#c94b4b"
+        success:      "#5f9e78"
+        text:         "#c4c9cc"
+        text_dim:     "#4a5054"
+        orb_core:     "#e8eaec"
+        glow:         "#7a8288"
+        halo:         "#9aa2a8"
+        waveform:     "#8a9298"
+        log_colors:
+          ERROR:   "#c94b4b"
+          WARNING: "#b8924a"
+          INFO:    "#4a5054"
+          DEBUG:   "#33383b"
+          USER:    "#9aa2a8"
+          AI:      "#7a8288"
+      alert_red:
+        background:   "#0a0505"
+        panel:        "#140808"
+        accent:       "#ff5252"
+        accent_dim:   "#a83232"
+        secondary:    "#ff8a80"
+        alert:        "#ff1744"
+        success:      "#4ade80"
+        text:         "#f0d8d8"
+        text_dim:     "#8a5a5a"
+        orb_core:     "#fff0f0"
+        glow:         "#ff5252"
+        halo:         "#ff8a80"
+        waveform:     "#ff5252"
+        log_colors:
+          ERROR:   "#ff1744"
+          WARNING: "#f5a623"
+          INFO:    "#8a5a5a"
+          DEBUG:   "#5a3a3a"
+          USER:    "#ff8a80"
+          AI:      "#ff5252"
+
+orb:
+  dock_inset_px: 200            # inset from corner when docked
+  dock_diameter: 140
+  amplitude_smoothing: 0.35     # 0..1, higher = snappier
+  particle_max: 48
+  reactor:                      # Mark L arc-reactor look (Change 8)
+    label: "JARVIS"
+    bloom_layers: 3             # stacked radial glow layers
+    tick_count: 60              # outer HUD reticle ticks
+    tick_major_every: 5         # every Nth tick longer + brighter
+    tick_rot_dps: 12.0          # tick ring rotation speed, deg/s
+    coil_segments: 12           # inner arc-reactor coil segments
+    label_min_diam: 90          # hide JARVIS label below this diameter
+    label_scale: 0.115          # font px = diameter * scale
+  states:
+    IDLE:      { diameter: 280, rings: 2, pulse_hz: 0.4, color: "#0891b2", particles: "drift" }
+    LISTENING: { diameter: 320, rings: 3, pulse_hz: 0.8, color: "#00e5ff", particles: "reactive" }
+    THINKING:  { diameter: 300, rings: 3, pulse_hz: 1.2, color: "#7dd3fc", particles: "orbit" }
+    SPEAKING:  { diameter: 140, rings: 2, pulse_hz: 1.0, color: "#00e5ff", particles: "none", docked: true, waveform: true }
+    EXECUTING: { diameter: 140, rings: 1, pulse_hz: 0.6, color: "#4ade80", particles: "none", docked: true, progress_ring: true }
+    ERROR:     { diameter: 200, rings: 2, pulse_hz: 3.0, color: "#ff4444", particles: "none", flash_count: 3 }
+
+hotkeys:
+  task_result_view: "F1"       # SYS MONITOR kiri + INFO/HASIL TUGAS kanan
+  activity_log: "F2"
+  file_upload: "F3"
+  mute: "F4"                    # do-not-regress
+  timeline: "F5"
+  vision_panel: "F6"
+  focus_mode: "F7"
+  gesture_arm: "F8"
+  command_palette: "F9"
+  fullscreen: "F11"             # do-not-regress
+  interrupt: "Escape"           # do-not-regress
+
+notifications:                   # Mark L Change 1 — boot notification hub
+  poll_timeout_s: 8              # hard deadline for all sources combined
+  email_limit: 200               # max UNSEEN ids counted
+  # SECURITY: token Graph API TIDAK pernah ditulis di file ini (file ini
+  # ter-track git). Sumber Instagram/Facebook belum punya pembaca di kode;
+  # bila nanti diaktifkan, ambil dari env atau jarvis/core/secrets_store.py.
+  reply:                         # voice reply DOM injection (best effort)
+    fill_js: |
+      (function(t){
+        var el = document.querySelector('[contenteditable="true"]')
+              || document.querySelector('textarea');
+        if (!el) return "no-field";
+        el.focus();
+        if (el.tagName === "TEXTAREA") { el.value = t; }
+        else { el.innerText = t; }
+        el.dispatchEvent(new InputEvent("input", {bubbles: true}));
+        return "filled";
+      })(%TEXT%);
+    send_js: |
+      (function(){
+        var b = document.querySelector('[aria-label*="Send"], [aria-label*="Kirim"]')
+             || document.querySelector('button[type="submit"]');
+        if (!b) return "no-button";
+        b.click(); return "sent";
+      })();
+
+action_panel:                    # Mark L Change 3 + 7
+  icons: [vision, upload, spotify, home, awareness, focus_mode, palette,
+          timeline, tasks, capabilities, messaging, gateway_ops, settings]
+          # capabilities/messaging/gateway_ops adalah sheet lokal; home: MK50 §7.3
+  icon_px: 22
+  height: 56
+  spacing: 26
+  dim_opacity: 0.75              # while ContentStage shows content
+  above_input_px: 60             # panel bottom offset above window bottom
+  camera_icon:
+    style: camera
+    stroke_px: 1.8
+    active_dot_px: 3
+  hint:                          # label hover kustom (BUKAN QToolTip: tooltip
+    enabled: true                # bawaan membawa delay & styling OS)
+    delay_in_ms: 120             # cegah kedip saat kursor sekadar lewat
+    delay_out_ms: 80
+    offset_px: 10                # jarak di atas ikon
+  indicator_dot_px: 3.0          # lit on/off lamp drawn on toggle icons when active
+  indicator_margin_px: 7.0       # inset of that lamp from the icon's top-right corner
+
+overlays:
+  sys_stats_poll_s: 2.0
+  edge_hover_px: 8              # hover distance from edge that reveals overlay
+  log_max_lines: 500
+  task_result_width: 420        # drawer INFO/HASIL TUGAS, berdampingan Sys Monitor
+  task_result_max_lines: 160
+
+llm:
+  live_model: "models/gemini-3.1-flash-live-preview"
+  live_voice: "Charon"                                                 # do-not-regress
+  text_model: "gemini-3.5-flash"
+  classify_model: "gemini-3.5-flash"
+  api_key_file: "config/api_keys.json"   # relative to project root
+  request_timeout_s: 45
+
+  # ── Live API — nilai di bawah diverifikasi langsung (2026-07-29) ──────────
+  # Endpoint persisnya (WebSocket, dibentuk oleh google-genai 2.11.0):
+  #   wss://generativelanguage.googleapis.com
+  #       /ws/google.ai.generativelanguage.<api_version>.GenerativeService.BidiGenerateContent
+  # live_model terdaftar di ListModels v1beta DAN v1alpha dengan
+  # supportedGenerationMethods == ["bidiGenerateContent"] (version 3.1-flash-live-03-2026).
+  live_host: "generativelanguage.googleapis.com"
+  live_api_version: "v1beta"     # v1alpha diuji juga: lolos, perilaku identik
+  live_endpoint_method: "BidiGenerateContent"
+
+  # Hasil uji sample-rate (ucapan nyata, dinilai dari input transcription):
+  #   16000 / 24000 / 48000 Hz PCM s16le mono SEMUANYA lolos di kedua api_version,
+  #   SYARAT: rate= pada mime type sama persis dengan rate data sebenarnya.
+  #   Salah label terbukti merusak, bukan diabaikan server —
+  #     data 24k dilabeli 16k → transkrip terpotong; data 48k dilabeli 16k → tanpa balasan.
+  #   Jadi yang menentukan adalah kecocokan label, bukan angka rate-nya.
+  live_input_sample_rate: 16000  # harus sama dengan main.SEND_SAMPLE_RATE
+  live_output_sample_rate: 24000 # server selalu balas audio/pcm;rate=24000
+  # Vertex AI (host <region>-aiplatform.googleapis.com, path .../ws/
+  # google.cloud.aiplatform.<ver>.LlmBidiService/BidiGenerateContent) TIDAK diuji:
+  # mesin ini hanya punya API key Gemini, tanpa kredensial project.
+
+boot:
+  fade_in_ms: 800
+  check_timeout_s: 6
+  subsystems:                    # checked in this order
+    - core.llm
+    - core.stt
+    - core.tts
+    - core.vision
+    - core.gesture
+    - core.browser
+    - core.system
+
+# ── Tombstone migrasi Hermes ─────────────────────────────────────────────────
+# Kunci lama dipertahankan agar config lama tetap dapat dibaca. Runtime tidak
+# dapat mengaktifkannya; seluruh eksekusi tugas memakai agent native Jarvis.
+hermes:
+  enabled: false
+
+router:
+  classify_budget_ms: 100
+  llm_fallback: false            # deterministic: no network on routing path
+  search_engine_url: "https://www.bing.com/search?q={query}"
+  known_sites:
+    youtube: "https://www.youtube.com"
+    github: "https://github.com"
+    google: "https://www.google.com"
+    gmail: "https://mail.google.com"
+    email: "https://mail.google.com"
+    instagram: "https://www.instagram.com"
+    facebook: "https://www.facebook.com"
+    twitter: "https://x.com"
+    reddit: "https://www.reddit.com"
+
+whatsapp_web:
+  enabled: true
+  url: "https://web.whatsapp.com"
+  channel: "chrome"
+  headless: false
+  user_data_dir: ""              # empty → LOCALAPPDATA/JARVIS/WhatsAppWebProfile
+  contacts_file: "data/whatsapp_contacts.json"
+  allow_direct_numbers: false    # nomor harus ada dalam contacts_file
+  contact_fuzzy_threshold: 0.68  # toleransi nama hasil STT; tetap hanya allowlist
+  navigation_timeout_s: 45
+  action_timeout_s: 20
+  audio_bridge:
+    enabled: true
+    # Gunakan dua virtual-audio cable berbeda untuk mencegah feedback.
+    # Cable A = VB-Audio Virtual Cable (masuk), Cable B = Hi-Fi Cable (keluar).
+    #
+    # WAJIB suffix ", MME" — diuji 2026-07-29 dan bukan preferensi gaya:
+    #   * nama polos ditolak sounddevice ("Multiple devices found"): nama yang
+    #     sama muncul di MME/DirectSound/WASAPI/WDM-KS;
+    #   * ", Windows DirectSound" membuka stream TANPA error tapi audionya tidak
+    #     pernah sampai — blocking RawOutputStream.write() di host DirectSound
+    #     diam total (peak 0.00003 vs 0.37 lewat MME). Itu gagal-senyap: panggilan
+    #     tersambung, lawan bicara tidak mendengar apa pun;
+    #   * WASAPI menolak rate 16k/24k (shared mode terkunci 48 kHz).
+    # Nama sengaja terpotong 31 karakter karena MME memang memotong sebegitu;
+    # string yang lebih panjang tidak akan cocok dengan entri MME.
+    remote_input_device: "CABLE Output (VB-Audio Virtual , MME"   # WA speaker → Gemini (16 kHz)
+    remote_output_device: "Hi-Fi Cable Input (VB-Audio Hi-, MME"  # Jarvis → mic WA (24 kHz)
+    monitor_local_output: true
+
+browser:
+  # MK50 §7 — aksi URL/search ringan membuka browser sistem; tugas web
+  # bertujuan memakai browser_* tools agent, tidak pernah ContentStage.
+  agent_cli:
+    executable: "agent-browser"
+    cdp: ""
+    cdp_flag: "--cdp"
+    snapshot_args: [snapshot, -i]
+    timeout_s: 15
+  allowed_schemes: [https, http]
+  dom_ready_extra_ms: 1200       # settle time after loadFinished before extraction
+  extract_max_chars: 18000
+  video:                         # Mark L Change 6 — video path
+    yt_embed_template: "https://www.youtube-nocookie.com/embed/{vid}?autoplay=1&rel=0"
+    yt_results_template: "https://www.youtube.com/results?search_query={query}"
+    embed_referer: "https://embed.jarvis.local/"   # baseUrl for the iframe wrapper
+    autoplay: true
+
+wake:                            # Modul 10 — double-clap wake trigger
+  enabled: true
+  input_device: null             # null → default input device (or CLAP_INPUT_DEVICE)
+  sample_rate: 16000
+  chunk: 1024
+  threshold_multiplier: 6.0      # clap peak ≥ noise floor × this
+  min_abs_peak: 0.12             # absolute peak floor (0..1) — silence spikes ignored
+  crest_factor: 3.5              # peak/rms in one block; transients only
+  max_active_fraction: 0.12      # max fraction of samples near peak (brief burst)
+  spectral_ratio: 0.35           # broadband requirement (rejects low thuds/voice)
+  min_interval_ms: 120           # closer than this = same clap (debounce)
+  max_interval_ms: 900           # farther apart = unrelated claps
+  cooldown_ms: 2500              # after a successful trigger
+  calibration_seconds: 1.5       # ambient noise sampling at startup
+  noise_alpha: 0.05              # adaptive noise-floor EMA weight
+  diagnostics: false             # true → log every candidate accept/reject
+
+voice:                           # Mark L Change 4 — barge-in interrupt
+  text_only_observer:
+    enabled: false              # diagnostic hook; legacy runtime stays unchanged by default
+  barge_in:
+    enabled: false              # default off: speaker echo can falsely interrupt playback
+    rms_threshold: 0.14          # mic RMS (0..1) that counts as user speech
+    min_ms: 280                  # sustained above threshold before triggering
+    cooldown_ms: 2000            # min gap between voice interrupts
+    tts_grace_ms: 400            # ignore first ms after SPEAKING starts (echo)
+  playback:
+    # Perbaikan 'kosakata terpotong' saat suara: beri grace lebih panjang
+    # sebelum menutup giliran + drain buffer sebelum stream ditutup.
+    tail_grace_s: 0.45           # tunggu ekor audio sebelum flip ke LISTENING
+    poll_s: 0.05                 # interval polling antrean audio
+
+summarizer:
+  system_prompt: |
+    Anda adalah modul ringkasan JARVIS. Ringkas HANYA konten halaman
+    yang diberikan. Jangan menambahkan pengetahuan eksternal. Jangan
+    berspekulasi. Jika halaman tidak memuat informasi yang relevan dengan
+    kueri pengguna, katakan demikian.
+
+    Format: 3-5 poin, masing-masing satu kalimat. Bahasa Indonesia.
+    Akhiri dengan satu kalimat kesimpulan.
+
+vision:
+  camera_index: 0
+  frame_width: 640
+  frame_height: 480
+  target_fps: 20
+  detect_every_n: 3              # YOLO every Nth frame; tracker fills gaps
+  yolo_weights: "yolov8s-oiv7.pt"  # Open Images V7 (~600 classes) on GPU; auto-downloads
+  yolo_conf: 0.5
+  yolo_tracker: "bytetrack.yaml"
+  jpeg_quality: 70
+  preview_selfie: true           # mirror the preview horizontally (display-only)
+  overlay:                       # clean camera by default — detection still runs
+    draw_objects: false          # no YOLO boxes/labels
+    draw_hands: false            # no hand skeleton
+  hands:
+    max_num_hands: 2
+    min_detection_confidence: 0.7
+    min_tracking_confidence: 0.6
+  camera:                        # redesign §13 — one canonical coordinate space
+    # canonical: +x = user's physical right = displayed-right. Detection
+    # boxes, hand landmarks, gesture regions, and emergency-stop all live
+    # here so they can never diverge from the preview.
+    raw_is_mirrored: false        # true only if the driver ALREADY selfie-mirrors
+    preview_mirror: false         # presentation-only selfie flip (default: natural)
+    inference_mirror: false
+    coordinate_space: canonical
+    device_overrides: {}          # e.g. {"1": {raw_is_mirrored: true}}
+    calibration_overlay: false    # optional L/R + axes debug view, off by default
+  yolo:                          # redesign §15/§16/§17 — device + FPS policy
+    enabled: true
+    profile: balanced
+    backend_preference:           # first usable wins; cpu is always the floor
+      - tensorrt
+      - cuda
+      - directml
+      - onnxruntime_gpu
+      - cpu
+    profiles:
+      fast:     { model: "yolov8n.pt", input_size: 480, confidence: 0.35, iou: 0.5 }
+      balanced: { model: "yolov8n.pt", input_size: 640, confidence: 0.5,  iou: 0.5 }
+      accurate: { model: "yolov8s.pt", input_size: 800, confidence: 0.5,  iou: 0.6 }
+    tracking:
+      enabled: true
+      persist: true
+    warmup: true
+    half_precision: auto
+    max_inflight_frames: 1        # bounded — latest-frame, never an unbounded queue
+    queue_policy: latest_frame
+    cpu_fps_limit: 15             # CPU keeps a limiter (responsiveness/power)
+    gpu_fps_limit: null           # GPU: no artificial sleep-based cap
+    render_fps_limit: 30          # UI redraw bounded independently of inference
+
+gestures:
+  pinch_px: 40                   # thumb↔index distance (px in frame) for pinch
+  double_pinch_ms: 400
+  discrete_cooldown_ms: 300
+  dead_zone_px: 3
+  map_inset: 0.2                 # camera sub-rectangle inset mapped to screen
+  swipe_velocity: 0.9            # normalized frame-widths per second
+  palm_hold_s: 3.0               # emergency stop
+  scroll_gain: 120
+  one_euro:
+    min_cutoff: 1.0
+    beta: 0.007
+    d_cutoff: 1.0
+  finger_curl_threshold: 0.6     # curled if tip closer to wrist than pip*(this)
+  point_angle_deg: 35            # tolerance for up/down pointing
+
+relay:                           # Fase 5 — Relay.app integration (read-only)
+  enabled: false                 # or RELAY_ENABLED=1; secrets ONLY via env vars
+  webhook_host: "127.0.0.1"      # bind address; expose via reverse proxy/tunnel
+  webhook_port: 8791
+  webhook_path: "/relay/webhook"
+  replay_window_s: 300           # reject events older than this (replay guard)
+  store_file: "relay_events.sqlite"
+  request_timeout_seconds: 10    # outbound client (only when base_url is set)
+  max_retries: 2
+  # base_url: ""                 # ONLY if you exposed an endpoint yourself
+  # endpoints:                   # name → path on base_url (never invented)
+  #   laporan_harian: "/workflows/laporan-harian/result"
+
+docs:                            # Fase 4 — document upload limits
+  max_file_mb: 25                # reject larger uploads with a friendly error
+  summary_chunk_chars: 8000      # hierarchical summarization chunk size
+
+nlp:
+  route_threshold: 0.6
+  history_file: "config/command_history.json"
+  predictive_max_suggestions: 1
+  chat_context_turns: 12
+  translation_langs: [id, en, ja, ko, zh, ar, es, fr, de, ru, pt, tr]
+  sentiment_log: "logs/sentiment.jsonl"
+  document:
+    chunk_chars: 1600
+    chunk_overlap: 200
+    top_k: 5
+  social:
+    poll_interval_s: 300
+    feeds: []                    # e.g. ["https://hnrss.org/frontpage"]
+  email:
+    imap_host: "imap.gmail.com"
+    # SECURITY: kredensial HANYA lewat env — file ini ter-track git.
+    #   JARVIS_IMAP_USER      (username)
+    #   JARVIS_IMAP_PASSWORD  (password / app-password)
+    # Dibaca via config.secret() → env dulu, tanpa fallback plaintext.
+    read_only: true
+
+logging:
+  dir: "logs"
+  file: "jarvis.log"
+  level: "INFO"
+
+memory:                          # jarvis.core.memory — layered memory (redesign §12)
+  deduplication:
+    window_s: 30                 # identical event within this window merges instead of duplicating
+  compaction:
+    chunk_size: 200               # oldest rows summarized together once over max_rows
+  retention:
+    days: 180                     # null/absent → no age-based deletion
+    max_rows: 20000
+  working_memory:
+    max_items: 40                 # in-process ring buffer, not persisted
+  retrieval:
+    top_k_default: 5
+    weight_semantic: 1.0
+    weight_exact: 0.9
+    weight_fuzzy: 0.6
+    weight_recency: 0.5
+
+awareness:                       # jarvis.core.screen_awareness (redesign §11)
+  enabled: false                  # opt-in — no boot-time capture without explicit enable
+  adaptive_sampling: true
+  element_recognition:            # jarvis.core.element_model (redesign §8)
+    dom_first: true
+    accessibility_first: true
+    ocr_fallback: true
+    revalidate_before_action: true
+    min_confidence: 0.35
+    stale_after_s: 10
+  min_interval_s: 2.0
+  max_interval_s: 30.0
+  hash_change_threshold: 8        # perceptual-hash Hamming distance that counts as "changed"
+  window_poll_s: 1.0              # foreground-window/title poll cadence
+  privacy:
+    redact_sensitive_fields: true
+    denylist:                     # app/window-title substrings never captured
+      - "password"
+      - "private"
+      - "incognito"
+      - "keepass"
+      - "1password"
+    retention:
+      max_snapshots: 200
+      max_age_hours: 24
+
+integrations:                    # this-prompt §19-§24 — secrets via keyring only
+  telegram:
+    enabled: true               # master toggle; token + IDs hanya secrets_store
+    voice_max_bytes: 20971520    # 20 MiB; ditolak sebelum download bila lebih besar
+  youtube:
+    enabled: true
+    # secret NAMES only — never the values (values live in the OS keyring via
+    # jarvis.core.secrets_store). API key alone is read-only; OAuth is
+    # required for any reply/write operation (§20).
+    api_key_secret_name: "jarvis/youtube/data_api_v3"
+    # OAuth YouTube memakai provider Google terpadu di bawah; tidak ada token
+    # YouTube terpisah dan tidak ada material credential di YAML.
+    reply_mode: draft             # draft | auto — auto needs explicit per-session opt-in
+    auto_send: false
+    confirmation_required: true
+    poll_interval_floor_seconds: 5   # never poll faster than the API tells us
+    max_results: 50
+    quota_warning_threshold: 8000
+
+providers:
+  google:
+    enabled: false              # true hanya setelah OAuth tersimpan aman
+    auth: oauth
+    apis:
+      calendar:
+        enabled: false
+        write: false
+      youtube:
+        enabled: false
+        write: false
+      gmail:
+        enabled: false
+        write: false
+      drive:
+        enabled: false
+
+live_comments:                   # jarvis.integrations.comments (redesign §15)
+  default_reply_mode: draft        # draft | auto — auto requires explicit per-session activation
+  poll_interval_s: 5.0
+  queue_max: 500
+  dedup_window_s: 120
+  rate_limit:
+    max_replies_per_min: 3
+  retry:
+    max_attempts: 5
+    base_delay_s: 1.0
+    max_delay_s: 60.0
+  platforms:
+    youtube:
+      enabled: false               # true only once credentials exist (see docs/YOUTUBE_API_SETUP.md)
+      live_chat_id: ""             # from: python -m scripts.youtube_oauth_setup test-live <VIDEO_ID>
+    x:
+      enabled: false
+    instagram:
+      enabled: false
+    facebook:
+      enabled: false
+  sentiment:
+    enabled: true
+    window_size: 100
+    max_share_per_author: 0.2      # cap one author's influence on the aggregate
+  focus_mode:
+    default_duration_s: 1800
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MK50 §6 — Locale web/berita. Prioritas: section ini (eksplisit) → bahasa
+# perintah / Silent Language Memory → fallback id-ID. Dibaca oleh tool
+# web_search/web_extract & action legacy; region TIDAK di-hardcode di tool.
+# ═══════════════════════════════════════════════════════════════════════════
+locale:
+  region: ID
+  language: id
+  timezone: Asia/Jakarta
+  news_market: id-ID
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MK50 §3 — Model routing per lane. Router (§2) memutuskan tier; section ini
+# memutuskan MODEL. Lane ringan (T0/T1) default = Gemini, tetapi bisa dipilih
+# ke provider chat yang siap dari UI. Lane berat (T2+) = provider lain; kunci
+# Gemini TIDAK dipromosikan otomatis ke lane berat (§0 kep. 3).
+# Kredensial tetap di Settings/keyring/env — BUKAN di file ini.
+# ═══════════════════════════════════════════════════════════════════════════
+routing:
+  voice_l1_hook:
+    enabled: false              # default no-op; aktifkan manual untuk uji L1
+    timeout_ms: 50              # resolver lambat selalu fall-open ke Gemini
+  voice_notice_bridge:
+    enabled: false              # default no-op; batch notice L1/T2 hanya saat turn_complete
+  light:
+    provider: gemini             # percakapan + T0/T1 + side-task murah (§3.3)
+    model: ""                    # "" = model default provider
+  conversation:
+    # auto = lane light; override hanya dipakai bila provider benar-benar siap.
+    provider: auto
+    model: ""
+  heavy:
+    # "" = belum diatur → dipakai provider aktif Settings bila BUKAN provider
+    # light; selain itu tugas berat degrade jujur ("model berat belum diatur").
+    provider: custom             # tugas T2+ memakai provider kerja utama
+    model: ""                    # override model provider berat ("" = default)
+    fallback: [openrouter, local]   # rantai bila 402/kredit habis/timeout;
+                                    # entri yang belum dikonfigurasi dilewati
+    # Hanya T2+: gunakan koneksi Gemini yang sudah aktif jika semua kandidat
+    # kerja di atas belum siap. Tidak mengubah model/latency percakapan Live.
+    allow_light_fallback: true
+
+telemetry:
+  tools:
+    rotate_daily: true              # JSONL aktif di-rollup saat tanggal berganti
+    max_bytes: 5242880              # atau saat >5 MiB
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MK50 — Agent native (jarvis/agent): pengganti Hermes CLI.
+# Metadata provider dikelola dari Settings → config/providers.json; API key
+# dan token hanya di secrets_store.
+# Semua nilai di bawah punya default aman; section ini opsional.
+# ═══════════════════════════════════════════════════════════════════════════
+agent:
+  enabled: true                  # false → agent native mati; Hermes tetap disabled
+  provider: gemini               # default provider aktif (bisa diubah di UI)
+  providers_file: "config/providers.json"
+  persona_file: "core/prompt.txt"   # identitas Jarvis yang SUDAH ada — dipakai apa adanya
+  data_dir: "data"
+  skills_dir: "jarvis/agent/skills_data"
+  max_iterations: 20             # cron/background ceiling
+  interactive_max_iterations: 12
+  task_timeout_s: 900
+  # ── Task Deck (AUDIT_REPORT §8.6) — konkurensi tugas latar ──────────────
+  max_concurrent_tasks: 3        # tugas paralel; >3 mulai berebut CPU/API quota
+  queue_max: 20                  # tugas aktif (QUEUED+RUNNING) sebelum ditolak
+  exclusive_resources: [desktop, camera, browser_context]
+  orphan_policy: report          # report | resume | discard (tugas saat crash)
+  cron_timeout_s: 900
+  request_timeout_s: 60
+  llm_retries: 1
+  max_output_tokens: 8192
+  context_window_tokens: 128000
+  context_threshold: 0.7
+  compact_keep_last: 10
+  tool_selection:
+    enabled: true                # deterministic shortlist for clear tasks
+    max_tools: 28                # cukup untuk browser+CUA tanpa fallback full registry
+  confirm_timeout_s: 300
+  # Frasa lama tetap menjadi salah satu kandidat agar kontrol Settings ini
+  # benar-benar mengubah perilaku. Kandidat tambahan memberi variasi §4.
+  ack_phrase: "Baik, sedang saya kerjakan."
+  interaction:
+    # Fallback instan bila ACK composer provider lambat/mati. Composer normal
+    # menyebut tugas; daftar ini tetap variatif agar fallback tidak monoton.
+    ack_templates:
+      id:
+        - "Siap, {address}. Saya mulai sekarang."
+        - "Oke, {address}. Saya tangani."
+        - "Baik, {address}. Saya kerjakan sekarang."
+        - "Tentu, {address}. Saya langsung urus."
+        - "Segera, {address}."
+        - "Saya mulai, {address}."
+        - "Dimengerti, {address}. Saya tindak lanjuti."
+        - "Saya ambil alih, {address}."
+        - "On it, {address}."
+        - "Saya urus sekarang, {address}."
+      en:
+        - "Right away, {address}."
+        - "On it, {address}."
+        - "Understood, {address}. I am starting now."
+        - "Certainly, {address}."
+        - "I have it, {address}."
+        - "Starting now, {address}."
+        - "Consider it underway, {address}."
+        - "I will handle it, {address}."
+        - "Working on it now, {address}."
+        - "Proceeding, {address}."
+    # ACK composer punya deadline lokal <300 ms. Timeout bukan response composer
+    # hasil akhir (yang boleh 2 s), karena ACK berada di jalur kritis interaksi.
+    ack_timeout_s: 0.25
+    # Panjang ucapan: default besar agar kalimat JARVIS tidak terpotong.
+    # Perkecil untuk kanal remote (mis. Telegram) bila perlu.
+    speech_limit: 900             # maksimum karakter satu ucapan
+    speech_sentence_limit: 6      # maksimum kalimat brief ucapan
+    # Presence: JARVIS menyela sesekali dengan progres saat bekerja di latar,
+    # bukan diam ('menghilang'). Throttle agar tidak spam.
+    progress_min_interval_s: 12.0 # jeda minimal antar-ucapan progres
+    progress_max_spoken: 4        # maksimum ucapan progres per tugas
+  workspace_root: ""             # "" = root proyek; sandbox operasi file
+  prompt_dir: "prompts"          # prompt hasil model tersimpan langsung di sini
+  allowed_paths: []              # path tambahan di luar workspace
+  embedding_model: "gemini-embedding-2"          # Gemini stable embedding
+  embedding_dimensions: 768                       # jaga dimensi memory lama
+  embedding_failure_cooldown_s: 900              # jangan ulangi endpoint gagal
+  embedding_model_openai: "text-embedding-3-small"
+  browser:
+    # Playback YouTube harus membuka browser nyata; context-nya tetap satu
+    # dan persisten selama host agent hidup (idle_close_s).
+    headless: false
+    idle_close_s: 900
+    # JARVIS memakai Chrome asli dengan profil KHUSUS miliknya sendiri,
+    # bukan Chrome for Testing (Chromium bundled Playwright).
+    channel: "chrome"            # "chrome" = Chrome terinstal; "" = Chromium bundled
+    # Kosong = folder profil khusus JARVIS terisolasi:
+    #   %LOCALAPPDATA%\JARVIS\ChromeProfile  (tak bentrok dgn profil 'Eric').
+    # Isi dgn path User Data Chrome + profile_directory bila mau berbagi profil.
+    user_data_dir: ""
+    profile_directory: ""        # mis. "Profile 8" bila memakai User Data user
+  calorie:
+    popup_s: 18                  # lama pop-up kalori bertahan di frame kamera
+  image_provider: ""             # "" = provider aktif; atau gemini/openai/local
+  image_model: "imagen-4.0-generate-001"
+  image_model_openai: "gpt-image-1"
+  home_assistant:
+    # URL instance via env HA_URL; token via secrets_store
+    # ("jarvis/home_assistant/token") atau env HA_TOKEN. Keduanya sengaja
+    # tidak punya slot di file ini — file ini ter-track git.
+    {}
+  spotify:
+    # client_id via env SPOTIFY_CLIENT_ID (identifier OAuth, bukan rahasia,
+    # tapi tetap per-mesin sehingga tidak layak di-commit).
+    redirect_uri: "http://127.0.0.1:8888/callback"
+
+image_generation:                # MK50 §9.3 — image hanya via API key
+  provider: openai_oauth                   # "" = provider LLM aktif; atau gemini/openai/local/custom
+  model: gpt-image-2           # jalur OpenAI-compatible; gemini pakai agent.image_model
+  quality: medium             # instant | thinking (API key) · low | medium | high (Codex OAuth gpt-image-2)
+  size: "1024x1024"              # sampai 4096x4096
+
+dashboard:                       # Phase 14 — local-first exposure, non-secret
+  lan_enabled: false             # LAN harus opt-in eksplisit; default loopback
+  bind_host: "127.0.0.1"         # dokumentasi/default; policy menegakkan loopback
+  port: 8000
+  lan_allowed_origins: []        # origin HTTPS eksak, wajib bila LAN aktif
+  lan_read_only: true            # remote mutation belum didukung di LAN
+  require_tls_for_lan: true
+  auth_rate_limit_per_minute: 10
+  command_rate_limit_per_minute: 30
+
+release_controls:                # Fase 12 — toggle rollout non-secret, fail-safe
+  naturalizer: true              # composer aktif; delivery deterministik tetap
+                                 # jadi fallback (diverifikasi: provider lambat
+                                 # → kembali ke teks asli di deadline, provider
+                                 # error/anchor hilang → 0 ms)
+  plugins: false                 # plugin trusted-local opt-in
+  gateway: true                  # Telegram paired aktif; tetap dibatasi token + allowlist
+  deterministic_delivery: true   # core rollback guard; jangan dimatikan
+
+auxiliary:                       # PARITY v2 §7.1 — model terpisah per side-task
+  response_composer:             # Fase 4 — naturalizer optional, fallback deterministik
+    enabled: true                 # DIAGNOSIS_2 MASALAH 4a — dinyalakan.
+                                  # Ia HANYA memparafrase ulang kalimat yang
+                                  # sudah ditentukan deterministik; inisiatif
+                                  # datang dari prompt, bukan dari sini.
+    provider: auto
+    model: ""
+    timeout_s: 2.0               # deadline lokal; provider lambat → fallback
+    max_tokens: 120              # cukup untuk satu-dua kalimat, bukan tool dump
+  vision:                        # aktif — tools/vision.py
+    provider: "auto"             # auto = provider utama; atau gemini/openai/dst
+    model: ""                    # "" = model default provider
+  reflect:                       # aktif — reflect.py (self-learning)
+    provider: "auto"
+    model: ""
+  compression:                   # belum dipakai — menunggu kompaksi ber-LLM
+    provider: "auto"
+    model: ""
+  web_extract:                   # belum dipakai
+    provider: "auto"
+    model: ""
+  title_gen:                     # belum dipakai
+    provider: "auto"
+    model: ""
+  approval:                      # belum dipakai
+    provider: "auto"
+    model: ""
+  curator_review:                # belum dipakai — curator masih deterministik
+    provider: "auto"
+    model: ""
+  embedding:                     # TERKUNCI — ganti model merusak dimensi vektor
+    provider: "auto"
+    model: ""
+
+curator:                         # PARITY v2 §8 — lifecycle skill learned
+  enabled: true
+  stale_after_days: 14           # tak terpakai → stale
+  archive_after_days: 45         # tak terpakai → pindah .archive/ (recoverable)
+  interval_hours: 24             # jarak minimum antar run curator
+
+mcp:                             # PARITY v2 §5.7 — server MCP eksternal (stdio)
+  servers: []                    # - {name: fs, command: npx, args: ["-y", "@modelcontextprotocol/server-filesystem", "D:/data"]}
+  disabled: []                   # nama server yang dimatikan (toggle panel)
+
+skills:                          # toggle skill native Jarvis
+  disabled: []
+  hub_sources: []                # opt-in path lokal; referensi Hermes bukan runtime
+
+tools:                           # PARITY v2 §4.3 — dipakai Fase 2c (grouping)
+  disabled_groups: []

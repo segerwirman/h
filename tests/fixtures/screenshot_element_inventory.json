@@ -1,0 +1,52 @@
+{
+  "_comment": "Machine-readable recognition fixture derived from the redesign brief's §10 reference-screenshot element inventory (the raw image itself was not supplied with the brief). Entries are raw detections exactly as the geometry/icon/OCR stage would emit them — rect, icon hint, text, type hint, container hint, source — BEFORE semantic classification. classify_detections() must assign scope/role/confidence/provenance. Coordinates are fixture data only, never runtime automation locators.",
+  "viewport": { "width": 1920, "height": 1080, "tab_band_h": 44, "nav_band_h": 88, "sidebar_split": 0.78 },
+  "detections": [
+    { "id": "win-min",        "rect": [1806, 12, 28, 18], "icon": "hline",          "source": "geometry", "type": "button" },
+    { "id": "win-max",        "rect": [1844, 12, 28, 18], "icon": "square",         "source": "geometry", "type": "button" },
+    { "id": "win-close",      "rect": [1882, 12, 28, 18], "icon": "x",              "source": "geometry", "type": "button" },
+
+    { "id": "app-icon",       "rect": [8, 10, 24, 24],    "icon": "app",            "source": "icon" },
+    { "id": "tab-actions",    "rect": [40, 12, 20, 20],   "icon": "chevron",        "source": "icon" },
+    { "id": "tab-newtab",     "rect": [64, 6, 140, 32],   "text": "New Tab",        "type": "tab", "source": "ocr" },
+    { "id": "tab-jarvis",     "rect": [210, 6, 160, 32],  "text": "JARVIS v2 Upgrade", "type": "tab", "source": "ocr" },
+    { "id": "tab-setup",      "rect": [376, 6, 118, 32],  "text": "Panduan Setup Integrasi", "type": "tab", "source": "ocr" },
+    { "id": "tab-active",     "rect": [500, 6, 180, 32],  "text": "Peta Kemampuan & …", "type": "tab", "source": "ocr", "states": { "selected": true } },
+    { "id": "tab-active-close", "rect": [655, 14, 16, 16], "icon": "x",             "source": "icon" },
+    { "id": "tab-youtube",    "rect": [690, 6, 140, 32],  "text": "YouTube",        "type": "tab", "source": "ocr" },
+    { "id": "btn-new-tab",    "rect": [850, 10, 24, 24],  "icon": "plus",           "source": "icon" },
+
+    { "id": "nav-back",       "rect": [12, 52, 28, 28],   "icon": "arrow_left",     "source": "geometry" },
+    { "id": "nav-forward",    "rect": [48, 52, 28, 28],   "icon": "arrow_right",    "source": "geometry", "states": { "disabled": true } },
+    { "id": "nav-reload",     "rect": [84, 52, 28, 28],   "icon": "circular_arrow", "source": "geometry" },
+    { "id": "site-info",      "rect": [130, 56, 20, 20],  "icon": "lock",           "source": "icon" },
+    { "id": "address-bar",    "rect": [156, 50, 900, 30], "type": "field", "text": "https://app.example.com/peta-kemampuan", "source": "geometry" },
+    { "id": "nav-translate",  "rect": [1080, 54, 22, 22], "icon": "translate",      "source": "icon" },
+    { "id": "nav-star",       "rect": [1110, 54, 22, 22], "icon": "star",           "source": "icon" },
+    { "id": "nav-extensions", "rect": [1140, 54, 22, 22], "icon": "puzzle",         "source": "icon" },
+    { "id": "nav-mystery",    "rect": [1170, 54, 22, 22], "icon": "",               "source": "icon" },
+    { "id": "nav-menu",       "rect": [1200, 54, 22, 22], "icon": "dots3",          "source": "icon" },
+    { "id": "nav-profile",    "rect": [1230, 52, 26, 26], "icon": "avatar",         "source": "icon" },
+    { "id": "nav-chat",       "rect": [1262, 54, 22, 22], "icon": "chat",           "source": "icon" },
+
+    { "id": "sidebar-toggle", "rect": [24, 110, 32, 32],  "icon": "hamburger", "type": "button", "source": "geometry" },
+    { "id": "page-title",     "rect": [660, 110, 600, 36], "type": "title", "text": "Peta Kemampuan & Anatomi UI dengan Orb Speaking", "source": "ocr" },
+    { "id": "page-share",     "rect": [1380, 110, 28, 28], "type": "button", "text": "Share", "source": "ocr" },
+    { "id": "msg-card",       "rect": [380, 260, 700, 420], "type": "card", "text": "Deskripsi proyek berbahasa Indonesia …", "source": "ocr" },
+    { "id": "doc-chip",       "rect": [420, 300, 180, 40], "icon": "chip", "text": "uimk50.md", "source": "ocr" },
+    { "id": "btn-collapse",   "rect": [700, 700, 90, 24], "type": "button", "text": "Collapse", "source": "ocr" },
+    { "id": "page-scrollbar", "rect": [1470, 100, 10, 800], "icon": "scrollbar",    "source": "geometry" },
+
+    { "id": "main-composer",  "rect": [420, 880, 640, 90], "type": "textarea", "text": "Draf teks bahasa Indonesia …", "source": "geometry" },
+    { "id": "main-mention",   "rect": [430, 975, 24, 24], "type": "button", "icon": "at", "source": "icon" },
+    { "id": "main-send",      "rect": [1030, 935, 40, 40], "icon": "send",          "source": "icon" },
+
+    { "id": "sb-exchange",    "rect": [1560, 120, 90, 26], "type": "button", "text": "Exchange", "container": "aside", "source": "ocr" },
+    { "id": "sb-summarize",   "rect": [1540, 180, 110, 30], "type": "button", "text": "Summarize", "container": "aside", "source": "ocr" },
+    { "id": "sb-explain",     "rect": [1660, 180, 90, 30], "type": "button", "text": "Explain", "container": "aside", "source": "ocr" },
+    { "id": "sb-polish",      "rect": [1760, 180, 80, 30], "type": "button", "text": "Polish", "container": "aside", "source": "ocr" },
+    { "id": "sb-conversation", "rect": [1530, 240, 360, 80], "type": "card", "text": "Percakapan saat ini", "container": "aside", "source": "ocr" },
+    { "id": "sb-composer",    "rect": [1530, 860, 340, 70], "type": "textarea", "text": "Ask anything…", "container": "aside", "source": "geometry" },
+    { "id": "sb-send",        "rect": [1830, 900, 32, 32], "icon": "send", "container": "aside", "source": "icon" }
+  ]
+}

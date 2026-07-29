@@ -1,0 +1,38 @@
+"""session_search (§3.1.H) — cari percakapan/sesi agent lampau."""
+from __future__ import annotations
+
+import asyncio
+import datetime
+
+from pydantic import BaseModel, Field
+
+from jarvis.agent import session as session_mod
+from jarvis.agent.base import Tool, ToolResult
+
+
+class _Params(BaseModel):
+    query: str = Field(description="Kata kunci")
+    limit: int = Field(8)
+
+
+class SessionSearch(Tool):
+    name = "session_search"
+    description = "Cari isi percakapan/sesi agent sebelumnya (full-text)."
+    params_schema = _Params
+    read_only = True
+    timeout_s = 30
+
+    async def run(self, query: str, limit: int = 8, **_) -> ToolResult:
+        rows = await asyncio.to_thread(
+            session_mod.search, query, min(int(limit), 20))
+        if not rows:
+            return ToolResult.success("tidak ada sesi yang cocok",
+                                      display="0 hasil")
+        lines = []
+        for r in rows:
+            ts = datetime.datetime.fromtimestamp(
+                r.get("ts", 0)).strftime("%Y-%m-%d %H:%M")
+            lines.append(f"[{r.get('session_id')}] {ts} "
+                         f"{r.get('role')}: {r.get('snip')}")
+        return ToolResult.success("\n".join(lines),
+                                  display=f"{len(rows)} hasil")
