@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 
 from pydantic import BaseModel
 
@@ -82,7 +83,30 @@ def _safe_descriptor(authority: SafeDesktopSession, observation_id: str, element
         if not decision.allowed or decision.requires_confirmation:
             return None
         return {"element_id": element.element_id, "role": element.role, "scope": scope}
-    return None
+    if element.role != "slider":
+        return None
+    if not ref.label or not ref.native_identity:
+        return None
+    try:
+        decision = authority.gate.evaluate(ref, action="set_value")
+        minimum = float(element.states["minimum"])
+        maximum = float(element.states["maximum"])
+        value = float(element.states["value"])
+    except Exception:
+        return None
+    if (not decision.allowed or decision.requires_confirmation
+            or not all(math.isfinite(item) for item in (minimum, maximum, value))
+            or minimum > maximum):
+        return None
+    if not minimum <= value <= maximum:
+        return None
+    return {
+        "element_id": element.element_id,
+        "role": "slider",
+        "scope": scope,
+        "actions": ["set_value"],
+        "value_domain": {"minimum": minimum, "maximum": maximum},
+    }
 
 
 __all__ = ["DesktopObserve"]

@@ -109,6 +109,7 @@ async def execute(name: str, args: dict, adapter=None,
     args = dict(args or {})
     args.pop("_raw", None)
     policy_approval_granted = False
+    confirmation_granted = False
     from jarvis.agent.capabilities import REGISTRY as capability_registry
     descriptor = capability_registry.descriptor_for_tool(name)
     if descriptor is not None and descriptor.toolset == "desktop_safe" and context is None:
@@ -150,6 +151,9 @@ async def execute(name: str, args: dict, adapter=None,
     except Exception:                                        # noqa: BLE001
         needs = tool.requires_confirmation
     if needs and not policy_approval_granted:
+        if descriptor is not None and descriptor.toolset == "desktop_safe" and not _is_active_native_desktop_adapter(adapter):
+            return ToolResult.fail(
+                "desktop_safe confirmation membutuhkan adapter desktop-local")
         approved = False
         if adapter is not None:
             try:
@@ -165,6 +169,7 @@ async def execute(name: str, args: dict, adapter=None,
                                   "disetujui — jangan ulangi tanpa diminta")
             _log_call(name, args, res, 0.0, session)
             return res
+        confirmation_granted = True
 
     # tool yang menyatakan wants_context menerima sesi+adapter aktif
     # (todo per-sesi, clarify, delegate, snapshot kamera via UI adapter)
@@ -172,6 +177,8 @@ async def execute(name: str, args: dict, adapter=None,
         args["_session"] = session
         args["_adapter"] = adapter
         args["_context"] = context
+        if descriptor is not None and descriptor.toolset == "desktop_safe":
+            args["_desktop_safe_confirmation"] = confirmation_granted
 
     t0 = time.perf_counter()
     try:
@@ -188,6 +195,15 @@ async def execute(name: str, args: dict, adapter=None,
     elapsed = time.perf_counter() - t0
     _log_call(name, args, res, elapsed, session)
     return res
+
+
+def _is_active_native_desktop_adapter(adapter) -> bool:
+    """Accept confirmation only from the live, native JARVIS desktop bridge."""
+    try:
+        from jarvis.agent.adapters.ui import UIAdapter
+        return type(adapter) is UIAdapter and adapter._win() is not None
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def _log_call(name: str, args: dict, res: ToolResult, elapsed_s: float,

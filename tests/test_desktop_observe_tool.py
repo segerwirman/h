@@ -100,3 +100,81 @@ def test_desktop_observe_has_no_capture_image_vision_or_coordinate_api():
     assert not hasattr(DesktopObserve, "click_at")
     assert not hasattr(DesktopObserve, "coordinate")
     assert not hasattr(DesktopObserve, "ocr")
+
+
+def test_desktop_observe_emits_set_value_descriptor_only_for_complete_slider():
+    from jarvis.agent.tools.desktop_observe import DesktopObserve
+    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+
+    tree = ScreenElementTree()
+    tree.add(UIElement(
+        "uia-slider", ElementScope.PAGE_MAIN, "slider", name="JARVIS fixture slider",
+        rect=(1, 2, 100, 20), visible=True, confidence=.95, provenance="uia",
+        states={"value": 25.0, "minimum": 0.0, "maximum": 100.0,
+                "_uia_runtime_id": "fixture-slider"},
+    ))
+    gate = CuaSafetyGate()
+    authority = SafeDesktopSession(
+        gate, CaptureAdapter(gate, lambda: CaptureFrame("uia:fixture", tree)),
+        lambda _rect: None,
+    )
+
+    result = asyncio.run(DesktopObserve(session=authority).run(
+        _session=type("Session", (), {"id": "desktop-a"})(), _context=_context()))
+
+    assert result.ok is True
+    assert result.content["elements"] == [{
+        "element_id": "uia-slider", "role": "slider", "scope": "page_main",
+        "actions": ["set_value"],
+        "value_domain": {"minimum": 0.0, "maximum": 100.0},
+    }]
+
+
+def test_desktop_observe_does_not_emit_set_value_for_unnamed_slider():
+    from jarvis.agent.tools.desktop_observe import _safe_descriptor
+    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+
+    tree = ScreenElementTree()
+    tree.add(UIElement(
+        "uia-slider", ElementScope.PAGE_MAIN, "slider", name="",
+        rect=(1, 2, 100, 20), visible=True, confidence=.95, provenance="uia",
+        states={"value": 25.0, "minimum": 0.0, "maximum": 100.0,
+                "_uia_runtime_id": "fixture-slider"},
+    ))
+    gate = CuaSafetyGate()
+    authority = SafeDesktopSession(
+        gate, CaptureAdapter(gate, lambda: CaptureFrame("uia:fixture", tree)),
+        lambda _rect: None,
+    )
+    observation = authority.observe_for("desktop-a")
+
+    assert _safe_descriptor(authority, observation.id, tree._by_id["uia-slider"], "page_main") is None
+
+
+def test_desktop_observe_does_not_emit_set_value_for_text_or_incomplete_slider():
+    from jarvis.agent.tools.desktop_observe import DesktopObserve
+    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+
+    tree = ScreenElementTree()
+    tree.add(UIElement("uia-text", ElementScope.PAGE_COMPOSER, "text_field", name="",
+                       rect=(1, 2, 100, 20), visible=True, confidence=.95, provenance="uia"))
+    tree.add(UIElement("uia-slider", ElementScope.PAGE_MAIN, "slider", name="",
+                       rect=(1, 30, 100, 20), visible=True, confidence=.95, provenance="uia",
+                       states={"value": 25.0}))
+    gate = CuaSafetyGate()
+    authority = SafeDesktopSession(
+        gate, CaptureAdapter(gate, lambda: CaptureFrame("uia:fixture", tree)),
+        lambda _rect: None,
+    )
+
+    result = asyncio.run(DesktopObserve(session=authority).run(
+        _session=type("Session", (), {"id": "desktop-a"})(), _context=_context()))
+
+    assert result.ok is True
+    assert result.content["elements"] == []
