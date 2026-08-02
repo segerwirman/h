@@ -1,6 +1,7 @@
 """Framework maturity Phase 1 — bounded execution identity."""
 from __future__ import annotations
 
+import asyncio
 import importlib
 
 
@@ -37,11 +38,57 @@ def test_execution_context_child_mewarisi_policy_tanpa_secret():
 
     child = parent.for_child(toolsets={"safe"})
 
-    assert child.source == "desktop"
+    assert child.source == "delegation"
     assert child.session_id == "s1"
     assert child.toolsets == frozenset({"safe"})
     assert child.trace_id != parent.trace_id
     assert child.secrets == {}
+
+
+
+
+def test_execution_context_child_drops_desktop_safe_and_becomes_delegation():
+    context = importlib.import_module("jarvis.agent.execution_context")
+    parent = context.ExecutionContext.create(
+        source="agent", actor_id="local-user", session_id="desktop-parent",
+        surface="desktop", toolsets={"agent", "desktop_safe"},
+    )
+
+    child = parent.for_child()
+
+    assert child.source == "delegation"
+    assert "desktop_safe" not in child.toolsets
+
+
+def test_delegate_runtime_child_schema_hides_desktop_safe(monkeypatch):
+    from jarvis.agent import registry
+    from jarvis.agent import loop as agent_loop
+    from jarvis.agent.execution_context import ExecutionContext
+    from jarvis.agent.loop import RunResult
+    from jarvis.agent.session import Session
+    from jarvis.agent.tools.delegate import DelegateTask
+
+    captured = {}
+
+    async def run(_task, **kwargs):
+        captured["context"] = kwargs["context"]
+        return RunResult(ok=True, text="selesai", iterations=1)
+
+    monkeypatch.setattr(agent_loop, "run", run)
+    parent_context = ExecutionContext.create(
+        source="agent", actor_id="local", session_id="desktop-parent",
+        surface="desktop", toolsets={"agent", "desktop_safe"},
+    )
+    result = asyncio.run(DelegateTask().run(
+        "audit read-only", _session=Session(task="parent"), _context=parent_context,
+    ))
+
+    child = captured["context"]
+    names = {item["function"]["name"] for item in registry.schemas(context=child)}
+    assert result.ok is True
+    assert child.source == "delegation"
+    assert "desktop_safe" not in child.toolsets
+    assert not {"desktop_observe", "desktop_safe_click", "desktop_safe_scroll", "desktop_safe_set_value"} & names
 
 
 def test_dispatch_menolak_context_remote_tanpa_toolset_heavy(monkeypatch):
