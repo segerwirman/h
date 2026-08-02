@@ -75,6 +75,16 @@ def _safe_descriptor(authority: SafeDesktopSession, observation_id: str, element
             return None
         return {"element_id": element.element_id, "role": "checkbox", "scope": scope,
                 "actions": ["toggle"]}
+    if element.role == "dropdown_option":
+        try:
+            decision = authority.gate.evaluate(ref, action="select_option")
+        except Exception:
+            return None
+        if (not decision.allowed or decision.requires_confirmation
+                or not ref.native_identity or not ref.parent_native_identity):
+            return None
+        return {"element_id": element.element_id, "role": "dropdown_option", "scope": scope,
+                "actions": ["select_option"]}
     if element.role in {"button", "link", "scrollbar"}:
         try:
             decision = authority.gate.evaluate(ref, action="click")
