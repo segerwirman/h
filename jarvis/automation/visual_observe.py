@@ -15,8 +15,15 @@ class VisualObserveService:
         self._denylisted = denylisted or is_denylisted
 
     def observe(self, *, session_id: str) -> dict | None:
-        title, app = self._foreground()
-        if self._denylisted(str(title or ""), str(app or "")):
+        foreground = self._foreground()
+        if foreground is None:
+            return None  # foreground tidak dapat diidentifikasi — fail closed
+        title, app = foreground
+        title = str(title or "").strip()
+        app = str(app or "").strip()
+        if not title or not app:
+            return None  # identitas foreground tidak cukup — tolak sebelum capture
+        if self._denylisted(title, app):
             return None
         image = self._capture()
         if image is None:
@@ -28,13 +35,13 @@ class VisualObserveService:
             del image
 
 
-def _foreground_window() -> tuple[str, str]:
+def _foreground_window() -> tuple[str, str] | None:
     try:
         import pygetwindow as gw
         window = gw.getActiveWindow()
         title = str((window.title if window else "") or "")
     except Exception:
-        title = ""
+        return None
     app = title.split(" - ")[-1].strip() if " - " in title else title
     return title, app
 
