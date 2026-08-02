@@ -355,22 +355,31 @@ def test_uia_dropdown_option_requires_selection_item_and_stable_identity():
     }
 
 
-def _dropdown_option(*, option_runtime=(12, 99), dropdown_runtime=(12, 88)):
+def _dropdown_option(*, option_runtime=(12, 99), dropdown_runtime=(12, 88),
+                     commit_parent_value: bool = True):
     calls = []
     item = _Control(kind="ListItem", runtime_id=option_runtime)
+    value = type("Value", (), {"CurrentValue": "Fixture current"})()
     dropdown = type("Combo", (), {
         "element_info": type("Info", (), {
             "control_type": "ComboBox", "runtime_id": dropdown_runtime,
         })(),
+        "iface_value": value,
     })()
     parent = type("List", (), {
         "element_info": type("Info", (), {"control_type": "List"})(),
     })()
     parent.parent = lambda: dropdown
     item.parent = lambda: parent
+
+    def select(_self):
+        calls.append("select")
+        if commit_parent_value:
+            value.CurrentValue = "Fixture alternative"
+
     item.iface_selection_item = type("SelectionItem", (), {
         "CurrentIsSelected": False,
-        "Select": lambda self: calls.append("select"),
+        "Select": select,
     })()
     return item, calls
 
@@ -386,7 +395,78 @@ def test_uia_backend_selects_exact_dropdown_option_once():
     before = CaptureAdapter(gate, backend.capture).capture()
     ref = gate.reference(before.id, "uia-1")
 
-    backend.select_option_semantic(ref)
+    committed = backend.select_option_semantic(ref)
+
+    assert committed is True
+    assert calls == ["select"]
+
+
+def test_uia_backend_reports_uncommitted_or_duplicate_dropdown_parent_value():
+    from jarvis.automation.cua_safe_click import CaptureAdapter
+    from jarvis.automation.cua_safety import CuaSafetyGate
+    from jarvis.automation.uia_capture import UIACaptureBackend
+
+    option, calls = _dropdown_option(commit_parent_value=False)
+    backend = UIACaptureBackend(desktop=_Desktop(_Window(option, title="Demo", text="Demo")))
+    gate = CuaSafetyGate()
+    before = CaptureAdapter(gate, backend.capture).capture()
+    ref = gate.reference(before.id, "uia-1")
+
+    committed = backend.select_option_semantic(ref)
+
+    assert committed is False
+    assert calls == ["select"]
+
+
+def test_uia_backend_rejects_missing_parent_value_pattern_before_select():
+    import pytest
+
+    from jarvis.automation.cua_safe_click import CaptureAdapter
+    from jarvis.automation.cua_safety import CuaSafetyGate
+    from jarvis.automation.uia_capture import UIACaptureBackend
+
+    option, calls = _dropdown_option()
+    dropdown = option.parent().parent()
+    delattr(type(dropdown), "iface_value")
+    backend = UIACaptureBackend(desktop=_Desktop(_Window(option, title="Demo", text="Demo")))
+    gate = CuaSafetyGate()
+    before = CaptureAdapter(gate, backend.capture).capture()
+    ref = gate.reference(before.id, "uia-1")
+
+    with pytest.raises(RuntimeError, match="ValuePattern"):
+        backend.select_option_semantic(ref)
+
+    assert calls == []
+
+
+def test_uia_backend_after_value_read_failure_never_retries_select():
+    import pytest
+
+    from jarvis.automation.cua_safe_click import CaptureAdapter
+    from jarvis.automation.cua_safety import CuaSafetyGate
+    from jarvis.automation.uia_capture import UIACaptureBackend
+
+    option, calls = _dropdown_option()
+    dropdown = option.parent().parent()
+
+    class _FailAfterMutation:
+        reads = 0
+
+        @property
+        def CurrentValue(self):
+            self.reads += 1
+            if self.reads == 1:
+                return "Fixture current"
+            raise RuntimeError("fixture after-read failure")
+
+    dropdown.iface_value = _FailAfterMutation()
+    backend = UIACaptureBackend(desktop=_Desktop(_Window(option, title="Demo", text="Demo")))
+    gate = CuaSafetyGate()
+    before = CaptureAdapter(gate, backend.capture).capture()
+    ref = gate.reference(before.id, "uia-1")
+
+    with pytest.raises(RuntimeError, match="setelah select"):
+        backend.select_option_semantic(ref)
 
     assert calls == ["select"]
 

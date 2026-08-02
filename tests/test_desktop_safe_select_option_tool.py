@@ -22,7 +22,7 @@ def _tree(*, selected: bool = False, option_name: str = "Safe mode") -> ScreenEl
     ))
     return tree
 
-def _authority(*, option_name: str = "Safe mode"):
+def _authority(*, option_name: str = "Safe mode", native_committed: bool = True):
     from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
     from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
     from jarvis.automation.cua_safety import CuaSafetyGate
@@ -35,7 +35,7 @@ def _authority(*, option_name: str = "Safe mode"):
     calls = []
     authority = SafeDesktopSession(
         gate, CaptureAdapter(gate, lambda: next(frames)), lambda _rect: None,
-        select_option_native=lambda ref: calls.append(ref),
+        select_option_native=lambda ref: (calls.append(ref), native_committed)[1],
     )
     return authority, calls
 
@@ -54,6 +54,20 @@ def test_select_option_only_runs_already_visible_safe_option_once_and_recaptures
     assert outcome.verified is True
     assert len(calls) == 1
     assert calls[0].element_id == "uia-option"
+
+def test_select_option_does_not_verify_when_parent_value_did_not_change():
+    authority, calls = _authority(native_committed=False)
+    observation = authority.observe_for("desktop-a")
+
+    outcome, error = authority.select_option(
+        observation.id, "uia-option", session_id="desktop-a")
+
+    assert error == ""
+    assert outcome.ok is False
+    assert outcome.executed is True
+    assert outcome.verified is False
+    assert len(calls) == 1
+
 
 def test_select_option_rejects_destructive_option_before_lease_or_executor():
     authority, calls = _authority(option_name="Delete all")

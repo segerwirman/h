@@ -303,7 +303,7 @@ class SafeDesktopSession:
         if not self.desktop.claim(owner):
             return None, "desktop sedang dikendalikan sesi lain"
         try:
-            self.select_option_native(ref)
+            parent_value_changed = self.select_option_native(ref)
             self._disown(ref.observation_id)
             try:
                 after = self.capture.capture()
@@ -315,7 +315,8 @@ class SafeDesktopSession:
                 })(), "")
             after_element = after.tree._by_id.get(ref.element_id)
             verified = bool(
-                self.gate.verify_recapture(before, after)
+                parent_value_changed is True
+                and self.gate.verify_recapture(before, after)
                 and after_element is not None
                 and after_element.states.get("_uia_runtime_id") == ref.native_identity
                 and after_element.states.get("selected") is True

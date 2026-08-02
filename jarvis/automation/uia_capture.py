@@ -154,8 +154,8 @@ class UIACaptureBackend:
                 raise
             raise RuntimeError(f"UIA Toggle gagal: {type(exc).__name__}") from exc
 
-    def select_option_semantic(self, ref: SemanticTargetRef) -> None:
-        """Invoke UIA SelectionItem.Select on one current visible option only."""
+    def select_option_semantic(self, ref: SemanticTargetRef) -> bool:
+        """Select once and report whether the parent ComboBox value changed."""
         control = self._matching_control(ref, expected_role="dropdown_option")
         try:
             parent = control.parent()
@@ -167,7 +167,16 @@ class UIACaptureBackend:
             if (not ref.parent_native_identity
                     or _uia_runtime_identity(dropdown) != ref.parent_native_identity):
                 raise RuntimeError("identitas UIA dropdown berubah sebelum select_option")
+            try:
+                before_value = str(dropdown.iface_value.CurrentValue)
+            except Exception as exc:
+                raise RuntimeError("dropdown tidak memiliki ValuePattern verifikasi") from exc
             control.iface_selection_item.Select()
+            try:
+                after_value = str(dropdown.iface_value.CurrentValue)
+            except Exception as exc:
+                raise RuntimeError("nilai dropdown tidak dapat diverifikasi setelah select") from exc
+            return before_value != after_value
         except Exception as exc:
             if isinstance(exc, RuntimeError):
                 raise
