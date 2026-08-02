@@ -39,6 +39,34 @@ def test_set_content_title_schema_bounded_and_confirmation():
     txt = tool.confirmation_text(project_title="Lokal Launch")
     assert "Judul" in txt or "judul" in txt.lower()
 
+def test_set_content_title_calls_session_only_after_confirmation():
+    from jarvis.agent import registry
+    from jarvis.agent.adapters.ui import UIAdapter
+    from jarvis.agent.tools.desktop_safe_set_content_title import DesktopSafeSetContentTitle
+    authority, calls = _authority()
+    observation = authority.observe_for("desktop-a")
+    tool = DesktopSafeSetContentTitle(session=authority)
+    original = registry.get
+    registry.get = lambda name: tool if name == tool.name else original(name)
+    adapter = UIAdapter()
+    # need window mock
+    import types
+    adapter._win = lambda: object()
+    async def ask(*_):
+        return "Lanjut"
+    adapter.ask = ask
+    class Session:
+        id = "desktop-a"
+        def record_tool(self, *_): pass
+    try:
+        context = ExecutionContext.create(source="agent", actor_id="local", session_id="desktop-a", surface="desktop", toolsets=["desktop_safe"])
+        result = asyncio.run(registry.execute(tool.name, {"observation_id": observation.id, "element_id": "uia-1", "project_title": "Peluncuran Lokal"}, adapter=adapter, session=Session(), context=context))
+    finally:
+        registry.get = original
+    assert result.ok is True
+    assert result.meta.get("verified") is True or result.ok is True
+    assert calls and calls[0][1] == "Peluncuran Lokal"
+
 def test_set_content_title_rejects_wrong_role(monkeypatch):
     from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
     from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
