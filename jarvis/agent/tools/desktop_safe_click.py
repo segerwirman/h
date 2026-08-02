@@ -507,11 +507,13 @@ class SafeDesktopSession:
             return None, "target reorder bukan scene card yang aman"
         if not decision.allowed or not decision_dst.allowed:
             return None, "target reorder tidak aman"
-        # same parent runtime check (same container list)
+        # same parent runtime check (same container list) — identity WAJIB ada
         src_parent = str(src_el.states.get("_uia_parent_runtime_id", "") or "")
         dst_parent = str(dst_el.states.get("_uia_parent_runtime_id", "") or "")
-        if src_parent and dst_parent and src_parent != dst_parent:
-            return None, "reorder beda parent ditolak"
+        if not src_parent or not dst_parent or src_parent != dst_parent:
+            return None, "reorder membutuhkan parent identity yang sama"
+        # order marker (internal rect y only; never returned to caller)
+        src_above_before = src_el.rect[1] < dst_el.rect[1]
         if self.reorder_native is None:
             return None, "executor reorder UIA belum tersedia"
         if not self.desktop.claim(owner):
@@ -526,16 +528,22 @@ class SafeDesktopSession:
                     "ok": False, "executed": True, "verified": False, "after": None,
                     "reason": f"reorder terkirim; recapture gagal: {type(exc).__name__}",
                 })(), "")
+            after_src = after.tree._by_id.get(src_ref.element_id)
+            after_dst = after.tree._by_id.get(dst_ref.element_id)
+            order_changed = bool(
+                after_src is not None and after_dst is not None
+                and (after_src.rect[1] < after_dst.rect[1]) != src_above_before
+            )
             verified = bool(
-                self.gate.verify_recapture(before, after)
-                and after.tree._by_id.get(src_ref.element_id) is not None
-                and after.tree._by_id.get(dst_ref.element_id) is not None
-                and after.tree._by_id.get(src_ref.element_id).states.get("_uia_runtime_id") == src_ref.native_identity
-                and after.tree._by_id.get(dst_ref.element_id).states.get("_uia_runtime_id") == dst_ref.native_identity
+                order_changed
+                and self.gate.verify_recapture(before, after)
+                and after_src is not None and after_dst is not None
+                and after_src.states.get("_uia_runtime_id") == src_ref.native_identity
+                and after_dst.states.get("_uia_runtime_id") == dst_ref.native_identity
             )
             return (type("ReorderOutcome", (), {
                 "ok": verified, "executed": True, "verified": verified, "after": after,
-                "reason": ("reorder scene semantik terverifikasi" if verified else "reorder terkirim tetapi recapture tidak membuktikan identitas source/destination"),
+                "reason": ("reorder scene semantik terverifikasi" if verified else "reorder terkirim tetapi urutan tidak berubah atau recapture tidak membuktikan identitas source/destination"),
             })(), "")
         except Exception as exc:
             self._disown(observation_id)
