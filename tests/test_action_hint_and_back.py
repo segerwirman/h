@@ -260,8 +260,27 @@ class _FakeWin:
         self.stage = _FakeStage()
         self.stage.current = panel
         self.interrupted = False
+        self.orb_synced = False
+        self.orb_undocked = False
+        self.orb_state = None
+        self.action_panel_dimmed = None
+        self.orb = type("_FakeOrb", (), {
+            "undock": lambda _orb: setattr(self, "orb_undocked", True),
+            "set_state": lambda _orb, state: setattr(self, "orb_state", state),
+        })()
+        self.action_panel = type("_FakeActionPanel", (), {
+            "set_dimmed": lambda _panel, value: setattr(self, "action_panel_dimmed", value),
+        })()
         self.on_interrupt = lambda: setattr(self, "interrupted", True)
         self.stage_history = StageHistory(self.stage)
+
+    def _close_stage_panels(self) -> None:
+        """Exercise the real close-panel behavior against the minimal fake surface."""
+        from jarvis.ui.window import MainWindow
+        MainWindow._close_stage_panels(self)
+
+    def _sync_orb_visibility(self) -> None:
+        self.orb_synced = True
 
 
 def _esc(win) -> None:
@@ -283,6 +302,10 @@ def test_esc_saat_diam_dan_panel_terbuka_jadi_back() -> None:
     _esc(win)
     assert win.interrupted is False
     assert win.stage.calls == ["EMPTY"]
+    assert win.orb_synced is True
+    assert win.orb_undocked is True
+    assert win.orb_state is not None
+    assert win.action_panel_dimmed is False
 
 
 def test_esc_saat_diam_tanpa_panel_tetap_interrupt() -> None:
