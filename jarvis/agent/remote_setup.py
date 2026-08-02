@@ -98,16 +98,20 @@ def _decrypt_staging(cipher: bytes) -> bytes:
     return Fernet(key).decrypt(cipher.removeprefix(b"setupenc:"))
 
 
+_KEY_LOCK = threading.Lock()
+
+
 def _staging_key() -> bytes:
     from cryptography.fernet import Fernet
     from jarvis.core import secrets_store
 
-    existing = secrets_store.get("jarvis/remote_setup/staging_key")
-    if existing:
-        return existing.encode("ascii")
-    key = Fernet.generate_key()
-    secrets_store.set("jarvis/remote_setup/staging_key", key.decode("ascii"))
-    return key
+    with _KEY_LOCK:
+        existing = secrets_store.get("jarvis/remote_setup/staging_key")
+        if existing:
+            return existing.encode("ascii")
+        key = Fernet.generate_key()
+        secrets_store.set("jarvis/remote_setup/staging_key", key.decode("ascii"))
+        return key
 
 
 def _import_to_secret_store(provider: str, payload: bytes) -> bool:
@@ -131,9 +135,25 @@ def _import_to_secret_store(provider: str, payload: bytes) -> bool:
 
 class SetupQueue:
     def __init__(self, *, ttl_s: float = _DEFAULT_TTL_S):
-        self._ttl_s = max(1.0, float(ttl_s))
+        self._ttl_s = max(0.1, float(ttl_s))
         self._items: dict[str, _Staged] = {}
         self._lock = threading.RLock()
+        self._stop = threading.Event()
+        interval = max(0.05, min(1.0, self._ttl_s / 2))
+        self._sweeper = threading.Thread(
+            target=self._sweep_loop, name="remote-setup-sweeper", daemon=True,
+            kwargs={"interval": interval},
+        )
+        self._sweeper.start()
+
+    def close(self) -> None:
+        """Stop the autonomous sweeper; staging cleanup stops too."""
+        self._stop.set()
+
+    def _sweep_loop(self, *, interval: float) -> None:
+        while not self._stop.wait(interval):
+            with self._lock:
+                self._prune()
 
     def stage(self, *, provider: str, requester: str, filename: str,
               payload: bytes) -> SetupRequest:
