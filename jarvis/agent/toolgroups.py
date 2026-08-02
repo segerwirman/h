@@ -39,6 +39,7 @@ _DESKTOP_SAFE_MODULES = (
     "desktop_safe_click",
     "desktop_safe_scroll",
     "desktop_safe_set_content_title",
+    "desktop_safe_reorder_scene",
     "desktop_safe_set_value",
     "desktop_safe_toggle",
 )

@@ -87,6 +87,7 @@ for _descriptor in (
     CapabilityDescriptor("desktop_safe.desktop_safe_click", "desktop_safe_click", "desktop_safe", "medium", 30),
     CapabilityDescriptor("desktop_safe.desktop_safe_scroll", "desktop_safe_scroll", "desktop_safe", "medium", 30),
     CapabilityDescriptor("desktop_safe.desktop_safe_set_content_title", "desktop_safe_set_content_title", "desktop_safe", "medium", 30),
+    CapabilityDescriptor("desktop_safe.desktop_safe_reorder_scene", "desktop_safe_reorder_scene", "desktop_safe", "medium", 30),
     CapabilityDescriptor("desktop_safe.desktop_safe_set_value", "desktop_safe_set_value", "desktop_safe", "medium", 30),
     CapabilityDescriptor("desktop_safe.desktop_safe_toggle", "desktop_safe_toggle", "desktop_safe", "medium", 30),
     CapabilityDescriptor("web.web_search", "web_search", "web", "low", 45),

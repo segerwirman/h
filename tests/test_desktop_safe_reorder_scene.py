@@ -26,3 +26,28 @@ def test_reorder_tool_rejects_remote_voice_cron():
     src = open(r"E:\jarvis agent\h\jarvis\agent\tools\desktop_safe_reorder_scene.py", encoding="utf-8").read()
     assert "desktop_safe_context_error" in src
     assert "content_studio_scene_reorder" in src
+
+
+def test_reorder_tool_has_explicit_descriptor_and_desktop_only_schema():
+    from jarvis.agent import registry
+    from jarvis.agent.capabilities import REGISTRY
+    from jarvis.agent.execution_context import ExecutionContext
+    from jarvis.agent.tools.desktop_safe_reorder_scene import DesktopSafeReorderScene
+
+    descriptor = REGISTRY.descriptor_for_tool(DesktopSafeReorderScene.name)
+    assert descriptor is not None
+    assert descriptor.toolset == "desktop_safe"
+
+    for surface, source, allowed in (
+        ("desktop", "agent", True),
+        ("remote", "telegram", False),
+        ("voice", "gemini_live", False),
+        ("desktop", "cron", False),
+        ("desktop", "delegation", False),
+    ):
+        ctx = ExecutionContext.create(
+            source=source, actor_id="local", session_id="s",
+            surface=surface, toolsets=["desktop_safe"],
+        )
+        names = {item["function"]["name"] for item in registry.schemas(context=ctx)}
+        assert (DesktopSafeReorderScene.name in names) is allowed
