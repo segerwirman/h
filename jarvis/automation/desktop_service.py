@@ -28,7 +28,13 @@ class DesktopService:
     def run(self, session_id: str, operation: Callable[[], object]):
         if not self.claim(session_id):
             return None
-        return operation()
+        try:
+            return operation()
+        except Exception:
+            # Success retains the owner's lease for the caller's explicit
+            # lifecycle; an exception must never strand that owner forever.
+            self.release(session_id)
+            raise
 
 
 DESKTOP = DesktopService()
