@@ -1,11 +1,32 @@
 """Phase 15A: bounded, session-bound rendering for remote read-only results."""
 from __future__ import annotations
 
+import re
+
 _FORBIDDEN_KEYS = frozenset({
     "token", "secret", "client_secret", "access_token", "refresh_token", "password",
     "path", "file", "attachment", "body", "raw", "ocr", "screenshot",
     "observation_id", "element_id", "runtime_id", "x", "y", "selector",
 })
+
+_SENSITIVE_LABEL = re.compile(
+    r"(?i)\b(access\s*token|refresh\s*token|api\s*key|client\s*secret|"
+    r"private\s*key|secret|password|passwd|authorization|bearer|credential)\b"
+)
+
+_PATH_LIKE = re.compile(
+    r"(?i)([a-z]:[\\/]|\\\\|/home/|/users/|\.\./|/etc/|/var/|/proc/|/sys/)"
+)
+
+_REDACTED = "[REDACTED]"
+
+
+def _redact(value) -> str:
+    """Redact a value that embeds secrets or path-like material."""
+    text = str(value or "")
+    if _SENSITIVE_LABEL.search(text) or _PATH_LIKE.search(text):
+        return _REDACTED
+    return text
 
 
 def _contains_forbidden(value) -> bool:
@@ -37,9 +58,9 @@ def render_remote_read(payload: dict, *, chat_id: str, expected_chat_id: str,
             for item in items[:cap_items]:
                 if not isinstance(item, dict) or item.get("sensitive"):
                     continue
-                sender = str(item.get("sender") or "pengirim disamarkan")
-                subject = str(item.get("subject") or "(tanpa subjek)")
-                when = str(item.get("time") or "")
+                sender = _redact(item.get("sender") or "pengirim disamarkan")
+                subject = _redact(item.get("subject") or "(tanpa subjek)")
+                when = _redact(item.get("time") or "")
                 lines.append(f"• {sender} — {subject}" + (f" ({when})" if when else ""))
         elif "count" in payload:
             count = max(0, int(payload.get("count", 0)))
@@ -50,12 +71,14 @@ def render_remote_read(payload: dict, *, chat_id: str, expected_chat_id: str,
             for item in items[:cap_items]:
                 if not isinstance(item, dict):
                     continue
-                lines.append(f"• {str(item.get('time') or '')} — {str(item.get('title') or 'Acara')}")
+                when = _redact(item.get("time") or "")
+                title = _redact(item.get("title") or "Acara")
+                lines.append(f"• {when} — {title}")
         elif "briefing" in payload:
             briefing = payload.get("briefing")
             if not isinstance(briefing, str):
                 raise ValueError("invalid briefing")
-            lines.append(briefing[:cap_chars])
+            lines.append(_redact(briefing)[:cap_chars])
         else:
             raise ValueError("unknown payload")
     except (TypeError, ValueError, OverflowError):
