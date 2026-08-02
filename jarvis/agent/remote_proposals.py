@@ -1,6 +1,7 @@
 """Bounded metadata queue for desktop-local approval of remote requests."""
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -27,10 +28,13 @@ class RemoteProposal:
 
 
 class RemoteProposalQueue:
-    def __init__(self, *, ttl_s: float = 60.0, now: Callable[[], float] = time.monotonic) -> None:
+    def __init__(self, *, ttl_s: float = 60.0, now: Callable[[], float] = time.monotonic,
+                 capacity: int = 128) -> None:
         self._ttl_s = max(1.0, float(ttl_s))
         self._now = now
+        self._capacity = max(1, int(capacity))
         self._items: dict[str, RemoteProposal] = {}
+        self._lock = threading.RLock()
 
     def _expire(self) -> None:
         current = self._now()
@@ -43,40 +47,51 @@ class RemoteProposalQueue:
             return {"accepted": False, "reason": "remote_proposal_actor_unpaired"}
         if action not in _ALLOWED_ACTIONS:
             return {"accepted": False, "reason": "remote_proposal_action_rejected"}
-        item = RemoteProposal(uuid.uuid4().hex[:16], action, str(actor_id), str(session_id), "pending_local_approval", self._now())
-        self._items[item.id] = item
-        return {"accepted": True, "proposal_id": item.id, "action": item.action}
+        with self._lock:
+            self._expire()
+            if len(self._items) >= self._capacity:
+                return {"accepted": False, "reason": "remote_proposal_queue_full"}
+            item = RemoteProposal(uuid.uuid4().hex[:16], action, str(actor_id), str(session_id), "pending_local_approval", self._now())
+            self._items[item.id] = item
+            return {"accepted": True, "proposal_id": item.id, "action": item.action}
 
     def get(self, proposal_id: str, *, actor_id: str, session_id: str) -> RemoteProposal | None:
-        self._expire()
-        item = self._items.get(str(proposal_id))
-        if item is None or item.actor_id != str(actor_id) or item.session_id != str(session_id):
-            return None
-        return item
+        with self._lock:
+            self._expire()
+            item = self._items.get(str(proposal_id))
+            if item is None or item.actor_id != str(actor_id) or item.session_id != str(session_id):
+                return None
+            return item
 
     def cancel_local(self, proposal_id: str, *, actor_id: str, session_id: str) -> dict:
-        self._expire()
-        item = self._bound_pending(proposal_id, actor_id, session_id)
-        if item is None:
-            return {"cancelled": False, "reason": self._reason(proposal_id)}
-        self._items[item.id] = RemoteProposal(item.id, item.action, item.actor_id, item.session_id, "cancelled", item.created_at)
-        return {"cancelled": True}
+        with self._lock:
+            self._expire()
+            item = self._bound_pending(proposal_id, actor_id, session_id)
+            if item is None:
+                return {"cancelled": False, "reason": self._reason(proposal_id)}
+            self._items[item.id] = RemoteProposal(item.id, item.action, item.actor_id, item.session_id, "cancelled", item.created_at)
+            return {"cancelled": True}
 
     def approve_local(self, proposal_id: str, *, actor_id: str, session_id: str, executor: Callable[[str], bool]) -> dict:
-        self._expire()
-        item = self._bound_pending(proposal_id, actor_id, session_id)
-        if item is None:
-            return {"executed": False, "reason": self._reason(proposal_id, actor_id, session_id)}
-        self._items[item.id] = RemoteProposal(
-            item.id, item.action, item.actor_id, item.session_id, "executing", item.created_at,
-        )
+        with self._lock:
+            self._expire()
+            item = self._bound_pending(proposal_id, actor_id, session_id)
+            if item is None:
+                return {"executed": False, "reason": self._reason(proposal_id, actor_id, session_id)}
+            # claim in the same critical section as the pending check (CAS);
+            # only the claiming thread may run the executor.
+            self._items[item.id] = RemoteProposal(
+                item.id, item.action, item.actor_id, item.session_id, "executing", item.created_at,
+            )
+            action = item.action
         try:
-            done = bool(executor(item.action))
+            done = bool(executor(action))
         except Exception:
             done = False
-        status = "approved" if done else "failed"
-        self._items[item.id] = RemoteProposal(item.id, item.action, item.actor_id, item.session_id, status, item.created_at)
-        return {"executed": True, "status": "approved"} if done else {"executed": False, "reason": "remote_proposal_execution_failed"}
+        with self._lock:
+            status = "approved" if done else "failed"
+            self._items[item.id] = RemoteProposal(item.id, action, item.actor_id, item.session_id, status, item.created_at)
+            return {"executed": True, "status": "approved"} if done else {"executed": False, "reason": "remote_proposal_execution_failed"}
 
     def _bound_pending(self, proposal_id: str, actor_id: str, session_id: str) -> RemoteProposal | None:
         item = self._items.get(str(proposal_id))
