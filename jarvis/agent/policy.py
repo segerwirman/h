@@ -16,6 +16,14 @@ class PolicyDecision:
 def decide(context: ExecutionContext, *, capability: str, risk: str) -> PolicyDecision:
     """Return a safe default; callers execute only when ``allowed`` is true."""
     group = capability.split(".", 1)[0]
+    if group == "desktop_safe":
+        if context.surface != "desktop":
+            return PolicyDecision(False, False, "desktop_local_surface_required")
+        if context.source not in {"ui", "agent"}:
+            return PolicyDecision(False, False, "desktop_local_source_required")
+        if "desktop_safe" not in context.toolsets:
+            return PolicyDecision(False, False, "desktop_safe_toolset_required")
+        return PolicyDecision(True, False, "desktop_safe_allowed")
     required_toolsets = {
         "agent": "agent",
         "files": "files_write" if risk.lower() in {"high", "critical"}
