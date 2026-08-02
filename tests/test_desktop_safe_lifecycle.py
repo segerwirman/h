@@ -315,3 +315,51 @@ def test_set_value_recapture_failure_is_executed_unverified_and_releases_lease()
     assert again is None
     assert "observasi" in again_error
     assert len(calls) == 1
+
+
+def test_select_option_native_exception_is_executed_unverified_and_never_retries():
+    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+    from jarvis.core.element_model import ElementScope, ScreenElementTree, UIElement
+
+    tree = ScreenElementTree()
+    tree.add(UIElement(
+        "uia-option", ElementScope.PAGE_MAIN, "dropdown_option", name="Safe mode",
+        rect=(1, 2, 80, 20), visible=True, confidence=.95, provenance="uia",
+        states={"selected": False, "_uia_runtime_id": "fixture-option",
+                "_uia_parent_runtime_id": "fixture-dropdown"},
+    ))
+
+    class Lease:
+        def __init__(self): self.calls = []
+        def claim(self, owner): self.calls.append(("claim", owner)); return True
+        def release(self, owner): self.calls.append(("release", owner))
+
+    attempts = []
+    lease = Lease()
+
+    def native_select(ref):
+        attempts.append(ref)
+        raise RuntimeError("late failure")
+
+    gate = CuaSafetyGate()
+    authority = SafeDesktopSession(
+        gate, CaptureAdapter(gate, lambda: CaptureFrame("uia:fixture", tree)),
+        lambda _rect: None, desktop=lease, select_option_native=native_select,
+    )
+    observation = authority.observe_for("session-a")
+
+    outcome, error = authority.select_option(
+        observation.id, "uia-option", session_id="session-a")
+
+    assert error == ""
+    assert outcome.executed is True
+    assert outcome.verified is False
+    assert len(attempts) == 1
+    assert lease.calls == [("claim", "session-a"), ("release", "session-a")]
+    again, again_error = authority.select_option(
+        observation.id, "uia-option", session_id="session-a")
+    assert again is None
+    assert "observasi" in again_error
+    assert len(attempts) == 1

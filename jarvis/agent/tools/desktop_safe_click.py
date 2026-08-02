@@ -46,6 +46,8 @@ class SafeDesktopSession:
 
     toggle_native: object | None = None
 
+    select_option_native: object | None = None
+
     def __post_init__(self) -> None:
         self._owners: dict[str, str] = {}
         self._lifecycle_lock = RLock()
@@ -277,6 +279,61 @@ class SafeDesktopSession:
             self.desktop.release(owner)
 
 
+    @_lifecycle_serialized
+    def select_option(self, observation_id: str, element_id: str, *, session_id: str):
+        """Select exactly one already-visible UIA option, then require recapture."""
+        owner = str(session_id or "")
+        if self._owners.get(str(observation_id)) != owner:
+            return None, "observasi tidak diterbitkan untuk sesi desktop ini"
+        try:
+            ref = self.gate.reference(observation_id, element_id)
+            decision = self.gate.evaluate(ref, action="select_option")
+            before = self.gate._observations[ref.observation_id]
+            element = before.tree._by_id.get(ref.element_id)
+        except Exception as exc:
+            return None, f"observasi atau option tidak aman: {exc}"
+        if element is None or element.role != "dropdown_option" or not decision.allowed:
+            return None, "target bukan option dropdown semantik yang aman"
+        if decision.requires_confirmation:
+            return None, "option dropdown membutuhkan konfirmasi desktop-local; tidak diterbitkan"
+        if not ref.native_identity or not ref.parent_native_identity:
+            return None, "option dropdown tidak memiliki identitas UIA stabil"
+        if self.select_option_native is None:
+            return None, "executor select_option UIA belum tersedia"
+        if not self.desktop.claim(owner):
+            return None, "desktop sedang dikendalikan sesi lain"
+        try:
+            self.select_option_native(ref)
+            self._disown(ref.observation_id)
+            try:
+                after = self.capture.capture()
+            except Exception as exc:
+                return (type("SelectOutcome", (), {
+                    "ok": False, "executed": True, "verified": False,
+                    "after": None,
+                    "reason": f"select_option terkirim; recapture gagal: {type(exc).__name__}",
+                })(), "")
+            after_element = after.tree._by_id.get(ref.element_id)
+            verified = bool(
+                self.gate.verify_recapture(before, after)
+                and after_element is not None
+                and after_element.states.get("_uia_runtime_id") == ref.native_identity
+                and after_element.states.get("selected") is True
+            )
+            return (type("SelectOutcome", (), {
+                "ok": verified, "executed": True, "verified": verified, "after": after,
+                "reason": ("select_option semantik terverifikasi" if verified else
+                           "select_option terkirim tetapi recapture tidak membuktikan pilihan"),
+            })(), "")
+        except Exception as exc:
+            self._disown(observation_id)
+            return (type("SelectOutcome", (), {
+                "ok": False, "executed": True, "verified": False, "after": None,
+                "reason": f"select_option terkirim; executor gagal: {type(exc).__name__}",
+            })(), "")
+        finally:
+            self.desktop.release(owner)
+
 class _Params(BaseModel):
     observation_id: str = Field(min_length=1, description="ID observasi UIA aktif")
     element_id: str = Field(min_length=1, description="ID elemen semantik dari observasi")
@@ -290,6 +347,7 @@ def _default_session() -> SafeDesktopSession:
         gate=gate, capture=capture, click_rect=DRIVER.click_rect, desktop=DESKTOP,
         set_value_native=backend.set_slider_value,
         click_native=backend.click_semantic, toggle_native=backend.toggle_checkbox_semantic,
+        select_option_native=backend.select_option_semantic,
     )
 
 
