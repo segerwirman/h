@@ -34,6 +34,12 @@ class ToolGroup:
     modules: tuple[str, ...]
 
 
+_DESKTOP_SAFE_MODULES = (
+    "desktop_observe",
+    "desktop_safe_click",
+)
+
+
 TOOL_GROUPS: tuple[ToolGroup, ...] = (
     ToolGroup("file_operations", "File Operations",
               "read, write, patch, search", ("file_ops",)),
@@ -45,6 +51,9 @@ TOOL_GROUPS: tuple[ToolGroup, ...] = (
               "navigate, click, type, scroll", ("browser",)),
     ToolGroup("computer_use", "Computer Use",
               "desktop control", ("computer",)),
+    ToolGroup("desktop_safe", "Desktop Safe",
+              "semantic local desktop actions with verification",
+              _DESKTOP_SAFE_MODULES),
     ToolGroup("app_control", "Application Control",
               "open/close apps and Jarvis camera",
               ("app_control", "local_ui")),
@@ -85,6 +94,8 @@ TOOL_GROUPS: tuple[ToolGroup, ...] = (
                "google_drive")),
     ToolGroup("whatsapp_web", "WhatsApp Web",
               "allowlisted messaging and voice calls", ("whatsapp_web",)),
+    ToolGroup("content_studio", "Content Studio",
+              "bounded local project prompt intake", ("content_studio",)),
     ToolGroup("capability_diagnostics", "Capability Diagnostics",
               "runtime tools, provider readiness, blocked integrations",
               ("capability_status",)),
@@ -195,6 +206,7 @@ MODULE_RESOURCES: dict[str, frozenset[str]] = {
     # ia lewat lease DESKTOP yang sama (tools/computer.py:15), dan §8
     # memerintahkan tool ambigu dimasukkan ke eksklusif.
     "computer": frozenset({"desktop"}),
+    **{module: frozenset({"desktop"}) for module in _DESKTOP_SAFE_MODULES},
     # Satu context Playwright persisten dipakai bersama seluruh browser_*
     # (13 tool). Dua agent yang menavigasi context yang sama akan saling
     # menimpa halaman.

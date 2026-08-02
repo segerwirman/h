@@ -83,6 +83,8 @@ REGISTRY = CapabilityRegistry()
 # control, terminal, filesystem mutation, credentials, and account actions
 # remain absent and therefore fail closed.
 for _descriptor in (
+    CapabilityDescriptor("desktop_safe.desktop_observe", "desktop_observe", "desktop_safe", "low", 20),
+    CapabilityDescriptor("desktop_safe.desktop_safe_click", "desktop_safe_click", "desktop_safe", "medium", 30),
     CapabilityDescriptor("web.web_search", "web_search", "web", "low", 45),
     CapabilityDescriptor("web.web_extract", "web_extract", "web", "low", 60),
     CapabilityDescriptor("web.yt_search_data", "yt_search_data", "web", "low", 30),

@@ -231,6 +231,20 @@ def _release_computer_session(session_id: str) -> None:
         )
 
 
+def _clear_desktop_safe_session(session_id: str) -> None:
+    """Revoke in-memory semantic refs when every agent run reaches a terminal path."""
+
+    try:
+        from jarvis.agent.tools.desktop_safe_click import desktop_safe_session
+        desktop_safe_session().clear_session(session_id)
+    except Exception as exc:                                # noqa: BLE001
+        _logger.warning(
+            "agent.dispatch.desktop_safe_cleanup_failed",
+            session=str(session_id)[:32],
+            error=str(exc)[:120],
+        )
+
+
 def dispatch_task(task: str, on_ack=None, on_done=None, on_error=None,
                   on_progress=None, adapter=None,
                   timeout_s: float | None = None,
@@ -409,6 +423,7 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
             REGISTRY.finish(bg_task.id, error="selesai tanpa status")
             _release_browser_session(session.id)
             _release_computer_session(session.id)
+            _clear_desktop_safe_session(session.id)
             with _active_lock:
                 _active.pop(k, None)
 
@@ -458,3 +473,4 @@ def run_sync(task: str, adapter=None, timeout_s: float | None = None,
     finally:
         _release_browser_session(session.id)
         _release_computer_session(session.id)
+        _clear_desktop_safe_session(session.id)

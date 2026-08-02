@@ -76,12 +76,15 @@ def _discover() -> dict[str, Tool]:
 def schemas(allowed: list[str] | None = None,
             exclude: list[str] | None = None, context=None) -> list[dict]:
     """Schema gaya OpenAI; context membatasi schema pada capability terizinkan."""
+    from jarvis.agent.capabilities import REGISTRY as capability_registry
     context_allowed = None
     if context is not None:
-        from jarvis.agent.capabilities import REGISTRY as capability_registry
         context_allowed = set(capability_registry.exposed_tool_names(context))
     out = []
     for name, tool in sorted(all_tools().items()):
+        descriptor = capability_registry.descriptor_for_tool(name)
+        if context is None and descriptor is not None and descriptor.toolset == "desktop_safe":
+            continue
         if allowed is not None and name not in allowed:
             continue
         if context_allowed is not None and name not in context_allowed:
@@ -106,11 +109,13 @@ async def execute(name: str, args: dict, adapter=None,
     args = dict(args or {})
     args.pop("_raw", None)
     policy_approval_granted = False
+    from jarvis.agent.capabilities import REGISTRY as capability_registry
+    descriptor = capability_registry.descriptor_for_tool(name)
+    if descriptor is not None and descriptor.toolset == "desktop_safe" and context is None:
+        return ToolResult.fail("desktop_safe membutuhkan execution context desktop-local")
 
     if context is not None:
-        from jarvis.agent.capabilities import REGISTRY as capability_registry
         from jarvis.agent import policy
-        descriptor = capability_registry.descriptor_for_tool(name)
         if descriptor is None:
             return ToolResult.fail("capability tidak terdaftar untuk execution context")
         decision = policy.decide(context, capability=descriptor.id, risk=descriptor.risk)
