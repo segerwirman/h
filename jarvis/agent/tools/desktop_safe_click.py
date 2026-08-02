@@ -40,6 +40,10 @@ class SafeDesktopSession:
 
     desktop: object = DESKTOP
 
+    scroll_rect: object | None = None
+
+    scroll_native: object | None = None
+
     set_value_native: object | None = None
 
     click_native: object | None = None
@@ -85,6 +89,61 @@ class SafeDesktopSession:
         return sum(self.clear_session(owner) for owner in owners)
 
     @_lifecycle_serialized
+    def scroll(self, observation_id: str, element_id: str, *, direction: str,
+               session_id: str):
+        owner = str(session_id or "")
+        if self._owners.get(str(observation_id)) != owner:
+            return None, "observasi tidak diterbitkan untuk sesi desktop ini"
+        try:
+            ref = self.gate.reference(observation_id, element_id)
+            decision = self.gate.evaluate(ref, action="scroll")
+            before = self.gate._observations[ref.observation_id]
+            element = before.tree._by_id.get(ref.element_id)
+        except Exception as exc:
+            return None, f"observasi atau elemen tidak aman: {exc}"
+        if element is None or element.role != "scrollbar" or not decision.allowed:
+            return None, "target bukan scroll container semantik yang aman"
+        delta = -3 if str(direction).casefold() == "down" else 3
+        if str(direction).casefold() not in {"down", "up"}:
+            return None, "direction harus down atau up"
+        if self.scroll_rect is None:
+            return None, "executor scroll semantic belum tersedia"
+        if not ref.native_identity:
+            return None, "scrollbar tidak memiliki identitas UIA stabil"
+        if not self.desktop.claim(owner):
+            return None, "desktop sedang dikendalikan sesi lain"
+        try:
+            if self.scroll_native is not None:
+                self.scroll_native(ref, delta)
+            else:
+                self.scroll_rect(ref.rect, delta)
+            self._disown(ref.observation_id)
+            try:
+                after = self.capture.capture()
+            except Exception as exc:
+                return (type("ScrollOutcome", (), {
+                    "ok": False, "executed": True, "verified": False,
+                    "after": None,
+                    "reason": f"scroll terkirim; recapture gagal: {type(exc).__name__}",
+                })(), "")
+            before_state = dict(element.states)
+            after_element = after.tree._by_id.get(ref.element_id)
+            changed = bool(after_element is not None and
+                           after_element.states.get("_uia_runtime_id") == ref.native_identity and
+                           dict(after_element.states) != before_state)
+            verified = self.gate.verify_recapture(before, after) and changed
+            return (type("ScrollOutcome", (), {
+                "ok": verified, "executed": True, "verified": verified,
+                "after": after,
+                "reason": ("scroll semantik terverifikasi" if verified else
+                           "scroll terkirim tetapi state UI tidak berubah atau recapture tidak cocok"),
+            })(), "")
+        except Exception as exc:
+            self._disown(observation_id)
+            return None, f"scroll gagal: {type(exc).__name__}"
+        finally:
+            self.desktop.release(owner)
+
     def set_value(self, observation_id: str, element_id: str, value: float,
                   *, session_id: str):
         """Set exactly one bounded slider value, then require UIA proof.
