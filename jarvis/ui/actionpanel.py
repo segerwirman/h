@@ -117,6 +117,7 @@ _ICONS = {           # glyph, tooltip
     "gateway_ops":  ("⌁", "Gateway Operations — health dan approval queue"),
     # MK50 §7.3 — panel Home Assistant (CCTV, lampu, cuaca)
     "home":         ("⌂", "Home Assistant — CCTV, lampu, cuaca"),
+    "studio":       ("✦", "Content Studio — project dan scene lokal"),
 }
 
 
@@ -133,6 +134,7 @@ class ActionPanel(QWidget):
     messaging_clicked = pyqtSignal()
     gateway_ops_clicked = pyqtSignal()
     home_clicked = pyqtSignal()          # MK50 §7.3 — Home Assistant
+    studio_clicked = pyqtSignal()        # Studio C — local Content Studio
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
@@ -153,7 +155,7 @@ class ActionPanel(QWidget):
                "capabilities": self.capabilities_clicked,
                "messaging": self.messaging_clicked,
                "gateway_ops": self.gateway_ops_clicked,
-               "home": self.home_clicked}
+               "home": self.home_clicked, "studio": self.studio_clicked}
         self._camera_button: CameraButton | None = None
         self._buttons: dict[str, QPushButton] = {}
         for name in icons:

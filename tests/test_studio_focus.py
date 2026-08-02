@@ -1,6 +1,7 @@
 """Studio C local stage toggle and reversible Focus Mode contract."""
 from __future__ import annotations
 
+
 class _Stage:
     def __init__(self):
         self.current = None
@@ -13,12 +14,14 @@ class _Stage:
         self.current = name
         return True
 
+
 class _Focus:
     def __init__(self, active=False):
         self.active = active
         self.calls = []
     def activate(self): self.active = True; self.calls.append("activate")
     def deactivate(self): self.active = False; self.calls.append("deactivate")
+
 
 def test_studio_action_opens_only_studio_and_restores_preexisting_focus_on_close():
     from jarvis.ui.studio_focus import StudioFocusController
@@ -32,6 +35,7 @@ def test_studio_action_opens_only_studio_and_restores_preexisting_focus_on_close
     assert stage.current is None
     assert focus.active is True and focus.calls == []
 
+
 def test_studio_focus_control_restores_prior_off_state_when_studio_closes():
     from jarvis.ui.studio_focus import StudioFocusController
 
@@ -42,6 +46,7 @@ def test_studio_focus_control_restores_prior_off_state_when_studio_closes():
     assert focus.active is True and focus.calls == ["activate"]
     assert controller.toggle() is False
     assert focus.active is False and focus.calls == ["activate", "deactivate"]
+
 
 def test_sheet_focus_button_emits_only_requested_boolean():
     import os
@@ -60,6 +65,7 @@ def test_sheet_focus_button_emits_only_requested_boolean():
     assert requested == [True, False]
     assert app is not None
 
+
 def test_focus_control_is_denied_when_studio_is_not_open():
     from jarvis.ui.studio_focus import StudioFocusController
 
@@ -67,3 +73,11 @@ def test_focus_control_is_denied_when_studio_is_not_open():
     controller = StudioFocusController(_Stage(), focus)
     assert controller.set_studio_focus(True) is False
     assert focus.calls == []
+
+
+def test_action_panel_declares_studio_local_signal_and_icon():
+    from jarvis.ui import actionpanel
+
+    assert "studio" in actionpanel._ICONS
+    assert hasattr(actionpanel.ActionPanel, "studio_clicked")
+    assert actionpanel._ICONS["studio"][1] == "Content Studio — project dan scene lokal"
