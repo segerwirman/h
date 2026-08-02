@@ -84,6 +84,7 @@ REGISTRY = CapabilityRegistry()
 # remain absent and therefore fail closed.
 for _descriptor in (
     CapabilityDescriptor("desktop_safe.desktop_observe", "desktop_observe", "desktop_safe", "low", 20),
+    CapabilityDescriptor("desktop_safe.desktop_visual_observe", "desktop_visual_observe", "desktop_safe", "low", 15),
     CapabilityDescriptor("desktop_safe.desktop_safe_click", "desktop_safe_click", "desktop_safe", "medium", 30),
     CapabilityDescriptor("desktop_safe.desktop_safe_scroll", "desktop_safe_scroll", "desktop_safe", "medium", 30),
     CapabilityDescriptor("desktop_safe.desktop_safe_set_content_title", "desktop_safe_set_content_title", "desktop_safe", "medium", 30),

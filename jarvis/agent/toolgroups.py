@@ -36,6 +36,7 @@ class ToolGroup:
 
 _DESKTOP_SAFE_MODULES = (
     "desktop_observe",
+    "desktop_visual_observe",
     "desktop_safe_click",
     "desktop_safe_scroll",
     "desktop_safe_set_content_title",
