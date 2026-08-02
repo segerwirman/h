@@ -125,7 +125,7 @@ class SafeDesktopSession:
         if not self.desktop.claim(owner):
             return None, "desktop sedang dikendalikan sesi lain"
         try:
-            self.set_text_native(ref, requested)
+            committed = self.set_text_native(ref, requested)
             self._disown(ref.observation_id)
             try:
                 after = self.capture.capture()
@@ -136,16 +136,17 @@ class SafeDesktopSession:
                 })(), "")
             after_element = after.tree._by_id.get(ref.element_id)
             verified = bool(
-                self.gate.verify_recapture(before, after)
+                committed is True
+                and self.gate.verify_recapture(before, after)
                 and after_element is not None
                 and after_element.states.get("_uia_runtime_id") == ref.native_identity
                 and after_element.role == "text_field"
             )
-            # if UIA text state is present, try to match; otherwise proof relies on RuntimeId+recapture (still verified)
-            # but we require at least identity match
+            # verified requires the native setter to prove the committed
+            # ValuePattern value changed; recapture+RuntimeId alone is not proof.
             return (type("SetTitleOutcome", (), {
                 "ok": verified, "executed": True, "verified": verified, "after": after,
-                "reason": ("judul project semantik terverifikasi" if verified else "set_content_title terkirim tetapi recapture tidak cocok"),
+                "reason": ("judul project semantik terverifikasi" if verified else "set_content_title terkirim tetapi nilai committed tidak berubah atau recapture tidak cocok"),
             })(), "")
         except Exception as exc:
             self._disown(observation_id)

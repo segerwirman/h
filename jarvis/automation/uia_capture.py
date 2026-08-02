@@ -136,12 +136,14 @@ class UIACaptureBackend:
         raise RuntimeError("semantic slider tidak ditemukan pada UIA aktif")
 
 
-    def set_text_field_value(self, ref: SemanticTargetRef, text: str) -> None:
-        """Apply UIA ValuePattern only to the still-matching semantic text field.
+    def set_text_field_value(self, ref: SemanticTargetRef, text: str) -> bool:
+        """Apply UIA ValuePattern once and prove the committed value changed.
 
         For Phase 19 this is intentionally restricted to text_field/edit only.
         No password, no submit, no address bar. The text is already validated by
-        ``content_title_policy.admit_title`` before injection.
+        ``content_title_policy.admit_title`` before injection. Returns True only
+        when the committed ValuePattern.CurrentValue differs after the single
+        SetValue attempt; raw values never leave this boundary.
         """
         window = self._active_window()
         if self._identity(window).surface_id != ref.surface_id:
@@ -155,21 +157,23 @@ class UIACaptureBackend:
                 raise RuntimeError("semantic text field tidak lagi cocok dengan observasi")
             if not ref.native_identity or _uia_runtime_identity(control) != ref.native_identity:
                 raise RuntimeError("identitas UIA text field berubah sebelum set_text")
+            pattern = getattr(control, "iface_value", None)
+            setter = getattr(pattern, "SetValue", None) if pattern is not None else None
+            if setter is None:
+                raise RuntimeError("pattern ValuePattern tidak tersedia untuk text field")
             try:
-                pattern = getattr(control, "iface_value", None)
-                setter = getattr(pattern, "SetValue", None) if pattern is not None else None
-                if setter is None:
-                    if hasattr(control, "set_edit_text"):
-                        control.set_edit_text(clean)
-                    else:
-                        raise RuntimeError("pattern ValuePattern tidak tersedia untuk text field")
-                else:
-                    setter(clean)
+                before_value = str(pattern.CurrentValue)
             except Exception as exc:
-                if isinstance(exc, RuntimeError):
-                    raise
+                raise RuntimeError("text field tidak memiliki ValuePattern verifikasi") from exc
+            try:
+                setter(clean)
+            except Exception as exc:
                 raise RuntimeError(f"UIA ValuePattern gagal: {type(exc).__name__}") from exc
-            return
+            try:
+                after_value = str(pattern.CurrentValue)
+            except Exception as exc:
+                raise RuntimeError("nilai text field tidak dapat diverifikasi setelah set") from exc
+            return before_value != after_value
         raise RuntimeError("semantic text field tidak ditemukan pada UIA aktif")
 
 

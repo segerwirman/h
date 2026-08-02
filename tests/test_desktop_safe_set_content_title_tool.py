@@ -28,7 +28,7 @@ def _authority():
     calls=[]
     authority = SafeDesktopSession(
         gate, CaptureAdapter(gate, lambda: next(frames)), lambda _rect: None,
-        set_text_native=lambda ref, title: calls.append((ref.element_id, title)),
+        set_text_native=lambda ref, title: calls.append((ref.element_id, title)) or True,
     )
     return authority, calls
 
