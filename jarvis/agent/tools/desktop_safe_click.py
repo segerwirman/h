@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 
 from dataclasses import dataclass
 from functools import wraps
@@ -38,6 +39,8 @@ class SafeDesktopSession:
     click_rect: object
 
     desktop: object = DESKTOP
+
+    set_value_native: object | None = None
 
     click_native: object | None = None
 
@@ -78,6 +81,77 @@ class SafeDesktopSession:
         """UI teardown boundary: revoke every in-memory desktop observation."""
         owners = tuple(set(self._owners.values()))
         return sum(self.clear_session(owner) for owner in owners)
+
+    @_lifecycle_serialized
+    def set_value(self, observation_id: str, element_id: str, value: float,
+                  *, session_id: str):
+        """Set exactly one bounded slider value, then require UIA proof.
+
+        No coordinates or keyboard fallback: the injected native setter accepts
+        only the gate-issued semantic ref and uses UIA RangeValue directly.
+        """
+        owner = str(session_id or "")
+        if self._owners.get(str(observation_id)) != owner:
+            return None, "observasi tidak diterbitkan untuk sesi desktop ini"
+        try:
+            ref = self.gate.reference(observation_id, element_id)
+            decision = self.gate.evaluate(ref, action="set_value")
+            before = self.gate._observations[ref.observation_id]
+            element = before.tree._by_id.get(ref.element_id)
+            requested = float(value)
+        except Exception as exc:
+            return None, f"observasi atau nilai tidak aman: {exc}"
+        if element is None or element.role != "slider" or not decision.allowed:
+            return None, "target bukan slider semantik yang aman"
+        try:
+            current = float(element.states["value"])
+            minimum = float(element.states["minimum"])
+            maximum = float(element.states["maximum"])
+        except Exception:
+            return None, "slider tidak memiliki rentang UIA yang lengkap"
+        if (not all(math.isfinite(item) for item in (current, minimum, maximum, requested))
+                or minimum > maximum or not minimum <= current <= maximum):
+            return None, "slider memiliki nilai atau rentang UIA non-finite/tidak valid"
+        if not minimum <= requested <= maximum:
+            return None, "nilai di luar rentang slider yang diizinkan"
+        if not ref.native_identity:
+            return None, "slider tidak memiliki identitas UIA stabil"
+        if self.set_value_native is None:
+            return None, "executor set_value UIA belum tersedia"
+        if not self.desktop.claim(owner):
+            return None, "desktop sedang dikendalikan sesi lain"
+        try:
+            self.set_value_native(ref, requested)
+            self._disown(ref.observation_id)
+            try:
+                after = self.capture.capture()
+            except Exception as exc:
+                return (type("SetValueOutcome", (), {
+                    "ok": False, "executed": True, "verified": False,
+                    "after": None,
+                    "reason": f"set_value terkirim; recapture gagal: {type(exc).__name__}",
+                })(), "")
+            after_element = after.tree._by_id.get(ref.element_id)
+            after_value = float(after_element.states.get("value")) if after_element else float("nan")
+            verified = bool(
+                self.gate.verify_recapture(before, after)
+                and after_element is not None
+                and after_element.states.get("_uia_runtime_id") == ref.native_identity
+                and math.isfinite(after_value)
+                and after_value == requested
+                and current != requested
+            )
+            return (type("SetValueOutcome", (), {
+                "ok": verified, "executed": True, "verified": verified,
+                "after": after,
+                "reason": ("set_value semantik terverifikasi" if verified else
+                           "set_value terkirim tetapi marker UIA tidak cocok dengan nilai target"),
+            })(), "")
+        except Exception as exc:
+            self._disown(observation_id)
+            return None, f"set_value gagal: {type(exc).__name__}"
+        finally:
+            self.desktop.release(owner)
 
     @_lifecycle_serialized
     def toggle(self, observation_id: str, element_id: str, *, session_id: str):
@@ -214,6 +288,7 @@ def _default_session() -> SafeDesktopSession:
     capture = CaptureAdapter(gate, backend.capture)
     return SafeDesktopSession(
         gate=gate, capture=capture, click_rect=DRIVER.click_rect, desktop=DESKTOP,
+        set_value_native=backend.set_slider_value,
         click_native=backend.click_semantic, toggle_native=backend.toggle_checkbox_semantic,
     )
 

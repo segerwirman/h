@@ -223,3 +223,95 @@ def test_clear_all_waits_for_inflight_action_then_revokes_remaining_refs():
     again, error = authority.click(observation.id, "uia-next", session_id="session-a")
     assert again is None
     assert "observasi" in error
+
+
+def test_set_value_executor_exception_invalidates_observation_and_releases_lease():
+    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+    from jarvis.core.element_model import ElementScope, ScreenElementTree, UIElement
+
+    tree = ScreenElementTree()
+    tree.add(UIElement(
+        "uia-slider", ElementScope.PAGE_MAIN, "slider", name="Fixture slider",
+        rect=(1, 2, 100, 20), visible=True, confidence=.95, provenance="uia",
+        states={"value": 25.0, "minimum": 0.0, "maximum": 100.0,
+                "_uia_runtime_id": "fixture-slider"},
+    ))
+
+    class Lease:
+        def __init__(self): self.calls = []
+        def claim(self, owner): self.calls.append(("claim", owner)); return True
+        def release(self, owner): self.calls.append(("release", owner))
+
+    lease = Lease()
+    gate = CuaSafetyGate()
+    authority = SafeDesktopSession(
+        gate, CaptureAdapter(gate, lambda: CaptureFrame("uia:fixture", tree)),
+        lambda _rect: None, desktop=lease,
+        set_value_native=lambda _ref, _value: (_ for _ in ()).throw(RuntimeError("uia failed")),
+    )
+    observation = authority.observe_for("session-a")
+
+    outcome, error = authority.set_value(
+        observation.id, "uia-slider", 30.0, session_id="session-a")
+
+    assert outcome is None
+    assert "set_value gagal" in error
+    assert lease.calls == [("claim", "session-a"), ("release", "session-a")]
+    second, second_error = authority.set_value(
+        observation.id, "uia-slider", 30.0, session_id="session-a")
+    assert second is None
+    assert "observasi" in second_error
+
+
+def test_set_value_recapture_failure_is_executed_unverified_and_releases_lease():
+    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+    from jarvis.core.element_model import ElementScope, ScreenElementTree, UIElement
+
+    tree = ScreenElementTree()
+    tree.add(UIElement(
+        "uia-slider", ElementScope.PAGE_MAIN, "slider", name="Fixture slider",
+        rect=(1, 2, 100, 20), visible=True, confidence=.95, provenance="uia",
+        states={"value": 25.0, "minimum": 0.0, "maximum": 100.0,
+                "_uia_runtime_id": "fixture-slider"},
+    ))
+
+    class Lease:
+        def __init__(self): self.calls = []
+        def claim(self, owner): self.calls.append(("claim", owner)); return True
+        def release(self, owner): self.calls.append(("release", owner))
+
+    calls = []
+    lease = Lease()
+    gate = CuaSafetyGate()
+    captures = iter((CaptureFrame("uia:fixture", tree), RuntimeError("capture failed")))
+
+    def capture():
+        item = next(captures)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    authority = SafeDesktopSession(
+        gate, CaptureAdapter(gate, capture), lambda _rect: None, desktop=lease,
+        set_value_native=lambda ref, value: calls.append((ref, value)),
+    )
+    observation = authority.observe_for("session-a")
+
+    outcome, error = authority.set_value(
+        observation.id, "uia-slider", 30.0, session_id="session-a")
+
+    assert error == ""
+    assert outcome.executed is True
+    assert outcome.verified is False
+    assert "recapture" in outcome.reason
+    assert len(calls) == 1
+    assert lease.calls == [("claim", "session-a"), ("release", "session-a")]
+    again, again_error = authority.set_value(
+        observation.id, "uia-slider", 30.0, session_id="session-a")
+    assert again is None
+    assert "observasi" in again_error
+    assert len(calls) == 1
