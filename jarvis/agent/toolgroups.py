@@ -38,6 +38,7 @@ _DESKTOP_SAFE_MODULES = (
     "desktop_observe",
     "desktop_safe_click",
     "desktop_safe_set_value",
+    "desktop_safe_toggle",
 )
 
 
