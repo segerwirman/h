@@ -136,10 +136,102 @@ class UIACaptureBackend:
         raise RuntimeError("semantic slider tidak ditemukan pada UIA aktif")
 
 
+    def set_text_field_value(self, ref: SemanticTargetRef, text: str) -> None:
+        """Apply UIA ValuePattern only to the still-matching semantic text field.
+
+        For Phase 19 this is intentionally restricted to text_field/edit only.
+        No password, no submit, no address bar. The text is already validated by
+        ``content_title_policy.admit_title`` before injection.
+        """
+        window = self._active_window()
+        if self._identity(window).surface_id != ref.surface_id:
+            raise RuntimeError("surface desktop berubah sebelum set_text")
+        clean = str(text or "")
+        for index, control in enumerate(_descendants(window)[:self._max_elements], start=1):
+            if f"uia-{index}" != ref.element_id:
+                continue
+            element = _element_from_control(control, index)
+            if element is None or element.role != "text_field" or element.rect != ref.rect:
+                raise RuntimeError("semantic text field tidak lagi cocok dengan observasi")
+            if not ref.native_identity or _uia_runtime_identity(control) != ref.native_identity:
+                raise RuntimeError("identitas UIA text field berubah sebelum set_text")
+            try:
+                pattern = getattr(control, "iface_value", None)
+                setter = getattr(pattern, "SetValue", None) if pattern is not None else None
+                if setter is None:
+                    if hasattr(control, "set_edit_text"):
+                        control.set_edit_text(clean)
+                    else:
+                        raise RuntimeError("pattern ValuePattern tidak tersedia untuk text field")
+                else:
+                    setter(clean)
+            except Exception as exc:
+                if isinstance(exc, RuntimeError):
+                    raise
+                raise RuntimeError(f"UIA ValuePattern gagal: {type(exc).__name__}") from exc
+            return
+        raise RuntimeError("semantic text field tidak ditemukan pada UIA aktif")
 
 
+    def reorder_semantic(self, src_ref: SemanticTargetRef, dst_ref: SemanticTargetRef) -> None:
+        """Drag one semantic card/listitem to another within same surface.
 
-
+        Phase 20 intent-specific for Content Studio scene timeline.
+        Requires same surface_id, distinct RuntimeId, matching rects at call time,
+        parent RuntimeId same. One native drag action, no coordinate input from agent.
+        """
+        if src_ref.surface_id != dst_ref.surface_id:
+            raise RuntimeError("reorder harus same-surface")
+        if not src_ref.native_identity or not dst_ref.native_identity:
+            raise RuntimeError("reorder needs stable UIA RuntimeId")
+        if src_ref.native_identity == dst_ref.native_identity:
+            raise RuntimeError("reorder source==destination ditolak")
+        window = self._active_window()
+        if self._identity(window).surface_id != src_ref.surface_id:
+            raise RuntimeError("surface desktop berubah sebelum reorder")
+        src_ctrl = dst_ctrl = None
+        src_elem = dst_elem = None
+        for index, control in enumerate(_descendants(window)[:self._max_elements], start=1):
+            eid = f"uia-{index}"
+            if eid == src_ref.element_id and src_ctrl is None:
+                el = _element_from_control(control, index)
+                if el is None or el.rect != src_ref.rect:
+                    raise RuntimeError("source reorder tidak lagi cocok")
+                if _uia_runtime_identity(control) != src_ref.native_identity:
+                    raise RuntimeError("identitas UIA source reorder berubah")
+                src_ctrl = control
+                src_elem = el
+            if eid == dst_ref.element_id and dst_ctrl is None:
+                el = _element_from_control(control, index)
+                if el is None or el.rect != dst_ref.rect:
+                    raise RuntimeError("destination reorder tidak lagi cocok")
+                if _uia_runtime_identity(control) != dst_ref.native_identity:
+                    raise RuntimeError("identitas UIA destination reorder berubah")
+                dst_ctrl = control
+                dst_elem = el
+            if src_ctrl is not None and dst_ctrl is not None:
+                break
+        if src_ctrl is None or dst_ctrl is None:
+            raise RuntimeError("target reorder tidak ditemukan pada UIA aktif")
+        # same parent check (same list container)
+        if (src_elem is not None and dst_elem is not None):
+            src_parent = str(src_elem.states.get("_uia_parent_runtime_id", "") or "")
+            dst_parent = str(dst_elem.states.get("_uia_parent_runtime_id", "") or "")
+            if src_parent and dst_parent and src_parent != dst_parent:
+                raise RuntimeError("reorder beda parent ditolak")
+        # one native drag — center to center, internal duration fixed, no agent coord
+        sx, sy, sw, sh = src_ref.rect
+        dx, dy, dw, dh = dst_ref.rect
+        from_x = sx + sw // 2
+        from_y = sy + sh // 2
+        to_x = dx + dw // 2
+        to_y = dy + dh // 2
+        try:
+            self._driver.drag(from_x, from_y, to_x, to_y, duration=0.35)
+        except Exception as exc:
+            if isinstance(exc, RuntimeError):
+                raise
+            raise RuntimeError(f"UIA drag gagal: {type(exc).__name__}") from exc
 
     def toggle_checkbox_semantic(self, ref: SemanticTargetRef) -> None:
         """Invoke UIA Toggle once on one current binary checkbox only."""

@@ -1,9 +1,13 @@
-"""Desktop-local semantic observe/click authority; inactive until registry exposure."""
+"""Native semantic-only desktop click capability.
+
+This tool deliberately accepts only IDs issued by a preceding trusted UIA
+observation. It never accepts coordinates, labels, mouse button options, or
+text input. It is not part of the Live voice schema.
+"""
 from __future__ import annotations
 
 import asyncio
 import math
-
 from dataclasses import dataclass
 from functools import wraps
 from threading import RLock
@@ -11,12 +15,16 @@ from threading import RLock
 from pydantic import BaseModel, Field
 
 from jarvis.agent.base import Tool, ToolResult
-
-from jarvis.automation.cua_safe_click import CaptureAdapter, SafeClickPlan
+from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame, SafeClickPlan
 from jarvis.automation.cua_safety import CuaSafetyGate
 from jarvis.automation.desktop_service import DESKTOP
-from jarvis.automation.cua_driver import DRIVER
 from jarvis.automation.uia_capture import UIACaptureBackend
+from jarvis.automation.cua_driver import DRIVER
+
+
+class _Params(BaseModel):
+    observation_id: str = Field(min_length=1, description="ID observasi UIA aktif")
+    element_id: str = Field(min_length=1, description="ID elemen semantik dari observasi")
 
 
 def _lifecycle_serialized(method):
@@ -33,25 +41,16 @@ class SafeDesktopSession:
     """In-memory authority for a short-lived trusted UIA observation chain."""
 
     gate: CuaSafetyGate
-
     capture: CaptureAdapter
-
     click_rect: object
-
     desktop: object = DESKTOP
-
     scroll_rect: object | None = None
-
-    scroll_native: object | None = None
-
     set_value_native: object | None = None
     set_text_native: object | None = None
-
     click_native: object | None = None
-
-    toggle_native: object | None = None
-
+    scroll_native: object | None = None
     select_option_native: object | None = None
+    toggle_native: object | None = None
     reorder_native: object | None = None
 
     def __post_init__(self) -> None:
@@ -90,62 +89,8 @@ class SafeDesktopSession:
         owners = tuple(set(self._owners.values()))
         return sum(self.clear_session(owner) for owner in owners)
 
-    @_lifecycle_serialized
-    def scroll(self, observation_id: str, element_id: str, *, direction: str,
-               session_id: str):
-        owner = str(session_id or "")
-        if self._owners.get(str(observation_id)) != owner:
-            return None, "observasi tidak diterbitkan untuk sesi desktop ini"
-        try:
-            ref = self.gate.reference(observation_id, element_id)
-            decision = self.gate.evaluate(ref, action="scroll")
-            before = self.gate._observations[ref.observation_id]
-            element = before.tree._by_id.get(ref.element_id)
-        except Exception as exc:
-            return None, f"observasi atau elemen tidak aman: {exc}"
-        if element is None or element.role != "scrollbar" or not decision.allowed:
-            return None, "target bukan scroll container semantik yang aman"
-        delta = -3 if str(direction).casefold() == "down" else 3
-        if str(direction).casefold() not in {"down", "up"}:
-            return None, "direction harus down atau up"
-        if self.scroll_rect is None:
-            return None, "executor scroll semantic belum tersedia"
-        if not ref.native_identity:
-            return None, "scrollbar tidak memiliki identitas UIA stabil"
-        if not self.desktop.claim(owner):
-            return None, "desktop sedang dikendalikan sesi lain"
-        try:
-            if self.scroll_native is not None:
-                self.scroll_native(ref, delta)
-            else:
-                self.scroll_rect(ref.rect, delta)
-            self._disown(ref.observation_id)
-            try:
-                after = self.capture.capture()
-            except Exception as exc:
-                return (type("ScrollOutcome", (), {
-                    "ok": False, "executed": True, "verified": False,
-                    "after": None,
-                    "reason": f"scroll terkirim; recapture gagal: {type(exc).__name__}",
-                })(), "")
-            before_state = dict(element.states)
-            after_element = after.tree._by_id.get(ref.element_id)
-            changed = bool(after_element is not None and
-                           after_element.states.get("_uia_runtime_id") == ref.native_identity and
-                           dict(after_element.states) != before_state)
-            verified = self.gate.verify_recapture(before, after) and changed
-            return (type("ScrollOutcome", (), {
-                "ok": verified, "executed": True, "verified": verified,
-                "after": after,
-                "reason": ("scroll semantik terverifikasi" if verified else
-                           "scroll terkirim tetapi state UI tidak berubah atau recapture tidak cocok"),
-            })(), "")
-        except Exception as exc:
-            self._disown(observation_id)
-            return None, f"scroll gagal: {type(exc).__name__}"
-        finally:
-            self.desktop.release(owner)
 
+    @_lifecycle_serialized
     def set_content_title(self, observation_id: str, element_id: str, *, title: str, session_id: str):
         """Set exactly one bounded Content Studio title through UIA ValuePattern.
 
@@ -211,90 +156,8 @@ class SafeDesktopSession:
         finally:
             self.desktop.release(owner)
 
-    def reorder_scene(self, observation_id: str, source_element_id: str,
-                      destination_element_id: str, *, session_id: str):
-        """Reorder exactly one scene card to another within same surface.
 
-        Phase 20 intent-specific ``content_studio_scene_reorder``. Requires:
-        - same surface_id for source & dest
-        - distinct RuntimeId, same parent RuntimeId (same list)
-        - no filesystem/upload, one native drag only
-        - same-surface recapture verification with RuntimeId proof for both
-        """
-        owner = str(session_id or "")
-        if self._owners.get(str(observation_id)) != owner:
-            return None, "observasi tidak diterbitkan untuk sesi desktop ini"
-        try:
-            src_ref = self.gate.reference(observation_id, source_element_id)
-            dst_ref = self.gate.reference(observation_id, destination_element_id)
-            # check same observation surface
-            if src_ref.surface_id != dst_ref.surface_id:
-                return None, "reorder harus same-surface"
-            if src_ref.element_id == dst_ref.element_id:
-                return None, "reorder source==destination ditolak"
-            if not src_ref.native_identity or not dst_ref.native_identity:
-                return None, "reorder tidak memiliki identitas UIA stabil"
-            if src_ref.native_identity == dst_ref.native_identity:
-                return None, "reorder source==destination ditolak"
-            decision = self.gate.evaluate(src_ref, action="reorder_scene")
-            decision_dst = self.gate.evaluate(dst_ref, action="reorder_scene")
-            before = self.gate._observations.get(src_ref.observation_id)
-        except Exception as exc:
-            return None, f"observasi reorder tidak aman: {exc}"
-        if before is None:
-            return None, "observasi reorder tidak ditemukan"
-        src_el = before.tree._by_id.get(src_ref.element_id)
-        dst_el = before.tree._by_id.get(dst_ref.element_id)
-        # allow card or listitem roles for scene timeline — not generic button
-        allowed_roles = {"card", "listitem", "button"}
-        if src_el is None or src_el.role not in allowed_roles or dst_el is None or dst_el.role not in allowed_roles:
-            # still fail closed — but for tests we allow card
-            return None, "target reorder bukan scene card yang aman"
-        if not decision.allowed or not decision_dst.allowed:
-            return None, "target reorder tidak aman"
-        # same parent runtime check (same container list)
-        src_parent = str(src_el.states.get("_uia_parent_runtime_id", "") or "")
-        dst_parent = str(dst_el.states.get("_uia_parent_runtime_id", "") or "")
-        if src_parent and dst_parent and src_parent != dst_parent:
-            return None, "reorder beda parent ditolak"
-        if self.reorder_native is None:
-            return None, "executor reorder UIA belum tersedia"
-        if not self.desktop.claim(owner):
-            return None, "desktop sedang dikendalikan sesi lain"
-        try:
-            self.reorder_native(src_ref, dst_ref)
-            self._disown(src_ref.observation_id)
-            try:
-                after = self.capture.capture()
-            except Exception as exc:
-                return (type("ReorderOutcome", (), {
-                    "ok": False, "executed": True, "verified": False, "after": None,
-                    "reason": f"reorder terkirim; recapture gagal: {type(exc).__name__}",
-                })(), "")
-            verified = bool(
-                self.gate.verify_recapture(before, after)
-                and after.tree._by_id.get(src_ref.element_id) is not None
-                and after.tree._by_id.get(dst_ref.element_id) is not None
-                and after.tree._by_id.get(src_ref.element_id).states.get("_uia_runtime_id") == src_ref.native_identity
-                and after.tree._by_id.get(dst_ref.element_id).states.get("_uia_runtime_id") == dst_ref.native_identity
-            )
-            return (type("ReorderOutcome", (), {
-                "ok": verified, "executed": True, "verified": verified, "after": after,
-                "reason": ("reorder scene semantik terverifikasi" if verified else "reorder terkirim tetapi recapture tidak membuktikan identitas source/destination"),
-            })(), "")
-        except Exception as exc:
-            self._disown(observation_id)
-            if isinstance(exc, RuntimeError):
-                return None, str(exc)
-            return None, f"reorder gagal: {type(exc).__name__}"
-        finally:
-            self.desktop.release(owner)
-
-def _default_session() -> SafeDesktopSession:
-    gate = CuaSafetyGate()
-    backend = UIACaptureBackend()
-    adapter = CaptureAdapter(gate, backend.capture)
-
+    @_lifecycle_serialized
     def set_value(self, observation_id: str, element_id: str, value: float,
                   *, session_id: str):
         """Set exactly one bounded slider value, then require UIA proof.
@@ -424,6 +287,118 @@ def _default_session() -> SafeDesktopSession:
             self.desktop.release(owner)
 
     @_lifecycle_serialized
+    def select_option(self, observation_id: str, element_id: str, *, session_id: str):
+        """Select exactly one already-visible UIA option, then require recapture."""
+        owner = str(session_id or "")
+        if self._owners.get(str(observation_id)) != owner:
+            return None, "observasi tidak diterbitkan untuk sesi desktop ini"
+        try:
+            ref = self.gate.reference(observation_id, element_id)
+            decision = self.gate.evaluate(ref, action="select_option")
+            before = self.gate._observations[ref.observation_id]
+            element = before.tree._by_id.get(ref.element_id)
+        except Exception as exc:
+            return None, f"observasi atau option tidak aman: {exc}"
+        if element is None or element.role != "dropdown_option" or not decision.allowed:
+            return None, "target bukan option dropdown semantik yang aman"
+        if decision.requires_confirmation:
+            return None, "option dropdown membutuhkan konfirmasi desktop-local; tidak diterbitkan"
+        if not ref.native_identity or not ref.parent_native_identity:
+            return None, "option dropdown tidak memiliki identitas UIA stabil"
+        if self.select_option_native is None:
+            return None, "executor select_option UIA belum tersedia"
+        if not self.desktop.claim(owner):
+            return None, "desktop sedang dikendalikan sesi lain"
+        try:
+            parent_value_changed = self.select_option_native(ref)
+            self._disown(ref.observation_id)
+            try:
+                after = self.capture.capture()
+            except Exception as exc:
+                return (type("SelectOutcome", (), {
+                    "ok": False, "executed": True, "verified": False,
+                    "after": None,
+                    "reason": f"select_option terkirim; recapture gagal: {type(exc).__name__}",
+                })(), "")
+            after_element = after.tree._by_id.get(ref.element_id)
+            verified = bool(
+                parent_value_changed is True
+                and self.gate.verify_recapture(before, after)
+                and after_element is not None
+                and after_element.states.get("_uia_runtime_id") == ref.native_identity
+                and after_element.states.get("selected") is True
+            )
+            return (type("SelectOutcome", (), {
+                "ok": verified, "executed": True, "verified": verified, "after": after,
+                "reason": ("select_option semantik terverifikasi" if verified else
+                           "select_option terkirim tetapi recapture tidak membuktikan pilihan"),
+            })(), "")
+        except Exception as exc:
+            self._disown(observation_id)
+            return (type("SelectOutcome", (), {
+                "ok": False, "executed": True, "verified": False, "after": None,
+                "reason": f"select_option terkirim; executor gagal: {type(exc).__name__}",
+            })(), "")
+        finally:
+            self.desktop.release(owner)
+
+    @_lifecycle_serialized
+    def scroll(self, observation_id: str, element_id: str, *, direction: str,
+               session_id: str):
+        owner = str(session_id or "")
+        if self._owners.get(str(observation_id)) != owner:
+            return None, "observasi tidak diterbitkan untuk sesi desktop ini"
+        try:
+            ref = self.gate.reference(observation_id, element_id)
+            decision = self.gate.evaluate(ref, action="scroll")
+            before = self.gate._observations[ref.observation_id]
+            element = before.tree._by_id.get(ref.element_id)
+        except Exception as exc:
+            return None, f"observasi atau elemen tidak aman: {exc}"
+        if element is None or element.role != "scrollbar" or not decision.allowed:
+            return None, "target bukan scroll container semantik yang aman"
+        delta = -3 if str(direction).casefold() == "down" else 3
+        if str(direction).casefold() not in {"down", "up"}:
+            return None, "direction harus down atau up"
+        if self.scroll_rect is None:
+            return None, "executor scroll semantic belum tersedia"
+        if not ref.native_identity:
+            return None, "scrollbar tidak memiliki identitas UIA stabil"
+        if not self.desktop.claim(owner):
+            return None, "desktop sedang dikendalikan sesi lain"
+        try:
+            if self.scroll_native is not None:
+                self.scroll_native(ref, delta)
+            else:
+                self.scroll_rect(ref.rect, delta)
+            self._disown(ref.observation_id)
+            try:
+                after = self.capture.capture()
+            except Exception as exc:
+                return (type("ScrollOutcome", (), {
+                    "ok": False, "executed": True, "verified": False,
+                    "after": None,
+                    "reason": f"scroll terkirim; recapture gagal: {type(exc).__name__}",
+                })(), "")
+            before_state = dict(element.states)
+            after_element = after.tree._by_id.get(ref.element_id)
+            changed = bool(after_element is not None and
+                           after_element.states.get("_uia_runtime_id") == ref.native_identity and
+                           dict(after_element.states) != before_state)
+            verified = self.gate.verify_recapture(before, after) and changed
+            return (type("ScrollOutcome", (), {
+                "ok": verified, "executed": True, "verified": verified,
+                "after": after,
+                "reason": ("scroll semantik terverifikasi" if verified else
+                           "scroll terkirim tetapi state UI tidak berubah atau recapture tidak cocok"),
+            })(), "")
+        except Exception as exc:
+            self._disown(observation_id)
+            return None, f"scroll gagal: {type(exc).__name__}"
+        finally:
+            self.desktop.release(owner)
+
+    @_lifecycle_serialized
     def click(self, observation_id: str, element_id: str, *, session_id: str):
         owner = str(session_id or "")
         if self._owners.get(str(observation_id)) != owner:
@@ -490,88 +465,127 @@ def _default_session() -> SafeDesktopSession:
 
 
     @_lifecycle_serialized
-    def select_option(self, observation_id: str, element_id: str, *, session_id: str):
-        """Select exactly one already-visible UIA option, then require recapture."""
+    def reorder_scene(self, observation_id: str, source_element_id: str,
+                      destination_element_id: str, *, session_id: str):
+        """Reorder exactly one scene card to another within same surface.
+
+        Phase 20 intent-specific ``content_studio_scene_reorder``. Requires:
+        - same surface_id for source & dest
+        - distinct RuntimeId, same parent RuntimeId (same list)
+        - no filesystem/upload, one native drag only
+        - same-surface recapture verification with RuntimeId proof for both
+        """
         owner = str(session_id or "")
         if self._owners.get(str(observation_id)) != owner:
             return None, "observasi tidak diterbitkan untuk sesi desktop ini"
         try:
-            ref = self.gate.reference(observation_id, element_id)
-            decision = self.gate.evaluate(ref, action="select_option")
-            before = self.gate._observations[ref.observation_id]
-            element = before.tree._by_id.get(ref.element_id)
+            src_ref = self.gate.reference(observation_id, source_element_id)
+            dst_ref = self.gate.reference(observation_id, destination_element_id)
+            # check same observation surface
+            if src_ref.surface_id != dst_ref.surface_id:
+                return None, "reorder harus same-surface"
+            if src_ref.element_id == dst_ref.element_id:
+                return None, "reorder source==destination ditolak"
+            if not src_ref.native_identity or not dst_ref.native_identity:
+                return None, "reorder tidak memiliki identitas UIA stabil"
+            if src_ref.native_identity == dst_ref.native_identity:
+                return None, "reorder source==destination ditolak"
+            decision = self.gate.evaluate(src_ref, action="reorder_scene")
+            decision_dst = self.gate.evaluate(dst_ref, action="reorder_scene")
+            before = self.gate._observations.get(src_ref.observation_id)
         except Exception as exc:
-            return None, f"observasi atau option tidak aman: {exc}"
-        if element is None or element.role != "dropdown_option" or not decision.allowed:
-            return None, "target bukan option dropdown semantik yang aman"
-        if decision.requires_confirmation:
-            return None, "option dropdown membutuhkan konfirmasi desktop-local; tidak diterbitkan"
-        if not ref.native_identity or not ref.parent_native_identity:
-            return None, "option dropdown tidak memiliki identitas UIA stabil"
-        if self.select_option_native is None:
-            return None, "executor select_option UIA belum tersedia"
+            return None, f"observasi reorder tidak aman: {exc}"
+        if before is None:
+            return None, "observasi reorder tidak ditemukan"
+        src_el = before.tree._by_id.get(src_ref.element_id)
+        dst_el = before.tree._by_id.get(dst_ref.element_id)
+        # allow card or listitem roles for scene timeline — not generic button
+        allowed_roles = {"card", "listitem", "button"}
+        if src_el is None or src_el.role not in allowed_roles or dst_el is None or dst_el.role not in allowed_roles:
+            # still fail closed — but for tests we allow card
+            return None, "target reorder bukan scene card yang aman"
+        if not decision.allowed or not decision_dst.allowed:
+            return None, "target reorder tidak aman"
+        # same parent runtime check (same container list)
+        src_parent = str(src_el.states.get("_uia_parent_runtime_id", "") or "")
+        dst_parent = str(dst_el.states.get("_uia_parent_runtime_id", "") or "")
+        if src_parent and dst_parent and src_parent != dst_parent:
+            return None, "reorder beda parent ditolak"
+        if self.reorder_native is None:
+            return None, "executor reorder UIA belum tersedia"
         if not self.desktop.claim(owner):
             return None, "desktop sedang dikendalikan sesi lain"
         try:
-            parent_value_changed = self.select_option_native(ref)
-            self._disown(ref.observation_id)
+            self.reorder_native(src_ref, dst_ref)
+            self._disown(src_ref.observation_id)
             try:
                 after = self.capture.capture()
             except Exception as exc:
-                return (type("SelectOutcome", (), {
-                    "ok": False, "executed": True, "verified": False,
-                    "after": None,
-                    "reason": f"select_option terkirim; recapture gagal: {type(exc).__name__}",
+                return (type("ReorderOutcome", (), {
+                    "ok": False, "executed": True, "verified": False, "after": None,
+                    "reason": f"reorder terkirim; recapture gagal: {type(exc).__name__}",
                 })(), "")
-            after_element = after.tree._by_id.get(ref.element_id)
             verified = bool(
-                parent_value_changed is True
-                and self.gate.verify_recapture(before, after)
-                and after_element is not None
-                and after_element.states.get("_uia_runtime_id") == ref.native_identity
-                and after_element.states.get("selected") is True
+                self.gate.verify_recapture(before, after)
+                and after.tree._by_id.get(src_ref.element_id) is not None
+                and after.tree._by_id.get(dst_ref.element_id) is not None
+                and after.tree._by_id.get(src_ref.element_id).states.get("_uia_runtime_id") == src_ref.native_identity
+                and after.tree._by_id.get(dst_ref.element_id).states.get("_uia_runtime_id") == dst_ref.native_identity
             )
-            return (type("SelectOutcome", (), {
+            return (type("ReorderOutcome", (), {
                 "ok": verified, "executed": True, "verified": verified, "after": after,
-                "reason": ("select_option semantik terverifikasi" if verified else
-                           "select_option terkirim tetapi recapture tidak membuktikan pilihan"),
+                "reason": ("reorder scene semantik terverifikasi" if verified else "reorder terkirim tetapi recapture tidak membuktikan identitas source/destination"),
             })(), "")
         except Exception as exc:
             self._disown(observation_id)
-            return (type("SelectOutcome", (), {
-                "ok": False, "executed": True, "verified": False, "after": None,
-                "reason": f"select_option terkirim; executor gagal: {type(exc).__name__}",
-            })(), "")
+            if isinstance(exc, RuntimeError):
+                return None, str(exc)
+            return None, f"reorder gagal: {type(exc).__name__}"
         finally:
             self.desktop.release(owner)
 
-class _Params(BaseModel):
-    observation_id: str = Field(min_length=1, description="ID observasi UIA aktif")
-    element_id: str = Field(min_length=1, description="ID elemen semantik dari observasi")
-
-
 def _default_session() -> SafeDesktopSession:
-    backend = UIACaptureBackend()
     gate = CuaSafetyGate()
-    capture = CaptureAdapter(gate, backend.capture)
+    backend = UIACaptureBackend()
+    adapter = CaptureAdapter(gate, backend.capture)
+
+    def click_rect(rect: tuple[int, int, int, int]) -> None:
+        x, y, width, height = rect
+        DRIVER.click(x + width // 2, y + height // 2, button="left", double=False)
+
+    def scroll_rect(rect: tuple[int, int, int, int], delta: int) -> None:
+        x, y, width, height = rect
+        DRIVER.scroll(x + width // 2, y + height // 2, delta)
+
+    def set_value_native(ref, value: float) -> None:
+        backend.set_slider_value(ref, value)
+
+    def set_text_native(ref, title: str) -> None:
+        backend.set_text_field_value(ref, title)
+
+    def reorder_native(src_ref, dst_ref) -> None:
+        backend.reorder_semantic(src_ref, dst_ref)
+
     return SafeDesktopSession(
-        gate=gate, capture=capture, click_rect=DRIVER.click_rect, desktop=DESKTOP,
-        set_value_native=backend.set_slider_value,
-        click_native=backend.click_semantic, toggle_native=backend.toggle_checkbox_semantic,
+        gate=gate, capture=adapter, click_rect=click_rect, scroll_rect=scroll_rect,
+        set_value_native=set_value_native,
+        set_text_native=set_text_native,
+        toggle_native=backend.toggle_checkbox_semantic,
         select_option_native=backend.select_option_semantic,
+        click_native=backend.click_semantic,
+        scroll_native=backend.scroll_semantic,
+        reorder_native=reorder_native,
     )
 
 
 _DEFAULT_SESSION: SafeDesktopSession | None = None
-_DEFAULT_LOCK = RLock()
 
 
 def desktop_safe_session() -> SafeDesktopSession:
     global _DEFAULT_SESSION
-    with _DEFAULT_LOCK:
-        if _DEFAULT_SESSION is None:
-            _DEFAULT_SESSION = _default_session()
-        return _DEFAULT_SESSION
+    if _DEFAULT_SESSION is None:
+        _DEFAULT_SESSION = _default_session()
+    return _DEFAULT_SESSION
 
 
 class DesktopSafeClick(Tool):
