@@ -46,6 +46,75 @@ def _authority(*, option_name: str = "Safe mode", native_committed: bool = True)
     return authority, calls
 
 
+def test_select_option_only_runs_already_visible_safe_option_once_and_recaptures():
+    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
+
+    authority, calls = _authority()
+    observation = authority.observe_for("desktop-a")
+
+    outcome, error = authority.select_option(
+        observation.id, "uia-option", session_id="desktop-a")
+
+    assert error == ""
+    assert outcome.ok is True
+    assert outcome.executed is True
+    assert outcome.verified is True
+    assert len(calls) == 1
+    assert calls[0].element_id == "uia-option"
+
+
+def test_select_option_does_not_verify_when_parent_value_did_not_change():
+    authority, calls = _authority(native_committed=False)
+    observation = authority.observe_for("desktop-a")
+
+    outcome, error = authority.select_option(
+        observation.id, "uia-option", session_id="desktop-a")
+
+    assert error == ""
+    assert outcome.ok is False
+    assert outcome.executed is True
+    assert outcome.verified is False
+    assert len(calls) == 1
+
+
+def test_select_option_rejects_destructive_option_before_lease_or_executor():
+    authority, calls = _authority(option_name="Delete all")
+    observation = authority.observe_for("desktop-a")
+
+    outcome, error = authority.select_option(
+        observation.id, "uia-option", session_id="desktop-a")
+
+    assert outcome is None
+    assert "konfirmasi" in error
+    assert calls == []
+
+
+def test_select_option_rejects_non_option_and_unknown_id_before_executor():
+    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+
+    tree = ScreenElementTree()
+    tree.add(UIElement(
+        "uia-button", ElementScope.PAGE_MAIN, "button", name="Next",
+        rect=(1, 2, 30, 20), visible=True, confidence=.95, provenance="uia",
+        states={"_uia_runtime_id": "button"},
+    ))
+    gate, calls = CuaSafetyGate(), []
+    authority = SafeDesktopSession(
+        gate, CaptureAdapter(gate, lambda: CaptureFrame("uia:fixture", tree)),
+        lambda _rect: None, select_option_native=lambda ref: calls.append(ref),
+    )
+    observation = authority.observe_for("desktop-a")
+
+    outcome, error = authority.select_option(
+        observation.id, "uia-button", session_id="desktop-a")
+
+    assert outcome is None
+    assert "option" in error
+    assert calls == []
+
+
 def test_desktop_observe_exposes_visible_dropdown_option_as_opaque_select_ref():
     from jarvis.agent.tools.desktop_observe import DesktopObserve
 
