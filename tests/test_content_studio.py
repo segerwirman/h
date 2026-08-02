@@ -11,6 +11,26 @@ def _app():
     _APP = QApplication.instance() or QApplication([])
     return _APP
 
+def test_content_studio_tool_reads_local_brief_without_returning_source_path(tmp_path):
+    from jarvis.agent.tools.content_studio import ContentStudioPrompt
+
+    prompt = tmp_path / "brief.txt"
+    prompt.write_text("Rencanakan kampanye lokal.", encoding="utf-8")
+    result = asyncio.run(ContentStudioPrompt().run(path=str(prompt)))
+    assert result.ok is True
+    assert result.content == {"kind": "text", "text": "Rencanakan kampanye lokal."}
+    assert str(prompt) not in result.for_llm()
+    assert ContentStudioPrompt.read_only is True
+    assert ContentStudioPrompt.requires_confirmation is True
+
+def test_content_studio_tool_fails_with_safe_reason_only(tmp_path):
+    from jarvis.agent.tools.content_studio import ContentStudioPrompt
+
+    result = asyncio.run(ContentStudioPrompt().run(path=str(tmp_path / "script.py")))
+    assert result.ok is False
+    assert result.error == "content_prompt_type_rejected"
+    assert str(tmp_path) not in result.for_llm()
+
 def test_content_studio_sheet_is_hidden_and_keeps_brief_brainstorm_timeline_local():
     _app()
     from jarvis.ui.content_studio import ContentStudioSheet
