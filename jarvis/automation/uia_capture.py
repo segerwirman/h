@@ -141,6 +141,19 @@ class UIACaptureBackend:
 
 
 
+    def toggle_checkbox_semantic(self, ref: SemanticTargetRef) -> None:
+        """Invoke UIA Toggle once on one current binary checkbox only."""
+        control = self._matching_control(ref, expected_role="checkbox")
+        try:
+            state = int(control.iface_toggle.CurrentToggleState)
+            if state not in {0, 1}:
+                raise RuntimeError("checkbox UIA tidak memiliki state biner")
+            control.iface_toggle.Toggle()
+        except Exception as exc:
+            if isinstance(exc, RuntimeError):
+                raise
+            raise RuntimeError(f"UIA Toggle gagal: {type(exc).__name__}") from exc
+
     def _active_window(self):
         if self._desktop is None:
             from pywinauto import Desktop

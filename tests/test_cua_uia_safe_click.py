@@ -382,6 +382,36 @@ def test_uia_checkbox_tristate_or_missing_toggle_pattern_is_not_actionable():
 
 
 
+def test_uia_backend_rejects_replaced_checkbox_before_native_toggle():
+    import pytest
+
+    from jarvis.automation.cua_safe_click import CaptureAdapter
+    from jarvis.automation.cua_safety import CuaSafetyGate
+    from jarvis.automation.uia_capture import UIACaptureBackend
+
+    def checkbox(runtime_id):
+        control = _Control(kind="CheckBox", runtime_id=runtime_id)
+        control.iface_toggle = type("Toggle", (), {
+            "CurrentToggleState": 0,
+            "Toggle": lambda self: setattr(self, "CurrentToggleState", 1),
+        })()
+        return control
+
+    original = checkbox((12, 101))
+    replacement = checkbox((12, 202))
+    desktop = _Desktop(_Window(original, title="Demo", text="Demo"))
+    backend = UIACaptureBackend(desktop=desktop)
+    gate = CuaSafetyGate()
+    before = CaptureAdapter(gate, backend.capture).capture()
+    ref = gate.reference(before.id, "uia-1")
+    desktop.window = _Window(replacement, title="Demo", text="Demo")
+
+    with pytest.raises(RuntimeError, match="identitas"):
+        backend.toggle_checkbox_semantic(ref)
+
+    assert original.iface_toggle.CurrentToggleState == 0
+    assert replacement.iface_toggle.CurrentToggleState == 0
+
 def test_uia_backend_redacts_denylisted_window_without_elements(monkeypatch):
     from jarvis.automation.uia_capture import UIACaptureBackend
 
