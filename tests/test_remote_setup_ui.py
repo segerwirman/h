@@ -86,8 +86,41 @@ def test_sheet_approve_button_imports_and_clears(monkeypatch):
     sheet = RemoteSetupSheet(queue)
     sheet.present(request.id)
     sheet._approve()
+    assert sheet._import_done.wait(5), "import worker harus selesai"
 
     assert imported == {"google_oauth_client": True}
+    assert queue.get(request.id) is None
+
+
+def test_sheet_approve_imports_off_ui_thread(monkeypatch):
+    _app()
+    import threading
+    from jarvis.agent import remote_setup
+    from jarvis.agent.remote_setup import SetupQueue
+    from jarvis.ui.remote_setup_sheet import RemoteSetupSheet
+
+    main_thread = threading.get_ident()
+    seen_threads = []
+
+    def fake_import(provider, payload):
+        seen_threads.append(threading.get_ident())
+        return True
+
+    monkeypatch.setattr(remote_setup, "_import_to_secret_store", fake_import)
+
+    queue = SetupQueue()
+    request = queue.stage(
+        provider="google_oauth_client", requester="telegram:123",
+        filename="client_secret.json", payload=_oauth_json(),
+    )
+    sheet = RemoteSetupSheet(queue)
+    sheet.present(request.id)
+    sheet._approve()
+    assert sheet._import_done.wait(5), "import worker harus selesai"
+
+    assert seen_threads, "import harus dipanggil"
+    assert seen_threads[0] != main_thread, \
+        "import tidak boleh berjalan di UI thread"
     assert queue.get(request.id) is None
 
 

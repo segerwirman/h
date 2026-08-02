@@ -2,9 +2,12 @@
 
 Menampilkan hanya metadata setup (provider, requester, hash suffix). Secret
 mentah tidak pernah ditampilkan atau dimuat ke widget. Approval memicu import
-ke secret store; batal/timeout menghapus staging.
+ke secret store di worker thread (UI tidak freeze); batal/timeout menghapus
+staging.
 """
 from __future__ import annotations
+
+import threading
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
@@ -29,6 +32,7 @@ class RemoteSetupSheet(QWidget):
         super().__init__(parent)
         self._queue = queue
         self._request_id: str = ""
+        self._import_done = threading.Event()
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setStyleSheet(f"background: {theme.PAL.panel};")
         lay = QVBoxLayout(self)
@@ -98,11 +102,22 @@ class RemoteSetupSheet(QWidget):
         if not self._request_id:
             return
         rid = self._request_id
-        status = str(self._queue.approve_local(rid))
-        _logger.info("remote_setup.local_decision", status=status)
         self._request_id = ""
-        self.resolved.emit(rid, status)
+        # hide immediately; the import itself runs off the UI thread so a slow
+        # secret backend never freezes the window.
         self.hide()
+        self._import_done.clear()
+
+        def _worker() -> None:
+            try:
+                status = str(self._queue.approve_local(rid))
+            finally:
+                self._import_done.set()
+            # pyqtSignal emit from a worker is queued back to the UI thread
+            self.resolved.emit(rid, status)
+
+        threading.Thread(target=_worker, daemon=True,
+                         name="remote-setup-import").start()
 
     def _cancel(self) -> None:
         if not self._request_id:
