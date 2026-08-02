@@ -1,6 +1,10 @@
 """Direct injected SafeDesktopSession click regressions."""
 from __future__ import annotations
 
+import asyncio
+
+from jarvis.agent.execution_context import ExecutionContext
+
 from jarvis.core.element_model import ElementScope, ScreenElementTree, UIElement
 
 
@@ -112,3 +116,72 @@ def test_safe_click_rejects_target_without_runtime_identity_before_executor():
     assert outcome is None
     assert "identitas" in error
     assert clicks == []
+
+
+def _context() -> ExecutionContext:
+    return ExecutionContext.create(
+        source="agent", actor_id="local", session_id="desktop-safe-click",
+        surface="desktop", toolsets=["desktop_safe"],
+    )
+
+def test_desktop_safe_click_schema_accepts_ids_and_no_coordinate_or_button_controls():
+    from jarvis.agent.tools.desktop_safe_click import DesktopSafeClick
+
+    props = DesktopSafeClick().json_schema()["properties"]
+
+    assert set(props) == {"observation_id", "element_id"}
+    assert not {"x", "y", "button", "double", "text", "keys", "drag"} & set(props)
+
+def test_desktop_safe_click_requires_live_observation_and_executes_service_ref():
+    from jarvis.agent.tools.desktop_safe_click import DesktopSafeClick, SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+
+    frames = iter((CaptureFrame("uia:fixture", _tree()), CaptureFrame("uia:fixture", _tree("Done"))))
+    gate = CuaSafetyGate()
+    session = SafeDesktopSession(
+        gate=gate,
+        capture=CaptureAdapter(gate, lambda: next(frames)),
+        click_rect=lambda _rect: None,
+    )
+    observation = session.observe()
+    tool = DesktopSafeClick(session=session)
+
+    result = asyncio.run(tool.run(
+        observation_id=observation.id, element_id="uia-next", _context=_context()))
+
+    assert result.ok is True
+    assert result.meta["executed"] is True
+    assert result.meta["verified"] is True
+    assert result.meta["after_observation_id"]
+
+def test_desktop_safe_click_rejects_unknown_or_stale_id_without_click():
+    from jarvis.agent.tools.desktop_safe_click import DesktopSafeClick, SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+
+    clicks = []
+    gate = CuaSafetyGate()
+    session = SafeDesktopSession(
+        gate=gate,
+        capture=CaptureAdapter(gate, lambda: CaptureFrame("uia:fixture", _tree())),
+        click_rect=lambda rect: clicks.append(rect),
+    )
+    tool = DesktopSafeClick(session=session)
+
+    result = asyncio.run(tool.run(
+        observation_id="unknown", element_id="uia-next", _context=_context()))
+
+    assert result.ok is False
+    assert clicks == []
+    assert "observasi" in (result.error or "")
+
+def test_desktop_safe_click_has_no_type_key_drag_or_vision_api():
+    from jarvis.agent.tools.desktop_safe_click import DesktopSafeClick
+
+    assert not hasattr(DesktopSafeClick, "type")
+    assert not hasattr(DesktopSafeClick, "key")
+    assert not hasattr(DesktopSafeClick, "drag")
+    assert not hasattr(DesktopSafeClick, "vision_analyze")
+    assert DesktopSafeClick.requires_confirmation is False
+    assert DesktopSafeClick.read_only is False

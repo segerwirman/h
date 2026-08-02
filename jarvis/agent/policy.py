@@ -37,3 +37,17 @@ def decide(context: ExecutionContext, *, capability: str, risk: str) -> PolicyDe
     if risk.lower() in {"high", "critical"}:
         return PolicyDecision(False, True, "approval_required")
     return PolicyDecision(True, False, "allowed")
+
+
+def desktop_safe_context_error(context, *, capability: str, risk: str = "medium",
+                               runtime_session=None) -> str:
+    """Return a fail-closed reason when an action lacks local desktop authority."""
+    if not isinstance(context, ExecutionContext):
+        return "desktop_safe_execution_context_required"
+    runtime_session_id = str(getattr(runtime_session, "id", "") or "")
+    if runtime_session is not None and runtime_session_id != str(context.session_id or ""):
+        return "desktop_safe_context_session_mismatch"
+    decision = decide(context, capability=capability, risk=risk)
+    if not decision.allowed:
+        return f"desktop_safe_policy_denied:{decision.reason}"
+    return ""

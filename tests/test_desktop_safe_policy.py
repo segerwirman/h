@@ -1,7 +1,10 @@
 """Direct desktop-safe policy matrix."""
 from __future__ import annotations
 
+import asyncio
+
 from jarvis.agent.execution_context import ExecutionContext
+from jarvis.core.element_model import ScreenElementTree
 
 
 def _context(*, surface="desktop", source="ui", toolsets=("desktop_safe",)):
@@ -27,3 +30,26 @@ def test_desktop_safe_policy_allows_only_desktop_local_context():
             capability="desktop_safe.desktop_observe", risk="medium",
         )
         assert decision.allowed is allowed
+
+
+def test_desktop_safe_tool_rejects_context_session_mismatch_before_authority_use():
+    from jarvis.agent.tools.desktop_observe import DesktopObserve
+    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+
+    tree = ScreenElementTree()
+    gate = CuaSafetyGate()
+    authority = SafeDesktopSession(
+        gate, CaptureAdapter(gate, lambda: CaptureFrame("uia:fixture", tree)), lambda _rect: None,
+    )
+    context = ExecutionContext.create(
+        source="agent", actor_id="local-user", session_id="context-b", surface="desktop",
+        toolsets=["desktop_safe"],
+    )
+    result = asyncio.run(DesktopObserve(session=authority).run(
+        _session=type("Session", (), {"id": "runtime-a"})(), _context=context,
+    ))
+
+    assert result.ok is False
+    assert "session" in (result.error or "").lower()

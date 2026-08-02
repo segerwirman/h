@@ -1,16 +1,21 @@
-"""Injected semantic-only desktop session authority foundation.
-
-No default driver, agent Tool, registry, or remote exposure is installed here.
-"""
+"""Desktop-local semantic observe/click authority; inactive until registry exposure."""
 from __future__ import annotations
+
+import asyncio
 
 from dataclasses import dataclass
 from functools import wraps
 from threading import RLock
 
+from pydantic import BaseModel, Field
+
+from jarvis.agent.base import Tool, ToolResult
+
 from jarvis.automation.cua_safe_click import CaptureAdapter, SafeClickPlan
 from jarvis.automation.cua_safety import CuaSafetyGate
 from jarvis.automation.desktop_service import DESKTOP
+from jarvis.automation.cua_driver import DRIVER
+from jarvis.automation.uia_capture import UIACaptureBackend
 
 
 def _lifecycle_serialized(method):
@@ -198,4 +203,78 @@ class SafeDesktopSession:
             self.desktop.release(owner)
 
 
-__all__ = ["SafeDesktopSession"]
+class _Params(BaseModel):
+    observation_id: str = Field(min_length=1, description="ID observasi UIA aktif")
+    element_id: str = Field(min_length=1, description="ID elemen semantik dari observasi")
+
+
+def _default_session() -> SafeDesktopSession:
+    backend = UIACaptureBackend()
+    gate = CuaSafetyGate()
+    capture = CaptureAdapter(gate, backend.capture)
+    return SafeDesktopSession(
+        gate=gate, capture=capture, click_rect=DRIVER.click_rect, desktop=DESKTOP,
+        click_native=backend.click_semantic, toggle_native=backend.toggle_checkbox_semantic,
+    )
+
+
+_DEFAULT_SESSION: SafeDesktopSession | None = None
+_DEFAULT_LOCK = RLock()
+
+
+def desktop_safe_session() -> SafeDesktopSession:
+    global _DEFAULT_SESSION
+    with _DEFAULT_LOCK:
+        if _DEFAULT_SESSION is None:
+            _DEFAULT_SESSION = _default_session()
+        return _DEFAULT_SESSION
+
+
+class DesktopSafeClick(Tool):
+    name = "desktop_safe_click"
+    description = (
+        "Klik sekali target UIA semantik yang sudah diobservasi. Hanya menerima "
+        "observation_id dan element_id; koordinat, tombol alternatif, dan "
+        "double-click tidak didukung. Selalu membutuhkan recapture verifikasi."
+    )
+    params_schema = _Params
+    wants_context = True
+    timeout_s = 30
+
+    def __init__(self, *, session: SafeDesktopSession | None = None):
+        self._session = session
+
+    async def run(self, observation_id: str, element_id: str, _session=None,
+                  _context=None, **_) -> ToolResult:
+        from jarvis.agent.policy import desktop_safe_context_error
+
+        context_error = desktop_safe_context_error(
+            _context, capability="desktop_safe.desktop_safe_click",
+            runtime_session=_session,
+        )
+        if context_error:
+            return ToolResult.fail(context_error)
+        session = self._session or desktop_safe_session()
+        owner = str(getattr(_session, "id", "") or "desktop-safe-click")
+        outcome, error = await asyncio.to_thread(
+            session.click, str(observation_id), str(element_id), session_id=owner
+        )
+        if outcome is None:
+            return ToolResult.fail(error)
+        if not outcome.ok:
+            return ToolResult.fail(
+                outcome.reason,
+                executed=outcome.executed,
+                verified=outcome.verified,
+                requires_confirmation=outcome.requires_confirmation,
+            )
+        return ToolResult.success(
+            "Klik semantik selesai dan recapture terverifikasi.",
+            display="klik desktop terverifikasi",
+            executed=True,
+            verified=True,
+            after_observation_id=outcome.after.id if outcome.after else "",
+        )
+
+
+__all__ = ["DesktopSafeClick", "SafeDesktopSession", "desktop_safe_session"]
