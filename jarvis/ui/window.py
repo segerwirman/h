@@ -571,6 +571,9 @@ class MainWindow(QMainWindow):
         self.action_panel.gateway_ops_clicked.connect(
             lambda: self.gateway_operations_sheet.open_centered(
                 self.centralWidget().width(), self.centralWidget().height()))
+        from jarvis.ui.remote_setup_sheet import RemoteSetupSheet
+        self.remote_setup_sheet = RemoteSetupSheet(None, central)
+        self.remote_setup_sheet.hide()
         from jarvis.ui.panels import CapabilitiesPanel
         self.capabilities_sheet = CapabilitiesPanel(central)
         # QWidget child biasanya ikut visible saat parent MainWindow tampil.
@@ -650,6 +653,7 @@ class MainWindow(QMainWindow):
         BUS.subscribe("confirm", self._on_confirm, ui=True)
         BUS.subscribe("cancel", self._on_cancel, ui=True)
         BUS.subscribe("sentiment.updated", self._on_sentiment, ui=True)
+        BUS.subscribe("remote_setup.pending", self._on_remote_setup_pending, ui=True)
 
         self._drain = QTimer(self)
         self._drain.timeout.connect(BUS.drain_ui)
@@ -1702,6 +1706,26 @@ class MainWindow(QMainWindow):
 
     def _on_sentiment(self, d: dict) -> None:
         self.orb.feed_sentiment(float(d.get("value", 0.0)))
+
+    def _on_remote_setup_pending(self, d: dict) -> None:
+        """Tampilkan approval lokal hanya untuk SetupQueue yang exact."""
+        from jarvis.agent.remote_setup import SetupQueue
+
+        request_id = str(d.get("request_id", "") or "")
+        queue = d.get("queue")
+        if not request_id or type(queue) is not SetupQueue:
+            return
+        sheet = getattr(self, "remote_setup_sheet", None)
+        if sheet is None:
+            return
+        sheet._queue = queue
+        if not sheet.present(request_id):
+            return
+        c = self.centralWidget()
+        if c is not None:
+            w, h = min(520, c.width()), min(320, c.height())
+            sheet.setGeometry((c.width() - w) // 2, (c.height() - h) // 2, w, h)
+        sheet.raise_()
 
     def open_browser_agent(self, slots: dict | None = None) -> None:
         """MK50 §7 — panel browser dibuang dari ContentStage: perintah

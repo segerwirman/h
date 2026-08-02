@@ -1,0 +1,83 @@
+"""Fase 15S desktop wiring: BUS remote_setup.pending → RemoteSetupSheet."""
+from __future__ import annotations
+
+import json
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("JARVIS_NO_MIC_METER", "1")
+
+from PyQt6.QtWidgets import QApplication
+
+from jarvis.core.bus import BUS
+
+_APP = None
+
+
+def _app():
+    global _APP
+    _APP = QApplication.instance() or QApplication([])
+    return _APP
+
+
+def _drain():
+    BUS.drain_ui()
+    _app().processEvents()
+
+
+def _oauth_bytes() -> bytes:
+    return json.dumps({
+        "installed": {
+            "client_id": "abc.apps.googleusercontent.com",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "client_secret": "WINDOW-SECRET-NOLEAK",
+        }
+    }).encode()
+
+
+def test_remote_setup_pending_presents_sheet_with_metadata_only():
+    _app()
+    from jarvis.agent.remote_setup import SetupQueue
+    from jarvis.ui.window import MainWindow
+
+    win = MainWindow()
+    win.show()
+    for _ in range(6):
+        _drain()
+
+    queue = SetupQueue()
+    request = queue.stage(
+        provider="google_oauth_client", requester="telegram:42",
+        filename="client_secret.json", payload=_oauth_bytes(),
+    )
+    BUS.publish("remote_setup.pending", request_id=request.id, queue=queue)
+    for _ in range(6):
+        _drain()
+
+    sheet = getattr(win, "remote_setup_sheet", None)
+    assert sheet is not None
+    assert sheet.isVisible()
+    text = sheet.summary_text()
+    assert "google_oauth_client" in text
+    assert request.hash_suffix in text
+    assert "WINDOW-SECRET-NOLEAK" not in text
+    win.close()
+
+
+def test_remote_setup_pending_rejects_forged_queue_before_presenting():
+    _app()
+    from jarvis.ui.window import MainWindow
+
+    class ForgedQueue:
+        def get(self, _request_id):
+            raise AssertionError("forged queue must not be queried")
+
+    win = MainWindow()
+    win.show()
+    for _ in range(3):
+        _drain()
+
+    win._on_remote_setup_pending({"request_id": "forged", "queue": ForgedQueue()})
+
+    assert not win.remote_setup_sheet.isVisible()
+    win.close()
