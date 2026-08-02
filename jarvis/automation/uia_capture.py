@@ -154,6 +154,25 @@ class UIACaptureBackend:
                 raise
             raise RuntimeError(f"UIA Toggle gagal: {type(exc).__name__}") from exc
 
+    def select_option_semantic(self, ref: SemanticTargetRef) -> None:
+        """Invoke UIA SelectionItem.Select on one current visible option only."""
+        control = self._matching_control(ref, expected_role="dropdown_option")
+        try:
+            parent = control.parent()
+            if str(getattr(getattr(parent, "element_info", None), "control_type", "") or "").casefold() != "list":
+                raise RuntimeError("option UIA tidak berada pada list dropdown aktif")
+            dropdown = parent.parent()
+            if str(getattr(getattr(dropdown, "element_info", None), "control_type", "") or "").casefold() != "combobox":
+                raise RuntimeError("option UIA tidak terikat pada dropdown aktif")
+            if (not ref.parent_native_identity
+                    or _uia_runtime_identity(dropdown) != ref.parent_native_identity):
+                raise RuntimeError("identitas UIA dropdown berubah sebelum select_option")
+            control.iface_selection_item.Select()
+        except Exception as exc:
+            if isinstance(exc, RuntimeError):
+                raise
+            raise RuntimeError(f"UIA SelectionItem gagal: {type(exc).__name__}") from exc
+
     def _active_window(self):
         if self._desktop is None:
             from pywinauto import Desktop

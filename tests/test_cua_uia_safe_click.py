@@ -355,6 +355,65 @@ def test_uia_dropdown_option_requires_selection_item_and_stable_identity():
     }
 
 
+def _dropdown_option(*, option_runtime=(12, 99), dropdown_runtime=(12, 88)):
+    calls = []
+    item = _Control(kind="ListItem", runtime_id=option_runtime)
+    dropdown = type("Combo", (), {
+        "element_info": type("Info", (), {
+            "control_type": "ComboBox", "runtime_id": dropdown_runtime,
+        })(),
+    })()
+    parent = type("List", (), {
+        "element_info": type("Info", (), {"control_type": "List"})(),
+    })()
+    parent.parent = lambda: dropdown
+    item.parent = lambda: parent
+    item.iface_selection_item = type("SelectionItem", (), {
+        "CurrentIsSelected": False,
+        "Select": lambda self: calls.append("select"),
+    })()
+    return item, calls
+
+
+def test_uia_backend_selects_exact_dropdown_option_once():
+    from jarvis.automation.cua_safe_click import CaptureAdapter
+    from jarvis.automation.cua_safety import CuaSafetyGate
+    from jarvis.automation.uia_capture import UIACaptureBackend
+
+    option, calls = _dropdown_option()
+    backend = UIACaptureBackend(desktop=_Desktop(_Window(option, title="Demo", text="Demo")))
+    gate = CuaSafetyGate()
+    before = CaptureAdapter(gate, backend.capture).capture()
+    ref = gate.reference(before.id, "uia-1")
+
+    backend.select_option_semantic(ref)
+
+    assert calls == ["select"]
+
+
+def test_uia_backend_rejects_changed_dropdown_parent_before_select():
+    import pytest
+
+    from jarvis.automation.cua_safe_click import CaptureAdapter
+    from jarvis.automation.cua_safety import CuaSafetyGate
+    from jarvis.automation.uia_capture import UIACaptureBackend
+
+    original, original_calls = _dropdown_option(dropdown_runtime=(12, 88))
+    replacement, replacement_calls = _dropdown_option(dropdown_runtime=(12, 188))
+    desktop = _Desktop(_Window(original, title="Demo", text="Demo"))
+    backend = UIACaptureBackend(desktop=desktop)
+    gate = CuaSafetyGate()
+    before = CaptureAdapter(gate, backend.capture).capture()
+    ref = gate.reference(before.id, "uia-1")
+    desktop.window = _Window(replacement, title="Demo", text="Demo")
+
+    with pytest.raises(RuntimeError, match="dropdown berubah"):
+        backend.select_option_semantic(ref)
+
+    assert original_calls == []
+    assert replacement_calls == []
+
+
 def test_uia_checkbox_requires_binary_toggle_pattern_and_stable_identity():
     from jarvis.automation.uia_capture import _element_from_control
 
