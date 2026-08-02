@@ -1708,16 +1708,18 @@ class MainWindow(QMainWindow):
         self.orb.feed_sentiment(float(d.get("value", 0.0)))
 
     def _on_remote_setup_pending(self, d: dict) -> None:
-        """Tampilkan approval lokal hanya untuk SetupQueue yang exact."""
-        from jarvis.agent.remote_setup import SetupQueue
+        """Tampilkan approval lokal hanya untuk runtime-owned SetupQueue."""
+        from jarvis.agent.remote_setup import get_setup_queue
 
         request_id = str(d.get("request_id", "") or "")
-        queue = d.get("queue")
-        if not request_id or type(queue) is not SetupQueue:
+        if not request_id:
             return
         sheet = getattr(self, "remote_setup_sheet", None)
         if sheet is None:
             return
+        # The BUS carries only the opaque request id; the queue is the
+        # process-local runtime-owned instance, never a caller-supplied object.
+        queue = getattr(self, "_setup_queue", None) or get_setup_queue()
         sheet._queue = queue
         if not sheet.present(request_id):
             return

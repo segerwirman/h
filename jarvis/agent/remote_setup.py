@@ -220,4 +220,17 @@ class SetupQueue:
             self._items.pop(rid, None)
 
 
-__all__ = ["SetupQueue", "SetupRequest", "validate_setup_payload", "attachment_allowed"]
+_QUEUE: SetupQueue | None = None
+_QUEUE_LOCK = threading.Lock()
+
+
+def get_setup_queue() -> SetupQueue:
+    """Process-local runtime-owned queue shared by ingress and window."""
+    global _QUEUE
+    with _QUEUE_LOCK:
+        if _QUEUE is None:
+            _QUEUE = SetupQueue()
+        return _QUEUE
+
+
+__all__ = ["SetupQueue", "SetupRequest", "validate_setup_payload", "attachment_allowed", "get_setup_queue"]

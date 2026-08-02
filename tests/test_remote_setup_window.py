@@ -37,7 +37,7 @@ def _oauth_bytes() -> bytes:
 
 def test_remote_setup_pending_presents_sheet_with_metadata_only():
     _app()
-    from jarvis.agent.remote_setup import SetupQueue
+    from jarvis.agent.remote_setup import get_setup_queue
     from jarvis.ui.window import MainWindow
 
     win = MainWindow()
@@ -45,12 +45,13 @@ def test_remote_setup_pending_presents_sheet_with_metadata_only():
     for _ in range(6):
         _drain()
 
-    queue = SetupQueue()
+    queue = get_setup_queue()
     request = queue.stage(
         provider="google_oauth_client", requester="telegram:42",
         filename="client_secret.json", payload=_oauth_bytes(),
     )
-    BUS.publish("remote_setup.pending", request_id=request.id, queue=queue)
+    # BUS carries only the opaque request id; the window owns the queue.
+    BUS.publish("remote_setup.pending", request_id=request.id)
     for _ in range(6):
         _drain()
 
@@ -64,20 +65,43 @@ def test_remote_setup_pending_presents_sheet_with_metadata_only():
     win.close()
 
 
-def test_remote_setup_pending_rejects_forged_queue_before_presenting():
+def test_remote_setup_pending_ignores_caller_supplied_queue():
     _app()
+    from jarvis.agent.remote_setup import get_setup_queue
     from jarvis.ui.window import MainWindow
 
-    class ForgedQueue:
+    class ForeignQueue:
         def get(self, _request_id):
-            raise AssertionError("forged queue must not be queried")
+            raise AssertionError("caller-supplied queue must not be queried")
+
+    win = MainWindow()
+    win.show()
+    for _ in range(6):
+        _drain()
+
+    request = get_setup_queue().stage(
+        provider="google_oauth_client", requester="telegram:42",
+        filename="client_secret.json", payload=_oauth_bytes(),
+    )
+    # even a genuine-but-foreign queue object in the event must be ignored
+    BUS.publish("remote_setup.pending", request_id=request.id, queue=ForeignQueue())
+    for _ in range(6):
+        _drain()
+
+    assert win.remote_setup_sheet.isVisible()
+    win.close()
+
+
+def test_remote_setup_pending_rejects_unknown_request_id_before_presenting():
+    _app()
+    from jarvis.ui.window import MainWindow
 
     win = MainWindow()
     win.show()
     for _ in range(3):
         _drain()
 
-    win._on_remote_setup_pending({"request_id": "forged", "queue": ForgedQueue()})
+    win._on_remote_setup_pending({"request_id": "forged"})
 
     assert not win.remote_setup_sheet.isVisible()
     win.close()

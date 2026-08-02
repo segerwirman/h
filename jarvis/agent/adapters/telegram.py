@@ -88,6 +88,8 @@ class TelegramService:
         self._pending_confirm: dict[int, str] = {}  # chat → qid
         self._await_text: dict[int, Future] = {}    # chat → Future teks bebas
         self._chat_sessions: dict[int, str] = {}    # konteks logis adapter
+        from jarvis.agent.remote_setup import get_setup_queue
+        self._setup_queue = get_setup_queue()      # Fase 15S: runtime-owned singleton
         from jarvis.gateway.registry import GatewayRegistry
         self._gateway_registry = GatewayRegistry()
         self._gateway_manager = gateway_manager
@@ -190,6 +192,7 @@ class TelegramService:
             app.add_handler(CommandHandler("confirm", self._cmd_confirm))
             app.add_handler(CallbackQueryHandler(self._on_callback))
             app.add_handler(MessageHandler(filters.VOICE, self._on_voice))
+            app.add_handler(MessageHandler(filters.Document.ALL, self._on_document))
             app.add_handler(MessageHandler(
                 filters.TEXT & ~filters.COMMAND, self._on_text))
             app.add_handler(MessageHandler(filters.COMMAND,
@@ -581,6 +584,55 @@ class TelegramService:
             elif action == "run":
                 cron.run_job_now(jid)
             await q.edit_message_text(f"{q.message.text}\n→ {action} ok")
+
+    async def _on_document(self, update, context) -> None:
+        """Fase 15S: terima upload setup credential, stage, minta approval desktop."""
+        if not self._authorized(update):
+            return
+        document = getattr(update.message, "document", None)
+        if document is None:
+            return
+        filename = str(getattr(document, "file_name", "") or "")
+        size = int(getattr(document, "file_size", 0) or 0)
+        from jarvis.agent.remote_setup import attachment_allowed
+        allowed, reason = attachment_allowed(filename, size)
+        if not allowed:
+            await update.message.reply_text(
+                f"Berkas setup ditolak: {reason}. Kirim OAuth client JSON (.json).")
+            return
+        try:
+            f = await document.get_file()
+            payload = bytes(await f.download_as_bytearray())
+        except Exception as exc:                              # noqa: BLE001
+            await update.message.reply_text(
+                f"Gagal menerima berkas ({type(exc).__name__}).")
+            return
+        actor_id = str(getattr(getattr(update, "effective_user", None), "id", "") or "")
+        from jarvis.agent import remote_setup_ingress
+        status = remote_setup_ingress.receive_setup_upload(
+            self._setup_queue, provider="google_oauth_client",
+            requester=f"telegram:{actor_id}", paired=True,
+            filename=filename, payload=payload)
+        del payload
+        if not status.get("accepted"):
+            await update.message.reply_text(
+                f"Setup ditolak: {status.get('reason', 'tidak valid')}.")
+            return
+        self._present_setup_on_desktop(status["request_id"])
+        await update.message.reply_text(
+            "Berkas setup diterima dan menunggu persetujuan di desktop JARVIS. "
+            f"Sidik berkas …{status.get('hash_suffix', '')}. "
+            "Isi rahasia tidak ditampilkan di sini.")
+
+    def _present_setup_on_desktop(self, request_id: str) -> None:
+        """Publish request-id to the desktop approval sheet via the local BUS."""
+        try:
+            from jarvis.core.bus import BUS
+            # BUS carries only the opaque request id; the window owns the
+            # runtime queue and never accepts a caller-supplied object.
+            BUS.publish("remote_setup.pending", request_id=str(request_id))
+        except Exception as exc:                              # noqa: BLE001
+            _logger.warning("remote_setup.present_failed", error=type(exc).__name__)
 
     async def _on_voice(self, update, context) -> None:
         if not self._authorized(update):
