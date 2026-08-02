@@ -4,6 +4,23 @@ from __future__ import annotations
 from jarvis.agent.remote_media_policy import admit, render_result
 
 
+def _postcondition(action: str, state: dict) -> bool:
+    """Intent-specific committed-state proof; unknown shapes fail closed."""
+    if not isinstance(state, dict):
+        return False
+    if action == "play":
+        return state.get("playing") is True
+    if action == "pause":
+        return state.get("playing") is False
+    if action == "mute":
+        return state.get("muted") is True
+    if action == "unmute":
+        return state.get("muted") is False
+    # status / volume_* have no observable baseline here; success means the
+    # renderer shape is valid (render_result enforces playing/muted/volume).
+    return True
+
+
 async def execute(action: str, *, runner) -> dict:
     allowed = admit(action)
     if not allowed.get("allowed"):
@@ -15,6 +32,8 @@ async def execute(action: str, *, runner) -> dict:
         content = getattr(result, "content", None)
     except Exception:
         return {"ok": False, "reason": "remote_media_unavailable"}
+    if not _postcondition(allowed["action"], content):
+        return {"ok": False, "reason": "remote_media_state_not_matched"}
     return render_result(content)
 
 
