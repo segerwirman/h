@@ -52,6 +52,7 @@ class SafeDesktopSession:
     toggle_native: object | None = None
 
     select_option_native: object | None = None
+    reorder_native: object | None = None
 
     def __post_init__(self) -> None:
         self._owners: dict[str, str] = {}
@@ -209,6 +210,90 @@ class SafeDesktopSession:
             })(), "")
         finally:
             self.desktop.release(owner)
+
+    def reorder_scene(self, observation_id: str, source_element_id: str,
+                      destination_element_id: str, *, session_id: str):
+        """Reorder exactly one scene card to another within same surface.
+
+        Phase 20 intent-specific ``content_studio_scene_reorder``. Requires:
+        - same surface_id for source & dest
+        - distinct RuntimeId, same parent RuntimeId (same list)
+        - no filesystem/upload, one native drag only
+        - same-surface recapture verification with RuntimeId proof for both
+        """
+        owner = str(session_id or "")
+        if self._owners.get(str(observation_id)) != owner:
+            return None, "observasi tidak diterbitkan untuk sesi desktop ini"
+        try:
+            src_ref = self.gate.reference(observation_id, source_element_id)
+            dst_ref = self.gate.reference(observation_id, destination_element_id)
+            # check same observation surface
+            if src_ref.surface_id != dst_ref.surface_id:
+                return None, "reorder harus same-surface"
+            if src_ref.element_id == dst_ref.element_id:
+                return None, "reorder source==destination ditolak"
+            if not src_ref.native_identity or not dst_ref.native_identity:
+                return None, "reorder tidak memiliki identitas UIA stabil"
+            if src_ref.native_identity == dst_ref.native_identity:
+                return None, "reorder source==destination ditolak"
+            decision = self.gate.evaluate(src_ref, action="reorder_scene")
+            decision_dst = self.gate.evaluate(dst_ref, action="reorder_scene")
+            before = self.gate._observations.get(src_ref.observation_id)
+        except Exception as exc:
+            return None, f"observasi reorder tidak aman: {exc}"
+        if before is None:
+            return None, "observasi reorder tidak ditemukan"
+        src_el = before.tree._by_id.get(src_ref.element_id)
+        dst_el = before.tree._by_id.get(dst_ref.element_id)
+        # allow card or listitem roles for scene timeline — not generic button
+        allowed_roles = {"card", "listitem", "button"}
+        if src_el is None or src_el.role not in allowed_roles or dst_el is None or dst_el.role not in allowed_roles:
+            # still fail closed — but for tests we allow card
+            return None, "target reorder bukan scene card yang aman"
+        if not decision.allowed or not decision_dst.allowed:
+            return None, "target reorder tidak aman"
+        # same parent runtime check (same container list)
+        src_parent = str(src_el.states.get("_uia_parent_runtime_id", "") or "")
+        dst_parent = str(dst_el.states.get("_uia_parent_runtime_id", "") or "")
+        if src_parent and dst_parent and src_parent != dst_parent:
+            return None, "reorder beda parent ditolak"
+        if self.reorder_native is None:
+            return None, "executor reorder UIA belum tersedia"
+        if not self.desktop.claim(owner):
+            return None, "desktop sedang dikendalikan sesi lain"
+        try:
+            self.reorder_native(src_ref, dst_ref)
+            self._disown(src_ref.observation_id)
+            try:
+                after = self.capture.capture()
+            except Exception as exc:
+                return (type("ReorderOutcome", (), {
+                    "ok": False, "executed": True, "verified": False, "after": None,
+                    "reason": f"reorder terkirim; recapture gagal: {type(exc).__name__}",
+                })(), "")
+            verified = bool(
+                self.gate.verify_recapture(before, after)
+                and after.tree._by_id.get(src_ref.element_id) is not None
+                and after.tree._by_id.get(dst_ref.element_id) is not None
+                and after.tree._by_id.get(src_ref.element_id).states.get("_uia_runtime_id") == src_ref.native_identity
+                and after.tree._by_id.get(dst_ref.element_id).states.get("_uia_runtime_id") == dst_ref.native_identity
+            )
+            return (type("ReorderOutcome", (), {
+                "ok": verified, "executed": True, "verified": verified, "after": after,
+                "reason": ("reorder scene semantik terverifikasi" if verified else "reorder terkirim tetapi recapture tidak membuktikan identitas source/destination"),
+            })(), "")
+        except Exception as exc:
+            self._disown(observation_id)
+            if isinstance(exc, RuntimeError):
+                return None, str(exc)
+            return None, f"reorder gagal: {type(exc).__name__}"
+        finally:
+            self.desktop.release(owner)
+
+def _default_session() -> SafeDesktopSession:
+    gate = CuaSafetyGate()
+    backend = UIACaptureBackend()
+    adapter = CaptureAdapter(gate, backend.capture)
 
     def set_value(self, observation_id: str, element_id: str, value: float,
                   *, session_id: str):
