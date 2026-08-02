@@ -76,3 +76,59 @@ def test_staging_expires_autonomously_without_queue_operation():
         assert queue.get(request.id) is None
     finally:
         queue.close()
+
+
+def test_approve_local_returns_fixed_status_enum(monkeypatch):
+    from jarvis.agent import remote_setup
+
+    queue = remote_setup.SetupQueue(ttl_s=30)
+    try:
+        # decrypt failure -> fixed reason
+        def failing_decrypt(cipher):
+            raise RuntimeError("cipher rusak")
+
+        monkeypatch.setattr(remote_setup, "_decrypt_staging", failing_decrypt)
+        request = queue.stage(
+            provider="google_oauth_client", requester="telegram:123",
+            filename="client_secret.json", payload=_valid_oauth_installed(),
+        )
+        assert queue.approve_local(request.id) == "decrypt_failed"
+
+        # import failure -> fixed reason
+        def ok_decrypt(cipher):
+            return _valid_oauth_installed()
+
+        monkeypatch.setattr(remote_setup, "_decrypt_staging", ok_decrypt)
+        monkeypatch.setattr(remote_setup, "_import_to_secret_store", lambda *_: False)
+        request = queue.stage(
+            provider="google_oauth_client", requester="telegram:123",
+            filename="client_secret.json", payload=_valid_oauth_installed(),
+        )
+        assert queue.approve_local(request.id) == "import_failed"
+
+        # success -> imported
+        monkeypatch.setattr(remote_setup, "_import_to_secret_store", lambda *_: True)
+        request = queue.stage(
+            provider="google_oauth_client", requester="telegram:123",
+            filename="client_secret.json", payload=_valid_oauth_installed(),
+        )
+        assert queue.approve_local(request.id) == "imported"
+    finally:
+        queue.close()
+
+
+def test_approve_local_unknown_or_expired_request_reports_fixed_status(monkeypatch):
+    from jarvis.agent import remote_setup
+
+    queue = remote_setup.SetupQueue(ttl_s=30)
+    try:
+        assert queue.approve_local("nope") == "not_pending"
+        request = queue.stage(
+            provider="google_oauth_client", requester="telegram:123",
+            filename="client_secret.json", payload=_valid_oauth_installed(),
+        )
+        monkeypatch.setattr(remote_setup, "_import_to_secret_store", lambda *_: True)
+        assert queue.approve_local(request.id) == "imported"
+        assert queue.approve_local(request.id) == "not_pending"  # one-shot
+    finally:
+        queue.close()

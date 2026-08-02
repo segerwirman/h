@@ -186,18 +186,30 @@ class SetupQueue:
             staged = self._items.get(str(request_id))
             return staged.request if staged else None
 
-    def approve_local(self, request_id: str) -> bool:
-        """Import a staged setup after LOCAL approval; one-shot, then cleaned."""
+    def approve_local(self, request_id: str) -> str:
+        """Import a staged setup after LOCAL approval; one-shot, then cleaned.
+
+        Returns a fixed status string (never raw content): ``imported``,
+        ``not_pending``, ``expired``, ``decrypt_failed``, or ``import_failed``.
+        """
         with self._lock:
             self._prune()
             staged = self._items.get(str(request_id))
-            if staged is None or staged.request.status != "pending":
-                return False
+            if staged is None:
+                return "not_pending"
+            if staged.request.status != "pending":
+                return "expired" if staged.request.status == "expired" else "not_pending"
             staged.request.status = "importing"
             cipher = staged.cipher
             provider = staged.request.provider
         try:
             payload = _decrypt_staging(cipher)
+        except Exception as exc:
+            _logger.error("remote_setup.decrypt_failed", error=type(exc).__name__)
+            with self._lock:
+                self._items.pop(str(request_id), None)
+            return "decrypt_failed"
+        try:
             ok = bool(_import_to_secret_store(provider, payload))
         except Exception as exc:
             _logger.error("remote_setup.import_failed", error=type(exc).__name__)
@@ -206,7 +218,7 @@ class SetupQueue:
             del cipher
         with self._lock:
             self._items.pop(str(request_id), None)
-        return ok
+        return "imported" if ok else "import_failed"
 
     def cancel(self, request_id: str) -> None:
         with self._lock:

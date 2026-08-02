@@ -39,8 +39,13 @@ class RemoteProposalQueue:
     def _expire(self) -> None:
         current = self._now()
         for rid, item in tuple(self._items.items()):
-            if item.status == "pending_local_approval" and current - item.created_at >= self._ttl_s:
+            age = current - item.created_at
+            if item.status == "pending_local_approval" and age >= self._ttl_s:
+                # keep an "expired" tombstone so _reason can report it
                 self._items[rid] = RemoteProposal(item.id, item.action, item.actor_id, item.session_id, "expired", item.created_at)
+            elif item.status in ("approved", "failed", "cancelled") and age >= self._ttl_s:
+                # final states no longer need a tombstone; free the slot
+                del self._items[rid]
 
     def request(self, *, actor_id: str, session_id: str, action: str, paired: bool = True) -> dict:
         if not paired:

@@ -124,7 +124,7 @@ def test_remote_cannot_import_directly_only_local_approval(monkeypatch):
     monkeypatch.setattr(remote_setup, "_import_to_secret_store",
                         lambda provider, payload: imported.setdefault(provider, True) or True)
 
-    assert queue.approve_local(request.id) is True
+    assert queue.approve_local(request.id) == "imported"
     assert imported == {"google_oauth_client": True}
     # staging removed after import
     assert queue.get(request.id) is None
@@ -141,7 +141,7 @@ def test_staging_expires_and_is_removed_without_import(monkeypatch):
     monkeypatch.setattr(time, "monotonic", lambda: request.created_at + 2.0)
 
     assert queue.get(request.id) is None
-    assert queue.approve_local(request.id) is False
+    assert queue.approve_local(request.id) == "not_pending"
 
 
 def test_import_is_one_shot_and_rejects_replay(monkeypatch):
@@ -154,8 +154,8 @@ def test_import_is_one_shot_and_rejects_replay(monkeypatch):
     )
     monkeypatch.setattr(remote_setup, "_import_to_secret_store", lambda *_: True)
 
-    assert queue.approve_local(request.id) is True
-    assert queue.approve_local(request.id) is False
+    assert queue.approve_local(request.id) == "imported"
+    assert queue.approve_local(request.id) == "not_pending"
 
 
 def test_staging_payload_is_encrypted_at_rest(monkeypatch):

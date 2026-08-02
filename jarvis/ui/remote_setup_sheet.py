@@ -23,7 +23,7 @@ _PROVIDER_LABELS = {
 class RemoteSetupSheet(QWidget):
     """Desktop-local approval surface. Remote never approves; this widget does."""
 
-    resolved = pyqtSignal(str, bool)  # request_id, imported
+    resolved = pyqtSignal(str, str)  # request_id, fixed status enum
 
     def __init__(self, queue, parent: QWidget | None = None):
         super().__init__(parent)
@@ -98,10 +98,10 @@ class RemoteSetupSheet(QWidget):
         if not self._request_id:
             return
         rid = self._request_id
-        imported = bool(self._queue.approve_local(rid))
-        _logger.info("remote_setup.local_decision", imported=imported)
+        status = str(self._queue.approve_local(rid))
+        _logger.info("remote_setup.local_decision", status=status)
         self._request_id = ""
-        self.resolved.emit(rid, imported)
+        self.resolved.emit(rid, status)
         self.hide()
 
     def _cancel(self) -> None:
@@ -111,7 +111,7 @@ class RemoteSetupSheet(QWidget):
         rid = self._request_id
         self._queue.cancel(rid)
         self._request_id = ""
-        self.resolved.emit(rid, False)
+        self.resolved.emit(rid, "cancelled")
         self.hide()
 
 

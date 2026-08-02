@@ -69,3 +69,29 @@ def test_capacity_counts_live_entries_only():
     again = queue.request(
         actor_id="telegram:42", session_id="chat:42", action="media_play")
     assert again["accepted"] is True
+
+
+def test_final_state_entries_are_pruned_after_ttl():
+    clock = [10.0]
+    queue = RemoteProposalQueue(ttl_s=5, now=lambda: clock[0])
+    rid = queue.request(
+        actor_id="telegram:42", session_id="chat:42", action="media_play",
+    )["proposal_id"]
+    queue.approve_local(rid, actor_id="telegram:42", session_id="chat:42",
+                        executor=lambda _: True)
+    assert queue._items[rid].status == "approved"
+    clock[0] = 20.0
+    queue.get(rid, actor_id="telegram:42", session_id="chat:42")  # trigger _expire
+    assert rid not in queue._items, "approved entry harus di-prune setelah TTL"
+
+
+def test_expired_pending_still_reports_expired_reason():
+    clock = [10.0]
+    queue = RemoteProposalQueue(ttl_s=5, now=lambda: clock[0])
+    rid = queue.request(
+        actor_id="telegram:42", session_id="chat:42", action="media_play",
+    )["proposal_id"]
+    clock[0] = 20.0
+    result = queue.approve_local(rid, actor_id="telegram:42", session_id="chat:42",
+                                 executor=lambda _: True)
+    assert result == {"executed": False, "reason": "remote_proposal_expired"}
