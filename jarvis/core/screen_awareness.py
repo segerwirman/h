@@ -29,6 +29,7 @@ from pathlib import Path
 
 from jarvis.core import config, log
 from jarvis.core.bus import BUS
+from jarvis.core.privacy_denylist import is_denylisted
 
 _logger = log.get("core.screen_awareness")
 
@@ -76,9 +77,8 @@ def _hamming(a: int, b: int) -> int:
 
 
 def _is_denylisted(title: str, app: str) -> bool:
-    denylist = config.get("awareness.privacy.denylist", []) or []
-    hay = f"{title} {app}".lower()
-    return any(str(term).lower() in hay for term in denylist)
+    """Compatibility wrapper for legacy watcher callers."""
+    return is_denylisted(title, app)
 
 
 class _ForegroundWindowTracker:
