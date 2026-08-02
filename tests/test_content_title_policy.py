@@ -21,6 +21,8 @@ def test_title_policy_rejects_password_otp_payment_url_terminal():
         "OTP 123456",
         "credit card 4111",
         "https://evil.com/steal",
+        "example.com",
+        "Launch (example.com) now",
         "rm -rf /",
         "send email to bos@co.id",
         "payment checkout",
@@ -29,6 +31,45 @@ def test_title_policy_rejects_password_otp_payment_url_terminal():
     for txt in deny_cases:
         res = admit_title(txt)
         assert res["ok"] is False, f"should reject: {txt}"
+
+
+def test_title_policy_rejects_cross_platform_and_relative_paths_without_echo():
+    from jarvis.core.content_title_policy import admit_title
+
+    path_cases = [
+        "/etc/hosts",
+        "../draft/project.txt",
+        r"\\server\share\project.txt",
+        "C:/Users/example/project.txt",
+        "folder/project.txt",
+        "~/.config/project",
+    ]
+    for raw in path_cases:
+        res = admit_title(raw)
+        assert res == {"ok": False, "reason": "content_title_path_rejected"}
+        assert raw not in str(res)
+
+
+def test_title_policy_rejects_credential_terms_and_canonicalized_bypasses():
+    from jarvis.core.content_title_policy import admit_title
+
+    secret_cases = [
+        "token = abc123",
+        "API-key abc123",
+        "Bearer credential abc123",
+        "private_key blob",
+        "seed-phrase words",
+        "recovery-code 123",
+        "pass-word 123",
+        "ＰＡＳＳＷＯＲＤ 123",
+        "sk-proj-abcdefghijk",
+        "key=sk-proj-abcdefghijk",
+        "ghp_abcdefghijk",
+    ]
+    for raw in secret_cases:
+        res = admit_title(raw)
+        assert res == {"ok": False, "reason": "content_title_sensitive_rejected"}
+        assert raw not in str(res)
 
 def test_title_policy_accepts_normal_title_and_trims():
     from jarvis.core.content_title_policy import admit_title
