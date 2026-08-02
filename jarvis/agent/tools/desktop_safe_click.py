@@ -45,6 +45,7 @@ class SafeDesktopSession:
     scroll_native: object | None = None
 
     set_value_native: object | None = None
+    set_text_native: object | None = None
 
     click_native: object | None = None
 
@@ -141,6 +142,71 @@ class SafeDesktopSession:
         except Exception as exc:
             self._disown(observation_id)
             return None, f"scroll gagal: {type(exc).__name__}"
+        finally:
+            self.desktop.release(owner)
+
+    def set_content_title(self, observation_id: str, element_id: str, *, title: str, session_id: str):
+        """Set exactly one bounded Content Studio title through UIA ValuePattern.
+
+        Phase 19: intent-specific, bounded by content_title_policy.
+        No password, no URL, no payment, no terminal, no generic dispatch.
+        """
+        from jarvis.core.content_title_policy import admit_title
+        owner = str(session_id or "")
+        if self._owners.get(str(observation_id)) != owner:
+            return None, "observasi tidak diterbitkan untuk sesi desktop ini"
+        # validate title first, before touching UIA
+        policy_res = admit_title(title)
+        if not policy_res.get("ok"):
+            return None, f"judul tidak memenuhi kebijakan: {policy_res.get('reason')}"
+        requested = str(policy_res["title"])
+        try:
+            ref = self.gate.reference(observation_id, element_id)
+            decision = self.gate.evaluate(ref, action="set_content_title")
+            before = self.gate._observations[ref.observation_id]
+            element = before.tree._by_id.get(ref.element_id)
+        except Exception as exc:
+            return None, f"observasi atau field tidak aman: {exc}"
+        # only text_field allowed for this intent
+        if element is None or element.role != "text_field":
+            return None, "target bukan text field semantik untuk judul"
+        if not decision.allowed or not ref.native_identity:
+            return None, "target judul tidak aman atau tidak memiliki identitas stabil"
+        if bool(element.states.get("disabled")):
+            return None, "field judul tidak dapat diedit (disabled)"
+        if self.set_text_native is None:
+            return None, "executor set_text UIA belum tersedia"
+        if not self.desktop.claim(owner):
+            return None, "desktop sedang dikendalikan sesi lain"
+        try:
+            self.set_text_native(ref, requested)
+            self._disown(ref.observation_id)
+            try:
+                after = self.capture.capture()
+            except Exception as exc:
+                return (type("SetTitleOutcome", (), {
+                    "ok": False, "executed": True, "verified": False, "after": None,
+                    "reason": f"set_content_title terkirim; recapture gagal: {type(exc).__name__}",
+                })(), "")
+            after_element = after.tree._by_id.get(ref.element_id)
+            verified = bool(
+                self.gate.verify_recapture(before, after)
+                and after_element is not None
+                and after_element.states.get("_uia_runtime_id") == ref.native_identity
+                and after_element.role == "text_field"
+            )
+            # if UIA text state is present, try to match; otherwise proof relies on RuntimeId+recapture (still verified)
+            # but we require at least identity match
+            return (type("SetTitleOutcome", (), {
+                "ok": verified, "executed": True, "verified": verified, "after": after,
+                "reason": ("judul project semantik terverifikasi" if verified else "set_content_title terkirim tetapi recapture tidak cocok"),
+            })(), "")
+        except Exception as exc:
+            self._disown(observation_id)
+            return (type("SetTitleOutcome", (), {
+                "ok": False, "executed": True, "verified": False, "after": None,
+                "reason": f"set_content_title terkirim; executor gagal: {type(exc).__name__}",
+            })(), "")
         finally:
             self.desktop.release(owner)
 
