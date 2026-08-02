@@ -45,3 +45,12 @@ def test_awareness_watcher_construction_remains_default_off_without_thread():
         assert watcher.paused is False
     finally:
         watcher.stop()
+
+
+def test_uia_and_visual_observe_import_shared_privacy_denylist():
+    from pathlib import Path
+
+    for relative in ("jarvis/automation/uia_capture.py", "jarvis/automation/visual_observe.py"):
+        source = Path(relative).read_text(encoding="utf-8")
+        assert "from jarvis.core.privacy_denylist import is_denylisted" in source
+        assert "screen_awareness import _is_denylisted" not in source
