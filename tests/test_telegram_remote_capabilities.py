@@ -11,7 +11,7 @@ def test_telegram_context_exposes_safe_agent_web_and_image_capabilities_only():
     ).execution_context()
 
     assert context.toolsets == frozenset(
-        {"agent", "image", "memory", "messaging", "skills", "web"}
+        {"agent", "gws_read", "image", "memory", "messaging", "skills", "web"}
     )
     assert set(REGISTRY.exposed_tool_names(context)) >= {
         "web_search", "web_extract", "yt_search_data", "image_generate",

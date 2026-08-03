@@ -200,6 +200,27 @@ def test_loop_reports_when_provider_missing(tmp_db, monkeypatch):
     assert adapter.outputs and "Settings" in adapter.outputs[0]
 
 
+
+
+def test_loop_sanitizes_desktop_safe_failure_before_session_persistence():
+    from jarvis.agent import loop as agent_loop
+
+    raw = type("Result", (), {"ok": False, "error": "raw UI label: password field"})()
+
+    turn = agent_loop._session_tool_turn(
+        "desktop_safe_set_value",
+        {"observation_id": "opaque-observation", "element_id": "opaque-element", "value": 30},
+        raw,
+    )
+
+    assert turn == (
+        "desktop_safe_set_value → desktop_safe_failed "
+        "[observation_id=opaque-observation, element_id=opaque-element]"
+    )
+    assert "password" not in turn
+    assert "value=30" not in turn
+
+
 def test_context_compaction_shape():
     from jarvis.agent import context as ctx
 

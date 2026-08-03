@@ -100,6 +100,21 @@ def _heavy_unconfigured_msg(task: str) -> str:
             "provider berat di Settings (ikon gear)")
 
 
+def _session_tool_turn(name: str, arguments: dict, result: ToolResult) -> str:
+    """Persist desktop-safe tool outcomes as opaque metadata only."""
+    safe_name = str(name)
+    if safe_name == "desktop_observe" or safe_name.startswith("desktop_safe"):
+        parts = [
+            f"{key}={str(arguments[key])}"
+            for key in ("observation_id", "element_id")
+            if arguments.get(key)
+        ]
+        suffix = f" [{', '.join(parts)}]" if parts else ""
+        status = "ok" if result.ok else "desktop_safe_failed"
+        return f"{safe_name} → {status}{suffix}"[:500]
+    return f"{safe_name} → {'ok' if result.ok else result.error}"[:500]
+
+
 async def run(task: str, adapter: Adapter | None = None,
               session: Session | None = None,
               allowed_tools: list[str] | None = None,
@@ -254,9 +269,7 @@ async def run(task: str, adapter: Adapter | None = None,
         for tc, res in zip(resp.tool_calls, results):
             messages.append({"role": "tool", "tool_call_id": tc.id,
                              "content": res.for_llm()})
-            session.record_turn(
-                "tool", f"{tc.name} → "
-                        f"{'ok' if res.ok else res.error}"[:500])
+            session.record_turn("tool", _session_tool_turn(tc.name, tc.arguments, res))
 
         if ctx.over_threshold(messages):
             # §3.3 — kompresi konteks adalah side-task murah: selalu model
