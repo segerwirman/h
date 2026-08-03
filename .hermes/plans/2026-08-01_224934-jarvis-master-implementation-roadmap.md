@@ -471,11 +471,17 @@ Guardrail: ...
 
 ## Phase 29 — Optional Next Trusted UI Surface
 
+**Status:** ✅ COMPLETE — 2026-08-03 (UIF `27c71f8`).
+
 **Tujuan:** satu semantic action baru hanya setelah Takeda menentukan exact app/widget/use-case.
 
-**Selection gate:** stable role/RuntimeId, bounded/reversible action, local confirmation, fresh recapture, no filesystem/login/payment/permission/terminal/remote ingress.
+**Implementasi (surface dipilih: window countdown → facade):** facade `start_countdown` di `local_facades.py` (komposisi WA1 CountdownTimer) + `MainWindow(services, facades=None)` — window countdown route via facade invoke; UI TIDAK pernah bypass facade (test deny registry → False + `_countdown is None`); `invoke` mengembalikan `artifacts` LOKAL ONLY (timer) — remote view/bridge tidak pernah menyertakan.
 
-**Fase berikutnya:** ditentukan Takeda setelah audit Phase 29; tidak dipilih otomatis.
+**Selection gate:** stable role/RuntimeId, bounded/reversible action, local confirmation, fresh recapture, no filesystem/login/payment/permission/terminal/remote ingress — dipatuhi (offscreen test, tanpa authority baru).
+
+**Acceptance:** fixture acceptance + offscreen test; tanpa authority baru — TERPENUHI. RED 2 failed → GREEN 13 passed; regression 63 passed; frozen `094b696` OK.
+
+**Fase berikutnya:** ditentukan Takeda setelah audit Phase 29; tidak dipilih otomatis. **ROADMAP UTAMA 20.1 → 29 SELESAI.**
 
 ---
 
@@ -491,6 +497,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase 29 — Optional Next Exact UI Surface** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: pilih permukaan UI nyata yang di-wire ke facade lokal (mis. panel countdown/timer di orb atau Content Studio action bar); fixture acceptance + offscreen test.
-Guardrail: tanpa authority baru, UI hanya memakai facade yang sudah ada; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**DITENTUKAN TAKEDA — ROADMAP UTAMA 20.1→29 SELESAI** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: opsi tersedia — live lane (WA3/26/WA9 live proof, WA0 call hardware, gcal_create_proposed), facade lanjutan, actor binding, remediasi awareness pre-existing, atau fase baru pilihan Takeda.
+Guardrail: tidak ada eksekusi tanpa approval eksplisit Takeda; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

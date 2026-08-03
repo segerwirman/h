@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase 28 COMPLETE — 2026-08-03
+**Updated:** Phase 29 COMPLETE — 2026-08-03 (ROADMAP UTAMA SELESAI)
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `0cae0a2` (RMF); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `27c71f8` (UIF); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -56,7 +56,9 @@ Phase 27 named local facade                COMPLETE
   → FAC aaa4dba (fixed-step composition, deny-unknown)
 Phase 28 mediated remote facade            COMPLETE
   → RMF 0cae0a2 (proposal-only, local approval, TTL)
-  → sisa: tidak ada; Phase 29 menunggu keputusan Takeda (dilarang)
+Phase 29 UI surface → facade                COMPLETE
+  → UIF 27c71f8 (window countdown via facade, artifacts local-only)
+  → ROADMAP UTAMA 20.1→29 SELESAI; fase berikutnya ditentukan Takeda
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -78,6 +80,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## Phase 29 UI-facade milestone + ROADMAP COMPLETE (2026-08-03)
+
+**Phase 29 COMPLETE** — commit UIF `27c71f8`. Facade `start_countdown` (komposisi WA1) + `MainWindow(services, facades=None)` — window countdown route via facade invoke; UI tidak pernah bypass facade (test deny registry → False); `invoke` mengembalikan `artifacts` LOKAL ONLY. RED 2 → GREEN 13; regression 63 passed; frozen `094b696` OK. **ROADMAP UTAMA 20.1 → 29 SELESAI — semua fase COMPLETE.**
 
 ## Phase 28 remote facade milestone (2026-08-03)
 
@@ -253,21 +259,21 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase 29 — Optional Next Exact UI Surface** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**DITENTUKAN TAKEDA** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Permukaan UI nyata yang di-wire ke facade lokal.
+Fase berikutnya setelah roadmap utama selesai.
 
 ### Scope
 
-- pilih UI surface nyata (mis. panel countdown/timer di orb, Content Studio action bar);
-- wire ke facade lokal; fixture acceptance + offscreen test;
-- tanpa authority baru.
+- live lane: WA3/26/WA9 live proof, WA0 call hardware, gcal_create_proposed;
+- facade lanjutan: Content Studio/focus/media/timer/call-session;
+- actor binding; remediasi awareness pre-existing; atau pilihan Takeda.
 
 ### Guardrails
 
-- Tidak ada authority baru; UI hanya memakai facade yang sudah ada.
+- Tidak ada eksekusi tanpa approval eksplisit Takeda.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -284,15 +290,15 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase 28 COMPLETE (2026-08-03): remote facade (RMF 0cae0a2) — proposal-only
-remote + local approval + TTL, tanpa invoke remote. Worktree bersih
-kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN di-commit.
-Index kosong. Frozen 094b696 OK.
+Phase 29 COMPLETE (2026-08-03): UI-facade (UIF 27c71f8) — window countdown
+via facade, artifacts local-only. ROADMAP UTAMA 20.1→29 SELESAI. Worktree
+bersih kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN
+di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase 29 (Optional Next Exact UI Surface) DILARANG
-dimulai sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi posisi
-(read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
-lanjutan, minta approval sebelum eksekusi apa pun. Jangan
+TIDAK ADA fase aktif — fase berikutnya DITENTUKAN TAKEDA (tidak dipilih
+otomatis). Tugas sesi: verifikasi posisi (read-only), audit
+worktree/HEAD/frozen, presentasikan status + opsi lanjutan, minta
+approval sebelum eksekusi apa pun. Jangan
 git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
 provider/credential/live integration/authority/frozen.
 ```

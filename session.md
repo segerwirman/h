@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: 0cae0a2 feat(core): mediated remote facade bridge with local-only approval and TTL (RMF)
-Last updated: 2026-08-03 — Phase 28 COMPLETE (mediated remote facade)
+HEAD: 27c71f8 feat(ui): wire window countdown to local facade with local-only artifacts (UIF)
+Last updated: 2026-08-03 — Phase 29 COMPLETE (UI surface → facade; ROADMAP SELESAI)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 80 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF 0cae0a2)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 81 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF 27c71f8)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: 29 — Optional Next Exact UI Surface
+Status: COMPLETE — ROADMAP UTAMA SELESAI (20.1 → 29)
+Completed: 2026-08-03 (UIF 27c71f8; frozen 094b696 OK)
+```
 
 ```text
 Phase: 28 — Mediated Remote Facade
@@ -302,24 +308,24 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: 28 — Mediated Remote Facade
-Status: COMPLETE — 2026-08-03 (RMF 0cae0a2)
-Priority: remote proposal-only, local approval, TTL
+Phase: 29 — Optional Next Exact UI Surface
+Status: COMPLETE — 2026-08-03 (UIF 27c71f8)
+Priority: UI wired to facade, local-only artifacts
 ```
 
 ### Outcome
 
-- `jarvis/core/remote_facade_bridge.py` (baru): `RemoteFacadeBridge` — mediasi remote → facade lokal (Phase 27): remote HANYA bisa `propose(facade_name, **args)` (deny-unknown → `facade_unknown`; args disimpan LOKAL); `remote_view()`/`pending()` metadata-only `{proposal_id, facade_name, status}` — TANPA args (dikunci test); eksekusi hanya via `approve()`/`reject()` LOKAL — one-shot + TTL 300s (`proposal_expired`); bridge tidak mengekspos `invoke`/`execute`/`run` (dikunci test) — remote tidak pernah memanggil facade langsung.
-- `result(pid)` metadata-only; status: `awaiting_approval → done/failed/rejected/expired`; **kontrak statis**: tanpa import provider/network/file.
-- TDD: RED 8 failed → GREEN 8 passed; regression 104 passed (bridge + facades + ring + seluruh modul WA0–WA9); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 16 passed; approval Takeda.
+- Facade baru `start_countdown` di `local_facades.py` (komposisi WA1 CountdownTimer): step `start_timer` → `{ok, status: running, remaining_s}`; durasi invalid → step reject; `invoke` kini mengembalikan **`artifacts`** (objek lokal seperti timer — LOKAL ONLY, remote view/bridge tidak pernah menyertakan).
+- **UI surface di-wire ke facade**: `MainWindow(services, facades=None)` — default `default_facades()`; `start_countdown()` route via facade invoke — **UI tidak pernah bypass facade** (test: registry deny → window `start_countdown` False + `_countdown is None`); visual orb/driver (WA1) tetap identik.
+- TDD: RED 2 failed → GREEN 13 passed; regression 63 passed (wiring + facades + bridge + ring + window integration + countdown; hanya awareness pre-existing); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 21 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: 29 — Optional Next Exact UI Surface
+Phase: DITENTUKAN TAKEDA (roadmap utama 20.1→29 SELESAI)
 Status: MENUNGGU KEPUTUSAN TAKEDA
-Guardrail: jangan mulai Phase 29 tanpa approval eksplisit Takeda.
+Guardrail: jangan mulai fase baru tanpa approval eksplisit Takeda.
 ```
 
 ## Planned phase order
@@ -345,7 +351,8 @@ WA9 controlled WhatsApp rollout ✅ (WRO 3fb6d2a, 2026-08-03)
 26 cross-integration live ring ✅ (RIN fd7d999, 2026-08-03)
 27 named local facade ✅ (FAC aaa4dba, 2026-08-03)
 28 mediated remote facade ✅ (RMF 0cae0a2, 2026-08-03)
-→ 29 optional next exact UI surface (MENUNGGU keputusan Takeda)
+29 optional next exact UI surface ✅ (UIF 27c71f8, 2026-08-03)
+→ fase berikutnya: DITENTUKAN TAKEDA (roadmap selesai)
 ```
 
 ## Mandatory completion protocol
@@ -377,18 +384,18 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: 0cae0a2 (RMF). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: 27c71f8 (UIF). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Phase 28 COMPLETE (2026-08-03): mediated remote facade — remote hanya
-propose (deny-unknown, args lokal), approval/reject lokal one-shot + TTL,
-tanpa invoke remote, view metadata-only. RED 8 → GREEN 8; regression
-104 passed.
+Phase 29 COMPLETE (2026-08-03): UI surface → facade — window countdown
+di-wire ke facade lokal (artifacts lokal only), UI tidak pernah bypass
+facade. RED 2 → GREEN 13; regression 63 passed.
 
-Fase aktif: TIDAK ADA. Phase 29 (Optional Next Exact UI Surface) DILARANG
-dimulai sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu,
-presentasikan status + opsi, minta approval sebelum eksekusi.
+ROADMAP UTAMA SELESAI (20.1 → 29, semua fase COMPLETE).
+Fase aktif: TIDAK ADA — fase berikutnya DITENTUKAN TAKEDA (tidak dipilih
+otomatis). Verifikasi posisi dulu, presentasikan status + opsi, minta
+approval sebelum eksekusi.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,

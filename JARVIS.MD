@@ -2,7 +2,7 @@
 
 > **Repository:** `E:\jarvis agent\h`
 > **Language:** Indonesian
-> **Current implementation status:** Phase 28 Mediated Remote Facade COMPLETE (2026-08-03); Phase 29 next — menunggu keputusan Takeda
+> **Current implementation status:** ROADMAP UTAMA 20.1→29 SELESAI (Phase 29 UIF `27c71f8`, 2026-08-03); fase berikutnya DITENTUKAN TAKEDA
 
 ## Start here in every new session
 
@@ -75,6 +75,7 @@
 | Phase 26 | ✅ | Cross-integration live ring: `integration_ring.py` — `run_ring()` alur deterministik offline memakai 10 modul inti WA0→WA9 bersama; ring ok = semua step selesai (status gate jujur apa adanya); deterministik tanpa kredensial; metadata-only; kontrak statis tanpa SDK/network/file — proof ring, BUKAN live-proven. |
 | Phase 27 | ✅ | Named local facade: `local_facades.py` — `LocalFacadeRegistry` komposisi lokal bernama; steps fixed tuple immutable (tidak bisa diubah runtime), deny-unknown (`facade_unknown`), langkah gagal → berhenti + report per-step; facade default `check_order_status` (WA8) & `book_reservation` (WA6+WA7) — komposisi murni modul inti, TANPA authority baru; kontrak statis tanpa provider/network/file. |
 | Phase 28 | ✅ | Mediated remote facade: `remote_facade_bridge.py` — remote HANYA `propose` (deny-unknown; args lokal), view/pending metadata-only tanpa args; eksekusi hanya via approve/reject LOKAL one-shot + TTL 300s; bridge TANPA invoke/execute/run (dikunci test) — remote tidak pernah memanggil facade langsung; kontrak statis tanpa provider/network/file. |
+| Phase 29 | ✅ | UI surface → facade: `window.py` `MainWindow(services, facades=None)` + `local_facades.py` facade `start_countdown` (komposisi WA1); window countdown route via facade invoke — UI TIDAK pernah bypass facade (test deny registry → window False); `invoke` mengembalikan `artifacts` LOKAL ONLY (timer) — remote view/bridge tidak pernah menyertakan. |
 
 ## Capability evidence classification
 
@@ -150,8 +151,8 @@ python scripts/verify_frozen.py
 ```
 
 ## Next recommended phase
-**Phase 29 — Optional Next Exact UI Surface** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
+**ROADMAP UTAMA 20.1→29 SELESAI — fase berikutnya DITENTUKAN TAKEDA** (DILARANG dimulai tanpa approval eksplisit).
 
-UI surface eksplisit berikutnya (opsional): pilih permukaan UI nyata yang akan di-wire ke facade lokal (mis. panel countdown/timer di orb atau Content Studio action bar); fixture acceptance + offscreen test; tanpa authority baru. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
+Sisa pekerjaan terpetakan (semua butuh approval eksplisit): live lane (WA3/26/WA9 live proof, WA0 call hardware, gcal_create_proposed), facade lanjutan (Content Studio/focus/media), actor binding, remediasi awareness pre-existing, dan fase apa pun yang Takeda pilih. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
 
 For detailed current test evidence, changed files, and exact next implementation contract, read `.hermes/handoffs/current.md`.
