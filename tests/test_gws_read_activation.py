@@ -45,10 +45,26 @@ def test_gws_read_tools_have_explicit_descriptors_and_remote_read_schema(monkeyp
         assert (GcalSafeAgenda.name in names) is allowed
 
 
-def test_gws_morning_briefing_not_activated_without_monitoring():
+def test_gws_morning_briefing_activated_with_monitoring():
     from jarvis.agent.capabilities import REGISTRY
 
-    assert REGISTRY.descriptor_for_tool("morning_briefing") is None
+    descriptor = REGISTRY.descriptor_for_tool("morning_briefing")
+    assert descriptor is not None, \
+        "morning_briefing harus aktif setelah monitoring vertical tersedia"
+    assert descriptor.toolset == "gws_read"
+
+
+def test_web_monitor_not_exposed_to_remote_without_descriptor():
+    from jarvis.agent import registry
+    from jarvis.agent.execution_context import ExecutionContext
+
+    ctx = ExecutionContext.create(
+        source="telegram", actor_id="local", session_id="s",
+        surface="remote", toolsets=["web_monitoring"],
+    )
+    names = {item["function"]["name"] for item in registry.schemas(context=ctx)}
+    assert "web_monitor" not in names, \
+        "web_monitor tanpa descriptor tidak boleh diekspos remote"
 
 
 def test_gws_tools_membership_in_google_cloud_group():

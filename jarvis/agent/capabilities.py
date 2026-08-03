@@ -113,5 +113,6 @@ for _descriptor in (
     # Fase 15A: paired remote receives only privacy-tiered GWS read models.
     CapabilityDescriptor("gws_read.gmail_safe_summary", "gmail_safe_summary", "gws_read", "low", 45),
     CapabilityDescriptor("gws_read.gcal_safe_agenda", "gcal_safe_agenda", "gws_read", "low", 30),
+    CapabilityDescriptor("gws_read.morning_briefing", "morning_briefing", "gws_read", "low", 45),
 ):
     REGISTRY.register(_descriptor)
