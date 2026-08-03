@@ -1,9 +1,8 @@
-"""ContentStudioSheet intent-specific title setter."""
+"""Phase 19 RED — ContentStudioSheet intent-specific title setter (Judul Project only)."""
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication
 _APP = None
-
 def _app():
     global _APP
     _APP = QApplication.instance() or QApplication([])
@@ -64,3 +63,14 @@ def test_set_project_title_only_affects_title_field():
     assert proj.title == "Baru"
     assert proj.audience == "Kreator"
     assert proj.tone == "Cinematic"
+
+def test_content_studio_has_no_generic_setter_and_no_network():
+    from pathlib import Path
+    src = Path("E:/jarvis agent/h/jarvis/ui/content_studio.py").read_text(encoding="utf-8").lower()
+    # must not contain generic text dispatch APIs
+    assert "pyautogui" not in src
+    assert "webbrowser" not in src
+    assert "requests" not in src
+    assert "subprocess" not in src
+    # jeda: implementasi harus memakai policy, bukan generic
+    assert "content_title_policy" in src or "admit_title" in src

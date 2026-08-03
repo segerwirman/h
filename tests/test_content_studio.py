@@ -1,15 +1,19 @@
-"""Studio local unmounted project and scene planning sheet."""
+"""Studio A local tool facade and hidden scene planning sheet."""
 from __future__ import annotations
+
 import asyncio
 import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtWidgets import QApplication
+
 _APP = None
+
 
 def _app():
     global _APP
     _APP = QApplication.instance() or QApplication([])
     return _APP
+
 
 def test_content_studio_tool_reads_local_brief_without_returning_source_path(tmp_path):
     from jarvis.agent.tools.content_studio import ContentStudioPrompt
@@ -23,6 +27,7 @@ def test_content_studio_tool_reads_local_brief_without_returning_source_path(tmp
     assert ContentStudioPrompt.read_only is True
     assert ContentStudioPrompt.requires_confirmation is True
 
+
 def test_content_studio_tool_fails_with_safe_reason_only(tmp_path):
     from jarvis.agent.tools.content_studio import ContentStudioPrompt
 
@@ -30,6 +35,7 @@ def test_content_studio_tool_fails_with_safe_reason_only(tmp_path):
     assert result.ok is False
     assert result.error == "content_prompt_type_rejected"
     assert str(tmp_path) not in result.for_llm()
+
 
 def test_content_studio_sheet_is_hidden_and_keeps_brief_brainstorm_timeline_local():
     _app()
@@ -47,6 +53,19 @@ def test_content_studio_sheet_is_hidden_and_keeps_brief_brainstorm_timeline_loca
     for forbidden in ("webbrowser", "subprocess", "upload", "image_generate", "telegram", "requests"):
         assert forbidden not in source.lower()
 
+
+def test_window_mounts_hidden_studio_without_action_panel_or_provider_wiring():
+    from pathlib import Path
+
+    source = Path("jarvis/ui/window.py").read_text(encoding="utf-8")
+    assert 'self.stage.register("studio", self.content_studio)' in source
+    assert 'self.content_studio = ContentStudioSheet()' in source
+    marker = 'self.stage.register("studio", self.content_studio)'
+    segment = source[source.index(marker) - 300:source.index(marker) + 200]
+    for forbidden in ("image_generate", "webbrowser", "telegram", "open_url"):
+        assert forbidden not in segment.lower()
+
+
 def test_content_studio_sheet_generates_only_explicitly_selected_scene(monkeypatch):
     import asyncio
     _app()
@@ -62,8 +81,10 @@ def test_content_studio_sheet_generates_only_explicitly_selected_scene(monkeypat
     assert asyncio.run(sheet.generate_selected_scene()) == {"ok": True, "asset": {"scene_index": 1, "provider": "fake", "model": "test", "state": "ready"}}
     assert sheet.asset_metadata() == {"scene_index": 1, "provider": "fake", "model": "test", "state": "ready"}
 
+
 async def _async_result(index):
     return {"ok": True, "asset": {"scene_index": index, "provider": "fake", "model": "test", "state": "ready"}}
+
 
 def test_content_studio_sheet_rejects_invalid_scene_without_external_action():
     _app()
@@ -73,6 +94,7 @@ def test_content_studio_sheet_rejects_invalid_scene_without_external_action():
     assert sheet.add_scene(title="", visual="", narration="", visual_prompt="") is False
     assert sheet.project().scenes == ()
     assert sheet.status_text() == "Scene belum lengkap."
+
 
 def test_content_studio_sheet_exposes_local_timeline_and_bounded_export():
     _app()

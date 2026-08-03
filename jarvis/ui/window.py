@@ -503,6 +503,14 @@ class MainWindow(QMainWindow):
             self.home_panel.ready.connect(self._on_home_ready)
         except Exception as e:                               # noqa: BLE001
             _logger.warning("home_panel.unavailable", error=str(e)[:100])
+        # Studio A is local planning only; action toggles/provider work wait for later phases.
+        self.content_studio = None
+        try:
+            from jarvis.ui.content_studio import ContentStudioSheet
+            self.content_studio = ContentStudioSheet()
+            self.stage.register("studio", self.content_studio)
+        except Exception as e:                               # noqa: BLE001
+            _logger.warning("content_studio.unavailable", error=str(e)[:100])
 
         # ── Zone C ───────────────────────────────────────────────────────────
         self.command_bar = CommandBar(predictive)
@@ -541,6 +549,8 @@ class MainWindow(QMainWindow):
         if hasattr(self.action_panel, "home_clicked"):
             self.action_panel.home_clicked.connect(
                 self._toggle_home_panel)
+        if hasattr(self.action_panel, "studio_clicked"):
+            self.action_panel.studio_clicked.connect(self._toggle_studio_panel)
         # MK50 — sheet settings multi-provider (Gemini/OpenAI/Anthropic/
         # Local OpenAI-compatible/Custom); fallback ke sheet lama bila modul
         # baru tidak tersedia. SettingsSheet lama tetap utuh di actionpanel.
@@ -571,9 +581,13 @@ class MainWindow(QMainWindow):
         self.action_panel.gateway_ops_clicked.connect(
             lambda: self.gateway_operations_sheet.open_centered(
                 self.centralWidget().width(), self.centralWidget().height()))
+        # Fase 15S — approval lokal untuk secure remote setup (Telegram upload).
         from jarvis.ui.remote_setup_sheet import RemoteSetupSheet
         self.remote_setup_sheet = RemoteSetupSheet(None, central)
         self.remote_setup_sheet.hide()
+        from jarvis.ui.monitor_source_sheet import MonitorSourceSheet
+        self.monitor_source_sheet = MonitorSourceSheet(parent=central)
+        self.monitor_source_sheet.hide()
         from jarvis.ui.panels import CapabilitiesPanel
         self.capabilities_sheet = CapabilitiesPanel(central)
         # QWidget child biasanya ikut visible saat parent MainWindow tampil.
@@ -587,6 +601,16 @@ class MainWindow(QMainWindow):
         self.notifications = NotificationBlipStack(central)
         self.memory = MemoryManager.get()
         self._focus_mode = FocusMode.get()
+        from jarvis.agent.remote_proposals import get_queue as get_remote_proposal_queue
+        from jarvis.ui.remote_proposal_sheet import RemoteProposalSheet
+        self._remote_proposal_sheet = RemoteProposalSheet(
+            get_remote_proposal_queue(), executor=self._execute_remote_proposal,
+            parent=central)
+        self._remote_proposal_sheet.hide()
+        from jarvis.ui.studio_focus import StudioFocusController
+        self._studio_focus = StudioFocusController(self.stage, self._focus_mode)
+        if self.content_studio is not None:
+            self.content_studio.studio_focus_requested.connect(self._set_studio_focus)
         self._target_resolver = TargetResolver()
         self._closed_items = ClosedItemHistory()
         self._pending_close_decision = None
@@ -654,6 +678,9 @@ class MainWindow(QMainWindow):
         BUS.subscribe("cancel", self._on_cancel, ui=True)
         BUS.subscribe("sentiment.updated", self._on_sentiment, ui=True)
         BUS.subscribe("remote_setup.pending", self._on_remote_setup_pending, ui=True)
+        BUS.subscribe("remote_proposal.pending", self._on_remote_proposal_pending, ui=True)
+        BUS.subscribe("voice_proposal.pending", self._on_voice_proposal_pending, ui=True)
+        self._pending_voice_proposal_id: str | None = None
 
         self._drain = QTimer(self)
         self._drain.timeout.connect(BUS.drain_ui)
@@ -815,6 +842,18 @@ class MainWindow(QMainWindow):
                 self.stage.current in (None, "info"):
             self.stage.show_child("info")
 
+    def _toggle_studio_panel(self) -> None:
+        """Toggle Studio local-only; ContentStage owns visibility, controller owns focus restore."""
+        if self.content_studio is None:
+            self._deferred_panel_notice("Content Studio", "panel tidak tersedia — lihat log")
+            return
+        self._studio_focus.toggle()
+        self._sync_orb_visibility()
+
+    def _set_studio_focus(self, active: bool) -> None:
+        if self._studio_focus.set_studio_focus(bool(active)) and self.content_studio is not None:
+            self.content_studio.set_studio_focus_active(bool(active))
+
     def _toggle_home_panel(self) -> None:
         """Buka Home lewat state LOADING; data/empty-state mengaktifkan panel."""
         if self.stage.current == "home" or self.stage.is_loading("home"):
@@ -848,6 +887,8 @@ class MainWindow(QMainWindow):
     def _close_stage_panels(self) -> None:
         """Tutup panel stage via cross-fade dan buang riwayat yang tak lagi
         relevan. Dipakai toggle, ESC, dan tombol kembali ke Home."""
+        if getattr(self.stage, "current", None) == "studio":
+            self._studio_focus.close()
         history = getattr(self, "stage_history", None)
         if history is not None:
             history.clear()
@@ -909,7 +950,9 @@ class MainWindow(QMainWindow):
         # Destructive-action confirmation gate (redesign §13) uses distinct
         # words from ReplyFlow's ya/batal so the two confirmation contexts
         # never collide.
-        if self._pending_close_decision is not None or _agent_ask_active():
+        if (self._pending_close_decision is not None
+                or self._pending_voice_proposal_id is not None
+                or _agent_ask_active()):
             low = text.strip().lower()
             if low in self._CONFIRM_WORDS:
                 BUS.publish("confirm")
@@ -1556,6 +1599,7 @@ class MainWindow(QMainWindow):
             {"label": "Open context timeline", "action_id": "open_timeline"},
             {"label": "Reopen last closed tab", "action_id": "reopen_last_tab"},
             {"label": "Open system browser", "action_id": "open_browser_agent"},
+            {"label": "Manage monitor sources", "action_id": "manage_monitor_sources"},
         ])
         model.set_sites(dict(self.router._known_sites))
         try:
@@ -1583,6 +1627,7 @@ class MainWindow(QMainWindow):
         "open_timeline": lambda self: self._toggle_timeline(),
         "reopen_last_tab": lambda self: self._reopen_last_tab(),
         "open_browser_agent": lambda self: self.open_browser_agent(),
+        "manage_monitor_sources": lambda self: self._open_monitor_source_sheet(),
     }
 
     def _on_palette_activated(self, cand) -> None:
@@ -1598,6 +1643,10 @@ class MainWindow(QMainWindow):
                            f"Eksekusi macro belum diaktifkan tanpa konfirmasi eksplisit lebih lanjut.")
         elif cand.kind == "recent":
             self.write_log(f"SYS: dari riwayat — {cand.label}")
+
+    def _open_monitor_source_sheet(self) -> None:
+        self.monitor_source_sheet.open_centered(
+            self.centralWidget().width(), self.centralWidget().height())
 
     def _toggle_command_palette(self) -> None:
         if self.command_palette.isVisible():
@@ -1674,7 +1723,65 @@ class MainWindow(QMainWindow):
                 f"melanjutkan, 'cancel' atau jempol turun untuk membatalkan.")
             self.notifications.push("Confirm required", decision.reason, "warning")
 
+    def _execute_remote_proposal(self, action: str) -> bool:
+        wanted = {"focus_mode_enable": True, "focus_mode_disable": False}.get(action)
+        if wanted is not None:
+            if self._focus_mode.active != wanted:
+                self._toggle_focus_mode()
+            return self._focus_mode.active == wanted
+        if not str(action).startswith("media_"):
+            return False
+        try:
+            import asyncio
+            from jarvis.agent.remote_media_execution import execute_proposal
+            from jarvis.agent.tools.browser import BrowserMedia
+
+            result = asyncio.run(execute_proposal(action, runner=BrowserMedia().run))
+            return bool(result.get("ok"))
+        except Exception:
+            return False
+
+    def _on_remote_proposal_pending(self, data: dict) -> None:
+        proposal_id = str(data.get("proposal_id") or "")
+        actor_id = str(data.get("actor_id") or "")
+        session_id = str(data.get("session_id") or "")
+        if self._remote_proposal_sheet.present(proposal_id, actor_id=actor_id,
+                                               session_id=session_id):
+            self.notifications.push("Remote proposal", "Menunggu persetujuan lokal", "warning")
+
+    def _on_voice_proposal_pending(self, data: dict) -> None:
+        """Voice may request; only this desktop UI may approve a named action."""
+        proposal_id = str(data.get("proposal_id") or "")
+        action = str(data.get("action") or "")
+        if not proposal_id or action not in {"focus_mode_enable", "focus_mode_disable"}:
+            return
+        self._pending_voice_proposal_id = proposal_id
+        self.write_log("SYS: proposal voice diterima — ketik 'confirm' atau 'cancel'.")
+        self.notifications.push("Voice proposal", "Menunggu persetujuan lokal", "warning")
+
+    def _approve_voice_proposal(self) -> bool:
+        proposal_id = self._pending_voice_proposal_id
+        if not proposal_id:
+            return False
+        from jarvis.integrations.voice_desktop_proposals import get_queue
+
+        def execute(action: str) -> bool:
+            wanted = action == "focus_mode_enable"
+            if self._focus_mode.active != wanted:
+                self._toggle_focus_mode()
+            return self._focus_mode.active == wanted
+
+        self._pending_voice_proposal_id = None
+        result = get_queue().approve_local(proposal_id, executor=execute)
+        if result.get("executed"):
+            self.write_log("SYS: proposal voice disetujui secara lokal.")
+            return True
+        self.write_log("SYS: proposal voice tidak dapat dijalankan.")
+        return True
+
     def _on_confirm(self, _d: dict) -> None:
+        if self._approve_voice_proposal():
+            return
         if self._pending_close_decision is None:
             return
         decision, self._pending_close_decision = self._pending_close_decision, None
@@ -1690,6 +1797,10 @@ class MainWindow(QMainWindow):
                                 "success" if ok else "error")
 
     def _on_cancel(self, _d: dict) -> None:
+        if self._pending_voice_proposal_id is not None:
+            self._pending_voice_proposal_id = None
+            self.write_log("SYS: proposal voice dibatalkan secara lokal.")
+            return
         if self._pending_close_decision is not None:
             self._pending_close_decision = None
             self.write_log("SYS: aksi dibatalkan.")
@@ -1728,7 +1839,6 @@ class MainWindow(QMainWindow):
             w, h = min(520, c.width()), min(320, c.height())
             sheet.setGeometry((c.width() - w) // 2, (c.height() - h) // 2, w, h)
         sheet.raise_()
-
     def open_browser_agent(self, slots: dict | None = None) -> None:
         """MK50 §7 — panel browser dibuang dari ContentStage: perintah
         "buka browser" membuka browser sistem. Alur web bertujuan (multi-
