@@ -430,6 +430,14 @@ def _element_from_control(control, index: int) -> UIElement | None:
         if not runtime_id:
             return None
         states["_uia_runtime_id"] = runtime_id
+    if role == "text_field":
+        # Phase 19/21C: text field membawa RuntimeId bila tersedia, supaya
+        # set_content_title dapat membuktikan identitas stabil (native_identity).
+        # Tanpa RuntimeId elemen tetap dapat diobservasi, tetapi setter
+        # fail-closed menolaknya — identitas kosong tidak pernah diterima.
+        runtime_id = _uia_runtime_identity(control)
+        if runtime_id:
+            states["_uia_runtime_id"] = runtime_id
     if role == "checkbox":
         try:
             toggle_state = int(control.iface_toggle.CurrentToggleState)
@@ -466,14 +474,26 @@ def _element_from_control(control, index: int) -> UIElement | None:
             dropdown_parent = option_parent.parent()
             dropdown_kind = str(getattr(getattr(dropdown_parent, "element_info", None), "control_type", "") or "").casefold()
             dropdown_identity = _uia_runtime_identity(dropdown_parent)
-            if parent_kind != "list" or dropdown_kind != "combobox" or not dropdown_identity:
+            if parent_kind == "list" and dropdown_kind == "combobox" and dropdown_identity:
+                # dropdown option: parent List + grandparent ComboBox
+                states["_uia_runtime_id"] = _uia_runtime_identity(control)
+                states["_uia_parent_runtime_id"] = dropdown_identity
+                if not states["_uia_runtime_id"]:
+                    return None
+                states["selected"] = bool(control.iface_selection_item.CurrentIsSelected)
+                role = "dropdown_option"
+            elif parent_kind == "list":
+                # Phase 20/21C: plain list item (Content Studio scene cards,
+                # QListWidget): role "card" via map + RuntimeId stabil +
+                # parent identity (same-container proof untuk reorder).
+                runtime_id = _uia_runtime_identity(control)
+                parent_identity = _uia_runtime_identity(option_parent)
+                if not runtime_id or not parent_identity:
+                    return None
+                states["_uia_runtime_id"] = runtime_id
+                states["_uia_parent_runtime_id"] = parent_identity
+            else:
                 return None
-            states["_uia_runtime_id"] = _uia_runtime_identity(control)
-            states["_uia_parent_runtime_id"] = dropdown_identity
-            if not states["_uia_runtime_id"]:
-                return None
-            states["selected"] = bool(control.iface_selection_item.CurrentIsSelected)
-            role = "dropdown_option"
         except Exception:
             return None
     if role == "dropdown":

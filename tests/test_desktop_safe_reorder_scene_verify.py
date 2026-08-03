@@ -125,3 +125,23 @@ def test_reorder_verified_when_order_changed():
     assert outcome.executed is True
     assert outcome.verified is True
     assert outcome.ok is True
+
+
+def test_reorder_not_verified_when_only_runtime_ids_change_without_visual_order():
+    # Phase 21C (G4): RuntimeId item list TIDAK stabil terhadap reorder di UIA
+    # umum (item mendapat RuntimeId baru). Verifikasi pasca-drag memakai urutan
+    # visual + same-surface recapture; RuntimeId baru tanpa perubahan urutan
+    # visual BUKAN bukti reorder — harus tetap fail-closed.
+    def native(src_ref, dst_ref):
+        pass
+
+    before = _tree(y_order=(0, 1), runtime=("rt-src", "rt-dst"))
+    after = _tree(y_order=(0, 1), runtime=("rt-new-0", "rt-new-1"))
+    session = _authority(before, after, native)
+    observation = session.observe_for("desktop-a")
+    outcome, error = session.reorder_scene(
+        observation.id, "uia-0", "uia-1", session_id="desktop-a")
+    assert error == ""
+    assert outcome.executed is True
+    assert outcome.verified is False
+    assert outcome.ok is False

@@ -513,7 +513,6 @@ class SafeDesktopSession:
         if not src_parent or not dst_parent or src_parent != dst_parent:
             return None, "reorder membutuhkan parent identity yang sama"
         # order marker (internal rect y only; never returned to caller)
-        src_above_before = src_el.rect[1] < dst_el.rect[1]
         if self.reorder_native is None:
             return None, "executor reorder UIA belum tersedia"
         if not self.desktop.claim(owner):
@@ -528,18 +527,26 @@ class SafeDesktopSession:
                     "ok": False, "executed": True, "verified": False, "after": None,
                     "reason": f"reorder terkirim; recapture gagal: {type(exc).__name__}",
                 })(), "")
-            after_src = after.tree._by_id.get(src_ref.element_id)
-            after_dst = after.tree._by_id.get(dst_ref.element_id)
+            # RuntimeId item list TIDAK stabil terhadap reorder di UIA umum
+            # (item mendapat RuntimeId baru setelah drag). Identitas item
+            # spesifik tidak dapat diverifikasi pasca-drag; bukti yang jujur:
+            # same-surface recapture + jumlah card sama + urutan visual
+            # (nama) berubah setelah satu native drag.
+            def _visual_order(tree):
+                return [el.name for el in sorted(
+                    (el for scope in tree.scopes()
+                     for el in tree.by_scope(scope)
+                     if el.role in {"card", "listitem", "button"}),
+                    key=lambda el: (el.rect[1], el.rect[0]))]
+            before_order = _visual_order(before.tree)
+            after_order = _visual_order(after.tree)
             order_changed = bool(
-                after_src is not None and after_dst is not None
-                and (after_src.rect[1] < after_dst.rect[1]) != src_above_before
+                after_order and len(after_order) == len(before_order)
+                and after_order != before_order
             )
             verified = bool(
                 order_changed
                 and self.gate.verify_recapture(before, after)
-                and after_src is not None and after_dst is not None
-                and after_src.states.get("_uia_runtime_id") == src_ref.native_identity
-                and after_dst.states.get("_uia_runtime_id") == dst_ref.native_identity
             )
             return (type("ReorderOutcome", (), {
                 "ok": verified, "executed": True, "verified": verified, "after": after,

@@ -649,3 +649,41 @@ def test_uia_capture_backend_has_no_screenshot_or_vision_api():
     assert not hasattr(UIACaptureBackend, "vision_analyze")
     assert not hasattr(UIACaptureBackend, "click")
     assert not hasattr(UIACaptureBackend, "type")
+
+
+def test_uia_text_field_exposes_runtime_identity_when_available():
+    # Phase 21C regression (G1): text_field harus membawa _uia_runtime_id
+    # supaya desktop_safe_set_content_title dapat membuktikan identitas
+    # stabil (native_identity) — tanpa ini tool selalu fail-closed.
+    from jarvis.automation.uia_capture import _element_from_control
+
+    control = _Control(kind="Edit", runtime_id=(12, 77))
+
+    element = _element_from_control(control, 1)
+
+    assert element is not None
+    assert element.role == "text_field"
+    assert element.states["_uia_runtime_id"] == "12.77"  # RED: saat ini kosong
+
+
+def test_uia_plain_list_item_becomes_card_with_parent_identity():
+    # Phase 21C regression (G2): listitem biasa (parent List tanpa ComboBox,
+    # mis. scene cards Content Studio / QListWidget) harus muncul sebagai
+    # "card" dengan runtime identity + parent identity — saat ini dibuang.
+    from jarvis.automation.uia_capture import _element_from_control
+
+    item = _Control(kind="ListItem", runtime_id=(12, 101))
+    parent = type("List", (), {
+        "element_info": type("Info", (), {
+            "control_type": "List", "runtime_id": (12, 100),
+        })(),
+    })()
+    parent.parent = lambda: None   # grandparent bukan ComboBox -> plain list item
+    item.parent = lambda: parent
+
+    element = _element_from_control(item, 1)
+
+    assert element is not None                       # RED: saat ini None
+    assert element.role == "card"
+    assert element.states["_uia_runtime_id"] == "12.101"
+    assert element.states["_uia_parent_runtime_id"] == "12.100"

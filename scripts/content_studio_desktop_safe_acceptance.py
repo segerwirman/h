@@ -49,6 +49,30 @@ def _elements(tree, role: str) -> list:
             if element.role == role]
 
 
+def _ensure_foreground(window, app) -> bool:
+    """Aktifkan window fixture untuk drag fisik (klik title bar).
+
+    WM_MOUSEACTIVATE dari klik title bar mengaktifkan window tanpa bergantung
+    pada foreground lock Windows (AttachThreadInput/SetForegroundWindow tidak
+    andal dari proses console). Drag fisik (production DRIVER) hanya sampai ke
+    item bila window benar-benar foreground.
+    """
+    import time
+    import win32gui
+
+    from jarvis.automation.cua_driver import DRIVER
+
+    hwnd = int(window.winId())
+    if win32gui.GetForegroundWindow() == hwnd:
+        return True
+    left, top, right, _bottom = win32gui.GetWindowRect(hwnd)
+    DRIVER.click((left + right) // 2, top + 8)   # klik title bar -> aktivasi
+    window.activateWindow()
+    app.setActiveWindow(window)
+    time.sleep(0.2)
+    return win32gui.GetForegroundWindow() == hwnd
+
+
 def main() -> int:
     app = QApplication([])
     window = QWidget()
@@ -104,8 +128,9 @@ def main() -> int:
 
             # ── 21A: title through production ValuePattern path ──
             before = adapter.capture()
-            title_el = next((element for element in _elements(before.tree, "text_field")
-                             if element.name == "Judul Project"), None)
+            # Fixture memiliki tepat satu text_field; identitas dijamin oleh
+            # RuntimeId (bukan label name, yang kosong di bridge UIA Qt).
+            title_el = next((element for element in _elements(before.tree, "text_field")), None)
             if title_el is None:
                 raise RuntimeError("semantic title field not found")
             gate.reference(before.id, title_el.element_id)
@@ -123,8 +148,14 @@ def main() -> int:
             stale_rejected = stale_outcome is None and bool(stale_error)
 
             # ── 21B: scene reorder through one native drag ──
+            # Drag fisik (production DRIVER) membutuhkan window benar-benar
+            # foreground; tanpa ini press pertama tidak sampai ke item list.
+            if not _ensure_foreground(window, app):
+                raise RuntimeError("fixture window tidak dapat diaktifkan untuk drag")
+            QTest.qWait(200)
             obs2 = adapter.capture()
-            items = sorted(_elements(obs2.tree, "listitem"), key=lambda el: el.rect[1])
+            # Production memetakan ListItem -> role "card" (bukan "listitem").
+            items = sorted(_elements(obs2.tree, "card"), key=lambda el: el.rect[1])
             if len(items) < 3:
                 raise RuntimeError("semantic scene cards not found")
             src_id = items[0].element_id
@@ -140,10 +171,24 @@ def main() -> int:
                 obs2.id, src_id, src_id, session_id=_OWNER)
             same_rejected = same_outcome is None and bool(same_error)
 
-            r_outcome, r_error = authority.reorder_scene(
-                obs2.id, src_id, dst_id, session_id=_OWNER)
+            # Drag fisik di thread terpisah: Qt event loop tetap berjalan
+            # sehingga press/move/release OS diproses live (drag loop Qt).
+            # Recapture UIA terbukti aman dari thread pada fixture ini.
+            import threading
+            result: dict = {}
+
+            def _do_reorder() -> None:
+                result["outcome"], result["error"] = authority.reorder_scene(
+                    obs2.id, src_id, dst_id, session_id=_OWNER)
+
+            worker = threading.Thread(target=_do_reorder, daemon=True)
+            worker.start()
+            while worker.is_alive():
+                QTest.qWait(50)
+            r_outcome = result.get("outcome")
+            r_error = result.get("error")
             if r_outcome is None:
-                raise RuntimeError(r_error)
+                raise RuntimeError(r_error or "reorder gagal")
             QTest.qWait(300)
             order = tuple(scene_list.item(i).text() for i in range(scene_list.count()))
             local_reorder_ok = order != _SCENES and order[0] != _SCENES[0]
