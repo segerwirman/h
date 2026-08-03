@@ -65,6 +65,7 @@ def _resolve(answer: str) -> None:
 class UIAdapter(Adapter):
     name = "ui"
     interactive = True
+    desktop_local = True
 
     def __init__(self, win=None):
         if win is not None:

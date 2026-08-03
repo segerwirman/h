@@ -10,6 +10,8 @@ class Adapter(ABC):
     name: str = "base"
     # cron/headless → clarify tidak boleh bertanya (spec §3.1.G)
     interactive: bool = True
+    # Only the desktop UI adapter may grant confirmation for desktop-safe mutation.
+    desktop_local: bool = False
 
     @abstractmethod
     async def send(self, content: str, **kwargs) -> None:

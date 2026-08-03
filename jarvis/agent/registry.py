@@ -112,13 +112,13 @@ async def execute(name: str, args: dict, adapter=None,
     confirmation_granted = False
     from jarvis.agent.capabilities import REGISTRY as capability_registry
     descriptor = capability_registry.descriptor_for_tool(name)
-    if descriptor is not None and descriptor.toolset == "desktop_safe" and context is None:
+    if descriptor is None:
+        return ToolResult.fail("capability tidak terdaftar untuk execution context")
+    if descriptor.toolset == "desktop_safe" and context is None:
         return ToolResult.fail("desktop_safe membutuhkan execution context desktop-local")
 
     if context is not None:
         from jarvis.agent import policy
-        if descriptor is None:
-            return ToolResult.fail("capability tidak terdaftar untuk execution context")
         decision = policy.decide(context, capability=descriptor.id, risk=descriptor.risk)
         if decision.needs_approval:
             from jarvis.agent.approval import ApprovalStore
@@ -151,7 +151,7 @@ async def execute(name: str, args: dict, adapter=None,
     except Exception:                                        # noqa: BLE001
         needs = tool.requires_confirmation
     if needs and not policy_approval_granted:
-        if descriptor is not None and descriptor.toolset == "desktop_safe" and not _is_active_native_desktop_adapter(adapter):
+        if descriptor.toolset == "desktop_safe" and not _is_active_native_desktop_adapter(adapter):
             return ToolResult.fail(
                 "desktop_safe confirmation membutuhkan adapter desktop-local")
         approved = False
@@ -177,7 +177,7 @@ async def execute(name: str, args: dict, adapter=None,
         args["_session"] = session
         args["_adapter"] = adapter
         args["_context"] = context
-        if descriptor is not None and descriptor.toolset == "desktop_safe":
+        if descriptor.toolset == "desktop_safe":
             args["_desktop_safe_confirmation"] = confirmation_granted
 
     t0 = time.perf_counter()
@@ -208,20 +208,24 @@ def _is_active_native_desktop_adapter(adapter) -> bool:
 
 def _log_call(name: str, args: dict, res: ToolResult, elapsed_s: float,
               session) -> None:
+    safe_args = _audit_args(name, args)
+    safe_error = _audit_error(name, res.error)
     _logger.info("agent.tool", tool=name, ok=res.ok,
                  elapsed_ms=round(elapsed_s * 1000, 1),
-                 error=(res.error or "")[:120] or None)
+                 error=(safe_error or "")[:120] or None)
     if session is not None:
         try:
-            session.record_tool(name, args, res, elapsed_s)
+            session_result = ToolResult(
+                ok=res.ok, content=None, display=None, error=safe_error, meta={})
+            session.record_tool(name, safe_args, session_result, elapsed_s)
         except Exception:                                    # noqa: BLE001
             pass
     try:
         record = {
             "ts": time.time(), "tool": name,
             "session": getattr(session, "id", None),
-            "args": _redact(args), "ok": res.ok,
-            "error": res.error, "elapsed_ms": round(elapsed_s * 1000, 1),
+            "args": _audit_args(name, args), "ok": res.ok,
+            "error": _audit_error(name, res.error), "elapsed_ms": round(elapsed_s * 1000, 1),
         }
         with _log_lock:
             from jarvis.agent import tool_usage
@@ -231,6 +235,28 @@ def _log_call(name: str, args: dict, res: ToolResult, elapsed_s: float,
 
 
 _SECRET_HINTS = ("key", "token", "password", "secret", "credential")
+_DESKTOP_SAFE_AUDIT_ARGS = frozenset({"observation_id", "element_id"})
+_DESKTOP_VISUAL_AUDIT_TOOLS = frozenset({"desktop_visual_observe"})
+
+
+def _audit_args(name: str, args: dict) -> dict:
+    """Keep desktop-safe and visual audit opaque; values/UI text never enter telemetry."""
+    if str(name) in _DESKTOP_VISUAL_AUDIT_TOOLS:
+        return {"action": str(name)}
+    if str(name).startswith("desktop_safe") or str(name) == "desktop_observe":
+        out = {key: str(args[key]) for key in _DESKTOP_SAFE_AUDIT_ARGS
+               if key in args and str(args[key])}
+        out["action"] = str(name)
+        return out
+    return _redact(args)
+
+
+def _audit_error(name: str, error: str | None) -> str | None:
+    if error and str(name) in _DESKTOP_VISUAL_AUDIT_TOOLS:
+        return "desktop_visual_failed"
+    if error and (str(name).startswith("desktop_safe") or str(name) == "desktop_observe"):
+        return "desktop_safe_failed"
+    return error
 
 
 def _redact(args: dict) -> dict:
