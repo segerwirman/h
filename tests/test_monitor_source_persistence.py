@@ -46,3 +46,22 @@ def test_clear_selection_preserves_sources(tmp_path):
  reg.select(src.id)
  reg.clear_selection()
  assert reg.selected() is None and [item.id for item in reg.list()] == [src.id]
+
+
+def test_briefing_reads_selected_latest_without_fetch_or_scheduler(monkeypatch):
+ from jarvis.agent.tools import briefing_tool
+ class Source: name='News'
+ class Registry:
+  def selected(self): return Source()
+ class Store:
+  def latest(self,name): assert name=='News'; return [{'title':'Safe Item','url':'https://e/a','published':'','hash':'h'}]
+ monkeypatch.setattr(briefing_tool,'_persistent_sources',lambda:Registry())
+ monkeypatch.setattr(briefing_tool,'_monitor_store',lambda:Store())
+ assert briefing_tool._monitor_latest()=={'source':'News','items':[{'title':'Safe Item','url':'https://e/a','published':'','hash':'h'}]}
+ source=open(briefing_tool.__file__,encoding='utf-8').read()
+ assert 'fetch_source' not in source and 'MonitorScheduler' not in source
+
+def test_briefing_no_selected_source_is_safe_empty(monkeypatch):
+ from jarvis.agent.tools import briefing_tool
+ monkeypatch.setattr(briefing_tool,'_persistent_sources',lambda:type('R',(),{'selected':lambda self:None})())
+ assert briefing_tool._monitor_latest()=={'source':'','items':[]}
