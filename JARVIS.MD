@@ -2,7 +2,7 @@
 
 > **Repository:** `E:\jarvis agent\h`
 > **Language:** Indonesian
-> **Current implementation status:** Phase WA8 Customer-Service Case Manager COMPLETE (2026-08-03); Phase WA9 next — menunggu keputusan Takeda
+> **Current implementation status:** Phase WA9 Controlled WhatsApp Rollout COMPLETE (2026-08-03); Phase 26 next — menunggu keputusan Takeda
 
 ## Start here in every new session
 
@@ -71,6 +71,7 @@
 | Phase WA6 | ✅ | Post-call calendar proposal: `calendar_proposal.py` — one-shot `draft → approved/rejected`, field allowlist ketat (title/start_ts/duration_min; kwarg asing ditolak), `has_conflict()` anti double-booking, `admit_start` masa depan, local approval one-shot; TANPA authority create otomatis (kontrak statis: tanpa import provider/network/write; write path `gcal_create_proposed` fase live). |
 | Phase WA7 | ✅ | Reservation commitment gate: `reservation_gate.py` — gate murni: local approval + fixed disclosure labels (commitment/cancellation_policy/no_refund/subject_to_availability) + cancellation window 1–365 hari; failure = NO-OP dengan reason fixed (closed set); commitment tercatat hanya setelah green light sebagai metadata `ready` — tanpa auto-commit. |
 | Phase WA8 | ✅ | Customer-service case manager: `service_case.py` — typed fixed set `{service_hours, appointment, order_status}` (free-form/warranty ditolak), non-secret reference, field allowlist (note 1–300 + secret guard), disclosure policy per type (payment_details tidak pernah), stop/escalation rules (secret/payment/OTP/CVV → escalated + reason fixed + stop), one-shot close, result metadata-only; TANPA free-form mission. |
+| Phase WA9 | ✅ | Controlled WhatsApp rollout: `whatsapp_rollout.py` — gate outbound lokal deny-by-default: toggle config (default False), allowlist policy, opt-out/revoke, rate limiting sliding 60s (5/menit), daily caps (50/hari, reset per-hari); deny reasons fixed set; kontrak statis: tanpa import SDK/network/file — TANPA live integration di fase ini. |
 
 ## Capability evidence classification
 
@@ -146,8 +147,8 @@ python scripts/verify_frozen.py
 ```
 
 ## Next recommended phase
-**Phase WA9 — Controlled WhatsApp Rollout** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
+**Phase 26 — Cross-Integration Live Ring** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
 
-Rollout WhatsApp terkontrol: toggle config + allowlist policy, rate limiting + daily caps, opt-out/revoke, deny-by-default; tanpa live integration di fase ini. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
+Live ring lintas-integrasi: exercise ring aman (fixture + canary) yang membuktikan rangkaian inti berjalan bersama; tanpa kredensial/live provider; hanya proof ring, bukan live-proven. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
 
 For detailed current test evidence, changed files, and exact next implementation contract, read `.hermes/handoffs/current.md`.

@@ -405,13 +405,17 @@ Guardrail: ...
 
 ## Phase WA9 — WhatsApp Call Agent Controlled Live Rollout
 
-**Tujuan:** rollout bertahap dengan master toggle default-off, duration/turn caps, visible hangup, kill switch, metadata-only audit.
+**Status:** ✅ COMPLETE (rollout policy) — 2026-08-03 (WRO `3fb6d2a`).
 
-**Rings:** owned test account → consenting trusted contact → information-only business call → appointment inquiry → hotel/flight availability → reservation continuation without payment.
+**Tujuan:** controlled rollout WhatsApp.
 
-**Acceptance:** failure menghentikan progression; kill switch menutup web call, streams, Gemini phone state, pending permit.
+**Implementasi:** `jarvis/integrations/whatsapp_rollout.py` — `WhatsAppRolloutPolicy` gate outbound lokal deny-by-default: toggle config (`rollout_enabled` default False); allowlist; opt-out/revoke; rate limiting sliding 60s (5/menit); daily caps per-hari (50, reset per-hari); deny reasons fixed set.
 
-**Fase berikutnya:** **26 — Cross-Integration Live Acceptance Ring**.
+**Acceptance:** deny-by-default + allowlist + rate limit + caps + opt-out — TERPENUHI. RED 7 failed → GREEN 7 passed; regression 81 passed; frozen `094b696` OK.
+
+**Belum dikerjakan (live lane):** master toggle duration/turn caps, visible hangup, kill switch (web call, streams, Gemini phone state, pending permit), rollout rings (owned test account → consenting trusted contact → information-only business call → appointment inquiry → hotel/flight availability → reservation continuation without payment); live integration membutuhkan approval live terpisah.
+
+**Fase berikutnya:** **26 — Cross-Integration Live Ring** — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
 
@@ -471,6 +475,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase WA9 — WhatsApp Call Agent Controlled Live Rollout** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: toggle config + allowlist policy, rate limiting + daily caps, opt-out/revoke, deny-by-default; tanpa live integration di fase ini.
-Guardrail: tidak ada live integration, deny-by-default; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase 26 — Cross-Integration Live Ring** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: exercise ring aman (fixture + canary) yang membuktikan rangkaian inti berjalan bersama; tanpa kredensial/live provider; hanya proof ring, bukan live-proven.
+Guardrail: tanpa kredensial/live provider, hanya proof ring; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

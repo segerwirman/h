@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase WA8 COMPLETE — 2026-08-03
+**Updated:** Phase WA9 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `25b3789` (CSE); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `3fb6d2a` (WRO); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -48,7 +48,9 @@ Phase WA7 reservation gate                 COMPLETE
   → RES 584b235 (commitment gate, fixed reasons, no-op failures)
 Phase WA8 service case manager             COMPLETE
   → CSE 25b3789 (typed cases + disclosure policy + escalation)
-  → sisa: tidak ada; Phase WA9 menunggu keputusan Takeda (dilarang)
+Phase WA9 whatsapp rollout policy          COMPLETE
+  → WRO 3fb6d2a (deny-by-default gates, no live integration)
+  → sisa: tidak ada; Phase 26 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -70,6 +72,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## Phase WA9 rollout milestone (2026-08-03)
+
+**Phase WA9 COMPLETE** — commit WRO `3fb6d2a`. `jarvis/integrations/whatsapp_rollout.py`: `WhatsAppRolloutPolicy` — toggle config (default False) + allowlist + opt-out/revoke + rate limiting sliding 60s + daily caps per-hari; deny reasons fixed set; kontrak statis: tanpa import SDK/network/file — TANPA live integration. RED 7 → GREEN 7; regression 81 passed; frozen `094b696` OK.
 
 ## Phase WA8 service case milestone (2026-08-03)
 
@@ -229,22 +235,21 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase WA9 — Controlled WhatsApp Rollout** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Phase 26 — Cross-Integration Live Ring** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Rollout WhatsApp terkontrol, deny-by-default, tanpa live integration.
+Exercise ring aman yang membuktikan rangkaian inti berjalan bersama.
 
 ### Scope
 
-- toggle config + allowlist policy;
-- rate limiting + daily caps;
-- opt-out/revoke; deny-by-default;
-- tanpa live integration di fase ini.
+- fixture + canary ring (bounded, deterministik, offline);
+- membuktikan rangkaian inti berjalan bersama;
+- tanpa kredensial/live provider; proof ring, bukan live-proven.
 
 ### Guardrails
 
-- Tidak ada live integration; deny-by-default.
+- Tidak ada kredensial/live provider; hanya proof ring.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -261,12 +266,12 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase WA8 COMPLETE (2026-08-03): service case (CSE 25b3789) — typed
-cases + disclosure policy + escalation rules, tanpa free-form mission.
-Worktree bersih kecuali 2 artifact (.curator_state.json, full_run.txt) —
-JANGAN di-commit. Index kosong. Frozen 094b696 OK.
+Phase WA9 COMPLETE (2026-08-03): rollout (WRO 3fb6d2a) — deny-by-default
+gates, tanpa live integration. Worktree bersih kecuali 2 artifact
+(.curator_state.json, full_run.txt) — JANGAN di-commit. Index kosong.
+Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase WA9 (Controlled WhatsApp Rollout) DILARANG
+TIDAK ADA fase aktif. Phase 26 (Cross-Integration Live Ring) DILARANG
 dimulai sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi posisi
 (read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
 lanjutan, minta approval sebelum eksekusi apa pun. Jangan
