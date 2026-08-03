@@ -1,0 +1,320 @@
+# JARVIS Active Session Handoff
+
+> **Purpose:** Baca file ini pertama kali pada setiap sesi baru. Update setelah fase COMPLETE, PARTIAL, BLOCKED, atau ketika urutan roadmap berubah. Setelah fase complete, sinkronkan juga master roadmap, `JARVIS.MD`, `.hermes/handoffs/current.md`, `.hermes.md`, dan roadmap domain.
+
+## Session identity
+
+```text
+Repository: E:\jarvis agent\h
+Branch: main
+HEAD: bcf20cd feat(desktop): add bounded canary/soak runners and manual UIA acceptance fixtures (SCR)
+Last updated: 2026-08-03 — Phase 20.3 IN PROGRESS (segmentation)
+```
+Git staging/commit: index kosong; 58 commit sesi ini (A46–A53 remediasi 13 + GWS 4 + telegram 2 + monitoring 12 + voice 5 + MR/MSG/TEL/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR 13)
+Frozen: OK — 10 files, baseline 094b696
+```
+
+## Read order
+
+1. `session.md`
+2. `.hermes/plans/2026-08-01_224934-jarvis-master-implementation-roadmap.md`
+3. `JARVIS.MD`
+4. `.hermes/handoffs/current.md`
+5. `.hermes.md`
+6. Relevant domain roadmap listed below.
+
+Relevant stabilization roadmap:
+
+`E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
+
+## Latest completed phase
+
+```text
+Phase: 20.2 — Continuity & Audit Metadata Cleanup
+Status: COMPLETE
+Completed: 2026-08-02
+```
+
+### Audit remediation milestone (2026-08-03) — semua temuan P2+P3 audit tertutup
+
+Audit mendalam Phase 20.3 (2026-08-02/03) menemukan regression produksi dan defect kontrak; seluruhnya diremediasi sebagai commit baru A46–A53 (tanpa amend):
+
+```text
+A46 8fd020f fix(desktop): restore SafeDesktopSession shape + production bindings
+    (A42 men-nest 4 method; DRIVER.click_rect rusak sejak A20)
+A47 5a1a15f test(desktop): restore 27 lost committed regression tests (additive)
+A48 af19ff9 fix(desktop): verify committed content title value (no-op -> unverified)
+A49 6201cae fix(desktop): require parent identity + order proof for reorder
+A50 a112f48 fix(privacy): visual observe fails closed on unknown/empty foreground
+A51a 7d5563c fix(remote): proposal approval atomic (CAS) + bounded capacity
+A51b cf61ebb fix(remote): atomic staging key + autonomous TTL expiry
+A51c d6f63d4 fix(remote): redact sensitive values/paths in read renderer (UNC blocker fixed)
+A51d 63abd3a fix(remote): enforce intent-specific media postconditions
+A51e 89ef894 fix(remote): runtime-owned setup queue (producer blocker fixed di v2)
+A52 3203b3d fix(remote): setup approval fixed status enum; prune final proposal states
+A53 3788f59 fix(remote): run setup import off UI thread
+```
+
+- Dua review menemukan blocker nyata (A51c UNC regex, A51e producer mismatch); keduanya di-fix dengan RED test baru + review ulang pada hash baru.
+- Seluruh commit: TDD RED→GREEN, isolated staged-only canary, cross-boundary worktree suite, compile/Ruff, cached check, production scan, frozen `094b696`, independent exact-hash review, approval Takeda.
+- Evidence dijaga jujur: desktop production path kini benar-benar `runtime-wired` (sebelumnya klaim premature); tidak ada `live-proven`.
+- Select-option Tool tetap ditahan (A27) hingga native committed-value proof tersedia.
+
+### GWS safe-read vertical milestone (2026-08-03) — A54–A57 done
+
+```text
+A54 3411daa feat(core): bounded privacy-aware briefing composer + delivery
+A55 2cb2235 feat(gws): privacy-tiered gmail summary + calendar proposal builder
+A56 35cbfa0 feat(gws): read-only gmail summary, agenda, confirmed calendar create tools
+A57 a1b35d7 feat(gws): activate gmail summary + safe agenda (gws_read descriptors; morning_briefing TIDAK diaktifkan)
+```
+
+- Evidence GWS tools: fake-injected -> `focused-tested` (tidak ada live Google call).
+- `briefing_tool` + `morning_briefing` descriptor MENUNGGU monitoring vertical (deps `monitoring.source_registry_store`).
+- Test `morning_briefing_not_activated` transient: fail di worktree (worktree capabilities.py penuh memuat morning_briefing); valid di isolated candidate; update saat briefing/monitoring slice.
+
+### Telegram + Monitoring vertical milestone (2026-08-03) — A58–A70 done
+
+```text
+A58 5727b0e feat(telegram): stage allowlisted remote phrases as bounded local-approval proposals
+A59 97b1960 feat(monitoring): validated public HTTPS source registry (M1)
+A60 7a0b3fa feat(monitoring): bounded read-only source fetcher (M2)
+A61 8c35533 feat(monitoring): bounded sqlite dedupe store + safe scan runner (M3)
+A62 ac8b47c feat(monitoring): bounded delivery formatter + substring credential-query rejection (M4; blocker api_key/access_token/passwd di-fix)
+A63 fb599a1 feat(monitoring): monitor-only scheduler (M5)
+A64 fbcfc57 feat(monitoring): persistent validated source registry, tamper-proof (M8)
+A65 d802e2a feat(monitoring): allowlisted delivery modes (M7)
+A66 428e228 feat(monitoring): persistent job registry + lifecycle worker + runtime bootstrap (M9)
+A67 9caf8ac feat(monitoring): morning briefing tool + one-shot web monitor (GWS + monitoring tools complete)
+A68 3aa7e60 feat(gws): activate morning briefing + safe/web monitoring groups (window auto-discovery ditutup)
+A69 a5812db feat(monitoring): desktop-local source manager sheet (M10)
+A70 53607b8 feat(monitoring): opt-in local boot briefing worker (monitoring vertical complete)
+```
+
+- **Monitoring vertical SELESAI (A59–A70, 12 commit)**; GWS vertical ditutup penuh (A67–A68 menambah morning_briefing + briefing_tool + web_monitor + safe_briefing/web_monitoring groups).
+- Evidence: `focused-tested` (fake/injected; tanpa live Google call, tanpa live fetch publik, tanpa live Telegram). `morning_briefing` kini descriptor `gws_read` low45; `web_monitor` TANPA descriptor → fail-closed remote (test di A68).
+- Semua slice monitoring memakai **conftest anti-editable** untuk RED/GREEN/isolated (finder `_EditableFinder` mengalihkan `jarvis.monitoring.*` ke worktree).
+- Sisa worktree: voice native (23 produksi + 24 test files), provider UX/Studio (`settings_providers.py`, `config.yaml`, `main.py`, actionpanel/action_hint), desktop remainder (`registry._audit_args`, observe branches; select-option tetap dilarang A27), window partial (`monitor_source_sheet` wiring test + action_hint_and_back), continuity docs (terakhir).
+
+### Voice vertical milestone (2026-08-03) — V1–V5 done
+
+```text
+V1 3358165 feat(voice): local-approval proposal queue + explicit briefing phrase gate
+V2 7a44eb4 feat(voice): read-only voice briefing tool wrapping safe compositor
+V3 34ee2b4 feat(voice): bounded voice proposal ingress hook + fail-open installer
+V4 12822ce feat(voice): native weather, confirmed reminder, bounded system reflex tools
+V5 4ea5a06 feat(voice): retire replaced legacy tools, native rules + confirmed message handoff
+```
+
+- **Voice vertical sisa SELESAI (V1–V5, 5 commit)**; sebagian besar voice sudah di HEAD (voice_l1, voice_live_transport, voice_notices, voice_safety, voice_tasks, voice_playback_fix, voice_persona, voice_clarify, google_voice, whatsapp_voice, voice_gate, jarvis_voice, voice_delivery).
+- V5: `_REPLACED_LEGACY_NAMES` 9 tool legacy di-retire; `message_send` wajib confirmation via UIAdapter; `rules()` guidance statis; `voice_briefing` parameterless read-only.
+- Catatan reviewer V5: `ReminderCreate`/`SystemReflex` (requires_confirmation) di voice-native lane selalu fail-closed (adapter=None) — aman, pertimbangan future: inject UIAdapter untuk semua tool requires_confirmation.
+- Partial tertutup: test_voice_briefing (schema), test_voice_briefing_native (exec), test_voice_native_system_tools (full 5). Sisa partial: test_voice_native_messaging_tools (test native_messaging menunggu slice messaging); test_voice_proposal_config (config.yaml + window.py menunggu slice UX/window).
+
+### Desktop/UX closure milestone (2026-08-03) — MR/MSG/TEL/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR done
+
+```text
+MR   4a01052 feat(monitoring): job control coverage + metadata-only lifecycle soak
+MSG  3b4f92f feat(messaging): allowlisted native message send + mandatory confirmation
+TEL  6678f50 feat(telegram): google-direct remote safe renderer, fallthrough tertutup (blocker fixed)
+UX1  0c2578d feat(monitoring): boot briefing wiring + monitor lifecycle + safe teardown
+UX2  1e41354 feat(ux): S1/S2 provider disclosure + safe error redaction
+REG  2988fb2 fix(agent): opaque desktop-safe audit trail + fail-closed capability registry
+CAP1 e90ca2f feat(desktop): confirmed select-option via opaque refs + native voice groups
+CAP2 c93c300 fix(agent): sanitize desktop-safe turns in session + lock remote read tools
+WIN  a743248 feat(ui): wire studio, monitor source sheet, local-approved proposals
+COV  e523534 test(desktop): recover desktop-safe/tool coverage (11 test files)
+SCR  bcf20cd feat(desktop): bounded canary/soak runners + manual UIA acceptance fixtures
+```
+
+- **Telegram remainder TUNTAS** (TEL menutup renderer google-direct; `gws_read` masuk default remote toolsets; mutasi remote ditolak di `match_command(remote=True)`).
+- **Desktop-safe vertical closure**: select-option kini native (CAP1, opaque ref + lease + confirmation, A27 TERBUKA), audit trail opaque (REG), session persistence sanitized (CAP2), canary/soak/acceptance fixtures (SCR).
+- 2 blocker nyata di sesi ini: A62 substring credential query (fix), TEL remote fallthrough `yt_latest` (fix + probe test).
+- Review UX2 `deleg_5f745467` menyatakan hash "tidak exist" karena salah interpretasi cached-diff convention — content review tetap valid; UX2 committed `1e41354` setelah approval.
+- Sisa worktree setelah sesi: `jarvis/agent/skills_data/.curator_state.json` (timestamp noise, jangan commit), `full_run.txt` (artifact, jangan commit), docs continuity (`.hermes.md`, `JARVIS.MD`, `.hermes/plans/*`, `.hermes/handoffs/current.md`, `session.md` ini).
+
+### ⚠️ Temuan metodologi: editable install jarvis-mk50 (2026-08-03)
+
+`jarvis-mk50` 50.0.0 ter-install editable (PEP 660) di venv Hermes:
+`__editable__.jarvis_mk50-50.0.0.pth` + `__editable___jarvis_mk50_50_0_0_finder.py`
+(MAPPING = {'jarvis': 'E:\jarvis agent\h\jarvis'}). Finder di-install sebagai CLASS di sys.meta_path.
+
+- `import jarvis.monitoring.*` (parent 'jarvis' di MAPPING) → DIALIHKAN ke worktree walau temp-dir isolated.
+- `from jarvis.core.briefing import ...` (parent 'jarvis.core' TIDAK di MAPPING) → finder None → import dari temp-dir → RED A54–A58 tetap VALID.
+- RED/GREEN untuk modul `jarvis/monitoring/*` WAJIB menambahkan conftest anti-editable di temp dir:
+  ```python
+  sys.meta_path = [f for f in sys.meta_path if getattr(f, "__name__", "") != "_EditableFinder"]
+  ```
+- RED A59 awal (18 passed) TIDAK valid; diulang dengan conftest → 18 failed → GREEN 18 passed.
+
+### Deliverables
+
+- Stale Phase 20/20.1/20.2 status and obsolete Phase-21-as-next markers are removed or explicitly marked superseded.
+- `session.md`, the master/stabilization roadmaps, `JARVIS.MD`, current handoff, `.hermes.md`, and legacy domain roadmaps agree that Phase 20.2 is complete and Phase 20.3 is next.
+- Capability evidence now uses six non-interchangeable labels: `source-present`, `configured`, `runtime-wired`, `focused-tested`, `fixture-accepted`, and `live-proven`.
+- Current provider/credential/device readiness is recorded as **not established** where Phase 20.2 did not inspect or exercise it.
+- Source presence, runtime wiring, focused tests, or disposable fixtures are never promoted to `live-proven`.
+- Phase 20.1 evidence is retained: 48/48 source modules, 99 runtime tools, nine desktop-safe exclusive-resource mappings, 352 regressions, independent review pass, and frozen baseline `094b696`.
+
+### Authority and privacy
+
+- Documentation metadata only.
+- No runtime/config/provider/credential/device state changed or exercised.
+- No secret value was inspected and no live external acceptance was run.
+- Existing policy/confirmation/session/lease/recapture contracts are unchanged.
+- No frozen file changed.
+
+### TDD and verification
+
+```text
+Documentation stale-marker/next-phase audit: PASS.
+Capability classification review: PASS; unknown live/config states remain explicit.
+Documentation UTF-8/fence/whitespace + manual review: PASS.
+No Python test/py_compile required: changed scope is Markdown only.
+Tracked-worktree git diff --check: PASS; unrelated existing CRLF advisories remain. Untracked Markdown was validated separately because Git diff does not cover it.
+frozen verifier: OK baseline 094b696.
+Non-document files and Git index: unchanged by Phase 20.2.
+Independent documentation review: PASS.
+```
+
+### Git state
+
+- No file staged by Phase 20.2.
+- No commit created by Phase 20.2.
+- Worktree remains broadly dirty from completed prior milestones.
+- Do not use `git add -A`, reset, stash, discard, or commit outside the Phase 20.3 exact-scope procedure and Takeda approval.
+
+## Active phase
+
+```text
+Phase: 20.3 — Git Worktree Segmentation & Recovery Commits
+Status: IN PROGRESS (audit remediasi A46–A53 selesai; sisa vertical belum)
+Priority: operational recovery checkpoints before capability expansion
+```
+
+### Goal
+
+Convert the broadly dirty post-initial-commit worktree into small, dependency-ordered, reviewable, reversible recovery commits without resetting, discarding, or silently mixing user work.
+
+### Exact scope
+
+Start with a read-only commit-readiness audit, then propose the exact path allowlist and validation matrix for only the first dependency slice:
+
+```text
+1. Baseline branch/HEAD/status/staged/frozen and classify generated artifacts.
+2. Build dependency graph and commit map from actual files/tests/docs.
+3. Begin with capability context/registry/policy/toolgroups only if the audit confirms the exact slice is self-contained.
+4. For each proposed commit: explicit allowlist, staged diff review, targeted tests, frozen verification, independent review, Takeda approval, then commit.
+```
+
+### Phase 20.3 guardrails
+
+- First action is read-only; do not stage while discovering scope.
+- Never use `git add -A`, broad wildcard staging, reset, checkout, restore, clean, stash, or discard.
+- Do not amend or rewrite the initial commit/history.
+- Stage only an explicit reviewed allowlist for one dependency-complete slice.
+- Review `git diff --cached --name-status` and the full cached diff before tests/approval.
+- Do not commit until Takeda approves that exact staged scope.
+- Do not mix provider enablement, credential changes, live integrations, capability expansion, or frozen edits into recovery commits.
+- Preserve frozen baseline `094b696`; stop on any mismatch.
+- Do not begin Phase 21 or later capability work during Phase 20.3.
+
+### Phase 20.3 validation
+
+```text
+- read-only worktree and generated-artifact audit;
+- exact staged path + dependency review per candidate commit;
+- targeted tests for each staged slice;
+- changed-Python compile where applicable;
+- git diff --check and cached diff review;
+- python scripts/verify_frozen.py;
+- independent review before requesting Takeda commit approval.
+```
+
+## Planned phase order
+
+```text
+20.2 continuity cleanup ✅
+→ 20.3 Git segmentation/recovery commits (NEXT)
+→ 21 desktop-safe production-path fixture
+→ 22 Content Studio scene-list UX
+→ 23 export timing/preview
+→ 24 runtime lifecycle reliability
+→ 25 credential-free canary
+→ WA0 WhatsApp readiness
+→ WA1 native countdown timer
+→ WA2 call session/approval
+→ WA3 real two-way audio proof
+→ WA4 bounded autonomous call dialogue
+→ WA5 call memory/privacy
+→ WA6 post-call Calendar proposal
+→ WA7 reservation commitment gate
+→ WA8 customer-service case manager
+→ WA9 controlled WhatsApp rollout
+→ 26 cross-integration live ring
+→ 27 named local facade
+→ 28 mediated remote facade
+→ 29 optional next exact UI surface
+```
+
+## Mandatory completion protocol
+
+After every phase:
+
+1. update this file;
+2. update master roadmap;
+3. update `JARVIS.MD`;
+4. update `.hermes/handoffs/current.md`;
+5. update `.hermes.md`;
+6. update relevant domain roadmap;
+7. record RED/GREEN/regression/compile/diff/frozen/review evidence;
+8. record Git stage/commit state;
+9. state exact next phase, scope, and guardrail;
+10. provide a ready-to-copy new-session prompt;
+11. do not start the next phase automatically.
+
+## Resume prompt
+
+```text
+Lanjutkan JARVIS di E:\jarvis agent\h.
+
+Baca berurutan:
+1. session.md
+2. .hermes/plans/2026-08-01_224934-jarvis-master-implementation-roadmap.md
+3. JARVIS.MD
+4. .hermes/handoffs/current.md
+5. .hermes.md
+6. roadmap stabilisasi yang disebut di session.md
+
+HEAD: 3788f59 (A53). Index kosong. Frozen 094b696 OK. Dirty ±124 entri.
+Fase aktif: Phase 20.3 — Git Worktree Segmentation & Recovery Commits
+(IN PROGRESS).
+
+Sesi sebelumnya: audit mendalam menemukan regression produksi (A42 men-nest
+4 method SafeDesktopSession, DRIVER.click_rect rusak sejak A20, title/reorder
+no-op dilaporkan verified, visual capture fail-open, proposal double-execution,
+staging key race, renderer echo nilai sensitif, media postcondition berlawanan,
+setup queue forgeable). Seluruhnya diremediasi sebagai A46–A53 (14 commit):
+shape+bindings desktop pulih, 27 regression tests dipulihkan additive, title
+committed-value verification, reorder parent/order proof, visual fail-closed,
+proposal CAS+capacity+final-state prune, staging key atomic+TTL autonomous,
+renderer redaction (UNC fixed), media postconditions, setup status enum,
+setup queue runtime-owned (producer+window), import off UI thread. Semua lewat
+TDD, isolated staged-only canary, cross-boundary suite, independent exact-hash
+review, approval Takeda. Desktop production path kini benar-benar
+runtime-wired; tidak ada live-proven. Select-option Tool tetap ditahan (A27).
+
+Sisa ±124 entri: desktop remainder (session click method recovery selesai via
+A46; observe text_field/card branches, voice scroll test, select-option Tool
+module, registry._audit_args), GWS safe-read (gmail_safe/gcal/briefing),
+monitoring 17A–17M, voice native, Telegram adapters remainder (proposal ingress
+hunk), provider UX/settings, Studio mount, docs continuity.
+
+Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
+partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,
+cached check, production scan, frozen) → independent review exact hash →
+approval Takeda → commit. Jangan git add -A/reset/checkout/restore/clean/
+stash/discard/amend. Jangan ubah provider/credential/live/authority/frozen.
+Jangan mulai Phase 21. Lanjutkan vertical berikutnya (rekomendasi: GWS
+safe-read, lalu monitoring, lalu voice) setelah dependency audit.
+```

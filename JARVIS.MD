@@ -1,0 +1,138 @@
+# JARVIS — Durable Project Handoff
+
+> **Repository:** `E:\jarvis agent\h`
+> **Language:** Indonesian
+> **Current implementation status:** Phase 20.2 continuity/audit metadata cleanup complete; Phase 20.3 next
+
+## Start here in every new session
+
+1. Read `session.md`.
+2. Read `.hermes/plans/2026-08-01_224934-jarvis-master-implementation-roadmap.md`.
+3. Read this file.
+4. Read `.hermes/handoffs/current.md`.
+5. Read `.hermes.md`.
+6. Read the relevant domain roadmap named by `session.md`.
+7. Inspect the relevant source and existing tests before proposing changes.
+
+## Completed milestones
+
+| Phase | Status | Summary |
+|---|---:|---|
+| 10–11 | ✅ | Bounded semantic desktop controls: click, scroll, set value, select option, toggle; local confirmation and recapture verification. |
+| 14–14.5 | ✅ | Desktop visual observation, coarse/in-memory/read-only, privacy soak. |
+| 15S | ✅ | Secure Telegram OAuth setup upload: encrypted staging, local desktop approval only. |
+| 15A | ✅ | Telegram safe GWS read-only catalog and bounded remote renderer. |
+| 16A | ✅ | Google installed OAuth client import bridge to existing local consent. |
+| 16B | ✅ | Gmail privacy-tiered safe summaries. |
+| 16C | ✅ | Calendar safe agenda plus complete locally approved event proposal. |
+| 16D | ✅ | Opt-in local Calendar/Gmail TTS briefing. |
+| 17A | ✅ | Public HTTPS source registry and one-shot bounded read-only fetch. |
+| 17B | ✅ | Bounded SQLite metadata store, canonical URLs, hash dedupe, scan runner. |
+| 17B.1 | ✅ | Scheduler isolated from generic `agent.cron` / `dispatch.run_sync`. |
+| 17C | ✅ | Bounded on-request, desktop, and whitelist-gated Telegram monitor digest delivery. |
+| 17D | ✅ | Opt-in local boot briefing composes Calendar, Gmail, and bounded monitor titles after readiness. |
+| 18A | ✅ | Final voice can stage an opt-in Focus Mode proposal; desktop-local UI alone confirms/cancels and executes. |
+| 18B | ✅ | Explicit voice briefing is parameterless/read-only and returns only the bounded safe briefing text. |
+| 17E | ✅ | Validated monitor-source metadata and selected source persist, enabling restart-safe latest-summary briefing reads. |
+| 17F | ✅ | Desktop-local Command Palette sheet adds/selects/clears validated monitor sources without fetch or remote authority. |
+| 17G | ✅ | Desktop-local UI persists selected-source monitor job registrations with validated schedule/delivery mode. |
+| 17H | ✅ | Separate supervised monitor worker loads registrations, ticks bounded scheduler, and routes existing delivery. |
+| 17I | ✅ | Desktop-local metadata-only monitor status exposes safe worker/job state without raw content. |
+| 17J | ✅ | Desktop-local monitor jobs can be enabled/disabled; only finite safe last status and timestamp persist. |
+| 17K | ✅ | Restart-safe monitor lifecycle rehydrates only enabled registrations, preserves safe metadata, and joins launched worker threads on stop. |
+| 17L | ✅ | Metadata-only low-N soak proves enabled, disabled, safe-failure, and restart worker fixtures repeatably pass. |
+| 17M | ✅ | Hidden desktop-local monitor sheet presents finite job states in concise Indonesian without timestamps or raw failure detail. |
+| Studio A | ✅ | Desktop-local Content Studio supports bounded local brief intake and project/scene planning without external execution. |
+| Studio B | ✅ | Image generation is restricted to one explicitly selected scene via configured provider, returning local asset metadata only. |
+| Studio C | ✅ | Studio action toggles only Studio via ContentStage; header focus control restores prior Focus Mode state on close; no generic desktop mutation. |
+| Studio D | ✅ | Local timeline model plus bounded project-owned export (storyboard/prompt sheet/shot list/voiceover/captions/asset manifest/JSON/CSV); rejects unsafe formats, no render/publish/path leak. |
+| UI U1 | ✅ | Legacy awareness icon retired from the default action panel; watcher stays default-off and can be re-added via config; Studio/Focus icons unaffected. |
+| UI U2 | ✅ | Shared pure privacy denylist extracted from legacy watcher; static consumer assessment completed without pruning watcher. |
+| Settings S1 | ✅ | Daily provider sheet defaults to simple setup; expert routing hidden, draft/test errors sanitized, and Save/Activate remain distinct. |
+| Settings S2 | ✅ | Existing expert light/heavy routing is available only through an explicit local collapsed disclosure with no policy/config side effect. |
+| 15B | ✅ | Paired Telegram can stage only allowlisted Focus Mode metadata; desktop-local sheet is sole approve/cancel/execute boundary with binding, TTL, and one-shot semantics. |
+| 15C | ✅ | Paired Telegram stages fixed media commands only; desktop approval executes existing verified browser-media path and keeps result metadata-only. |
+| Phase 19 | ✅ | Intent-specific bounded setter for Content Studio Judul Project only (local policy + UI + native UIA ValuePattern); rejects URL/password/OTP/payment/terminal/chat; desktop-local confirmation + recapture, no generic typing. |
+| Phase 20 | ✅ | Semantic bounded reorder for Content Studio scene list only: policy admit_reorder + sheet move_scene + desktop drag semantic same-surface RuntimeId proof; schema 3 props only, confirmation mandatory, no filesystem/upload/coordinate/path/secret leak. |
+| Phase 20.1 | ✅ | All 48 source tool modules and 99 runtime tools map to explicit groups; nine desktop-safe tools share exclusive `desktop` resource with generic computer control; optional safe Google/briefing modules are pre-mapped without enabling providers or broadening authority. |
+| Phase 20.2 | ✅ | Durable continuity metadata is synchronized; stale next-phase markers are removed/superseded; source/config/wiring/test/fixture/live evidence is classified without treating source or unit tests as live proof. |
+
+## Capability evidence classification
+
+The canonical definitions and full snapshot live in the master roadmap. These labels are independent; an earlier label never implies a later one.
+
+| Label | Meaning |
+|---|---|
+| `source-present` | Static implementation exists. |
+| `configured` | Required configuration/credential/device readiness was checked without exposing secret values. |
+| `runtime-wired` | A production registry/boot/consumer seam exists, possibly behind a gate. |
+| `focused-tested` | Relevant automated tests passed; mock/fake/offscreen evidence stays in this class. |
+| `fixture-accepted` | Production path ran on a bounded disposable/local fixture. |
+| `live-proven` | An explicit approved run succeeded on the real external service/device/surface. |
+
+Current audit truth: Phase 20.1 is `runtime-wired` + `focused-tested`; monitor 17L has explicit low-N `fixture-accepted` evidence. Foundational desktop-safe acceptance scripts are source-present, but the reviewed continuity docs do not contain enough execution evidence to label that lane `fixture-accepted`; Phase 19/20 remain only `focused-tested` pending the Phase 21 production-path fixture. Telegram, Google, image, voice, and WhatsApp current configuration/live state is **not established** by Phase 20.2. Their source, conditional wiring, or tests are not `live-proven`.
+
+## Current monitoring architecture
+
+```text
+Validated MonitorSource (public HTTPS; api/rss/html)
+→ fetch_source() bounded items
+→ PersistentSourceRegistry (validated metadata + selected source ID)
+→ desktop-local Command Palette source sheet (add/select/clear only)
+→ MonitorStore (SQLite metadata only, capped + canonical dedupe)
+→ scan_source()
+→ MonitorScheduler.tick_detailed()
+→ MonitorDeliveryCoordinator
+→ render_digest() bounded
+→ Telegram whitelist sink OR BUS.notify desktop sink
+```
+
+## Non-negotiable safety invariants
+
+- `MonitorScheduler.create_monitor_job()` accepts only a validated `MonitorSource` and a cron schedule.
+- Scheduler never imports/uses `jarvis.agent.cron`, `jarvis.agent.dispatch`, or `dispatch.run_sync`.
+- No monitor authority for shell, browser automation, login, CAPTCHA bypass, typing, UIA, coordinates, desktop action, free-text agent task, or credentials.
+- Store/digest never contains raw HTML, cookies, headers, token/secret/path/body, attachment, OCR, screenshot, or browser state.
+- Telegram receives only a `render_digest()` string through whitelist-gated `send_from_anywhere()`.
+- Desktop delivery only publishes `BUS.notify`; it does not drive UI controls.
+- 17D boot briefing starts only after `BootSequence` readiness and runs on a daemon worker; it uses the existing bounded briefing tool and local drawer/TTS sinks only.
+- Boot monitor content is default OFF and never invokes `fetch_source`, `MonitorScheduler`, or Telegram delivery.
+- 18A voice ingress can only stage allowlisted proposal metadata from final STT when its config flag is enabled; it cannot execute or approve.
+- Desktop-local UI is the only confirmation/execution boundary for the current Focus Mode proposal; no remote, UIA, coordinate, or generic desktop route exists.
+- 18B voice readout has a parameterless native schema and returns only the bounded `briefing` field; it does not route raw source data or tool dumps into speech.
+- 17E persists only validated public source metadata and selected source ID; persisted rows are revalidated and briefings read bounded `latest()` without fetch/scheduler authority.
+- 17J persists only local job `enabled` state plus allowlisted `last_status` (`not_started`, `ok`, `source_failed`) and numeric timestamp; it never persists raw scan result, response body, exception, task, or arbitrary status text.
+- Disable excludes a job from worker installation; enable/disable never starts workers or fetches a source.
+- 17K runtime reconstruction rehydrates only enabled persisted registrations exactly once per worker; safe status metadata survives SQLite reopen, and `stop()` joins a launched monitor worker before reconstruction.
+- 17L runs a fixed local fixture allowlist (`enabled`, `disabled`, `safe_failure`, `restart`) at low N and emits only `{fixture,status,iterations}` metadata. It fails closed and marks later fixtures `not_run`; it never exposes child output or exception content.
+- 17M maps finite persisted job state to concise Indonesian labels: `Aktif`/`Dinonaktifkan` and `Belum pernah berjalan`/`Pemeriksaan terakhir aman`/`Gagal mengambil sumber`; no timestamp or raw failure content is rendered.
+- Studio A accepts bounded local `.txt`, `.md`, `.docx`, and `.pdf` creative briefs, returning text without source paths; its project/scene model and hidden stage panel are desktop-local and do not upload, generate, render, publish, browse, login, or invoke remote authority.
+- Studio B accepts only one explicit valid scene index, invokes the existing configured image lane with `n=1`, and returns `{scene_index,provider,model,state}` only; asset path stays internal and no bulk/publish/remote/OAuth-token path exists.
+- Studio C toggles only the registered Studio panel via `ContentStage`; same icon closes it. Header `FOCUS ON/OFF` emits only a boolean request; controller restores prior Focus Mode state that existed before Studio opened. No generic desktop mutation, terminal overlay, or frozen-file change is introduced.
+- Studio D builds a local scene timeline (order, title, narration, visual_prompt, duration, asset_state) and exports only project-owned strings via a fixed format allowlist (`storyboard_md`, `prompt_sheet`, `shot_list_csv`, `voiceover_md`, `captions_srt`, `asset_manifest_json`, `project_json`, `project_csv`). Unknown/unsafe formats fail closed; it never renders/edits video, writes files, publishes, uploads, or leaks paths/secrets.
+- UI U1 removes `awareness` from the default `action_panel.icons` list only; the `screen_awareness` watcher stays default-off and is not deleted, the `awareness_clicked` signal and `_toggle_awareness` handler remain, and re-adding `awareness` to config restores the icon. Studio and Focus icons are unaffected.
+- UI U2 adds pure `privacy_denylist.is_denylisted()` shared by legacy watcher, UIA capture, and in-memory visual observe; compatibility wrapper preserves watcher behavior. Static audit classifies watcher start as local lazy, supervisor stop as optional lifecycle cleanup, proactive subscription as currently unproven/optional, and UIA/visual observe as lazy shared-helper consumers. No prune/deletion occurs.
+- Settings S1 hides expert light/heavy routing controls by default while retaining the existing simple provider path (Select → Connect/Key → Test → Choose Model → Activate). Discovery and agent-probe failures use fixed safe UI messages, never raw error/draft-secret text; Test uses the existing in-memory draft and Save/Activate remain distinct.
+- Settings S2 adds one local `TAMPILKAN/SEMBUNYIKAN ROUTING LANJUTAN` disclosure. It starts collapsed, only toggles existing expert widget visibility, and performs no provider routing/config write or policy change.
+- 15B remote ingress accepts exact Focus Mode phrases from a paired Telegram actor only, then stages actor/session-bound metadata in a TTL one-shot queue. Telegram receives only the safe pending-local-approval notice; `RemoteProposalSheet` on desktop alone approve/cancels through a narrow Focus Mode executor. No generic action, raw argument, UIA/coordinate/screenshot/secret, or remote approval route exists.
+- 15C extends that queue with fixed `media_play/pause/mute/unmute/volume_up/volume_down` actions only. Desktop approval maps them to existing `BrowserMedia.run()` and accepts success only through its post-action verification; remote-facing result is `{state, muted, volume_percent}` only, never page URL/title/DOM/content. Navigation, set-volume, toggle, skip-ad, coordinates, and remote desktop actions reject.
+- Phase 19 implements exactly one trusted local intent `content_studio_title` (Judul Project). It uses `content_title_policy.admit_title()` bounded 1-120, rejects URL, password/passcode/PIN/OTP, payment/credit-card, sign-in/login, bank/transfer, terminal/shell, send-email/compose/chat. Desktop tool `desktop_safe_set_content_title` accepts only `{observation_id, element_id, project_title}`, requires registry confirmation, checks session ownership, requires RuntimeId identity and same-surface recapture, never exposes raw title/path/secret, never accepts coordinates/key/drag/generic text dispatch. UI sheet `set_project_title()` routes only through policy and preserves other fields. No submit/navigation/publish/network/path-leak.
+- Phase 20 implements exactly one trusted local intent `content_studio_scene_reorder` (Content Studio scene list). Policy `content_scene_reorder.admit_reorder(from,to,size)` bounded int only (bool rejected), same-surface, same parent RuntimeId, no coordinate/path/generic drag/upload. Sheet `move_scene(from,to)` uses only policy, returns safe metadata, preserves other project fields, updates selected mapping. Desktop tool `desktop_safe_reorder_scene` schema only `{observation_id, source_element_id, destination_element_id}`, requires registry confirmation, session ownership, distinct RuntimeId, same-surface + same-parent verification, one native drag center-to-center only, recapture verifies both RuntimeId, no filesystem/upload/path/secret leak. `desktop_observe` advertises card role with intent fixed, no label leak.
+- Phase 20.1 changes catalog/resource metadata only. Production registry has no fallback `other`, duplicate group/module membership, or unmapped module; diagnostic fallback remains for unknown future modules. All semantic desktop observation/mutation modules use exclusive resource `desktop`; Content Studio model-only prompt remains resource-free. Provider availability/config, schemas, remote toolsets, confirmation, and executor authority are unchanged.
+- Local desktop approval remains the authority for all mutation.
+
+## Validation standard
+
+```bash
+unset PYTHONPATH; python -m pytest -q <focused-tests>
+python -m py_compile <changed-python-files>
+git diff --check
+python scripts/verify_frozen.py
+```
+
+## Next recommended phase
+**Phase 20.3 — Git Worktree Segmentation & Recovery Commits.**
+
+Start with a read-only commit-readiness audit, generated-artifact classification, dependency graph, and exact allowlist for only the first recovery slice. Never use broad staging or destructive Git operations; review the cached diff and run targeted validation before asking Takeda to approve an exact commit. Do not mix provider/credential/live integration/authority/frozen changes or begin Phase 21.
+
+For detailed current test evidence, changed files, and exact next implementation contract, read `.hermes/handoffs/current.md`.
