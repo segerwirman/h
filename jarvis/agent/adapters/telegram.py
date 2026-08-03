@@ -695,6 +695,17 @@ class TelegramService:
         if not self._gateway_registry.accept_inbound("telegram", message_id, chat_id):
             return
         text = (update.message.text or "").strip()
+        # 15B: exact allowlisted remote request becomes metadata-only local approval.
+        from jarvis.agent import remote_proposal_ingress, remote_proposals
+        proposal = remote_proposal_ingress.stage_text(
+            remote_proposals.get_queue(), actor_id=f"telegram:{chat_id}",
+            session_id=self._session_id(chat_id), text=text, paired=True)
+        if proposal.get("accepted"):
+            from jarvis.core.bus import BUS
+            BUS.publish("remote_proposal.pending", proposal_id=proposal["proposal_id"],
+                        actor_id=f"telegram:{chat_id}", session_id=self._session_id(chat_id))
+            await self._reply_text(update.message, "Permintaan menunggu persetujuan desktop lokal.")
+            return
         # jawaban untuk pertanyaan clarify yang menunggu?
         fut = self._await_text.pop(chat_id, None)
         if fut is not None and not fut.done():
