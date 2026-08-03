@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase 29 COMPLETE — 2026-08-03 (ROADMAP UTAMA SELESAI)
+**Updated:** WA7-lanjutan COMPLETE — 2026-08-03 (lanjutan roadmap)
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `27c71f8` (UIF); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `b1003f9` (CON); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -58,7 +58,10 @@ Phase 28 mediated remote facade            COMPLETE
   → RMF 0cae0a2 (proposal-only, local approval, TTL)
 Phase 29 UI surface → facade                COMPLETE
   → UIF 27c71f8 (window countdown via facade, artifacts local-only)
-  → ROADMAP UTAMA 20.1→29 SELESAI; fase berikutnya ditentukan Takeda
+  → ROADMAP UTAMA 20.1→29 SELESAI
+WA7-lanjutan decision continuation         COMPLETE
+  → CON b1003f9 (exact-option permit + payment hard block)
+  → sisa WA7 tuntas; berikutnya WA2-lanjutan (menunggu Takeda)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -80,6 +83,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## WA7-lanjutan milestone (2026-08-03)
+
+**WA7-lanjutan COMPLETE** — commit CON `b1003f9`. `reservation_continuation.py`: ExactOptionPermit one-shot TTL 120s (snapshot exact terms; changed term → invalidated selamanya); HardBlockGuard no-payment (transfer/bayar/card/cvv/otp/pin/password → reason fixed `reservation_payment_hard_block`); simulate_decision_flow (changed-price & no-payment proof). RED 7 → GREEN 7; regression 116 passed; frozen `094b696` OK.
 
 ## Phase 29 UI-facade milestone + ROADMAP COMPLETE (2026-08-03)
 
@@ -259,17 +266,17 @@ JARVIS.MD
 
 ## Next phase
 
-**DITENTUKAN TAKEDA** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**WA2-lanjutan — Call States & Approval Sheet UI** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Fase berikutnya setelah roadmap utama selesai.
+Melengkapi state machine call dengan states DIALING/CONNECTED/FAILED.
 
 ### Scope
 
-- live lane: WA3/26/WA9 live proof, WA0 call hardware, gcal_create_proposed;
-- facade lanjutan: Content Studio/focus/media/timer/call-session;
-- actor binding; remediasi awareness pre-existing; atau pilihan Takeda.
+- DIALING → CONNECTED → AWAITING_DECISION/FAILED states;
+- constraints & allowed disclosures field;
+- approval sheet UI (offscreen test).
 
 ### Guardrails
 
@@ -290,15 +297,15 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase 29 COMPLETE (2026-08-03): UI-facade (UIF 27c71f8) — window countdown
-via facade, artifacts local-only. ROADMAP UTAMA 20.1→29 SELESAI. Worktree
-bersih kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN
-di-commit. Index kosong. Frozen 094b696 OK.
+WA7-lanjutan COMPLETE (2026-08-03): decision continuation (CON b1003f9) —
+exact-option permit + hard block, sisa WA7 tuntas. Worktree bersih kecuali
+2 artifact (.curator_state.json, full_run.txt) — JANGAN di-commit. Index
+kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif — fase berikutnya DITENTUKAN TAKEDA (tidak dipilih
-otomatis). Tugas sesi: verifikasi posisi (read-only), audit
-worktree/HEAD/frozen, presentasikan status + opsi lanjutan, minta
-approval sebelum eksekusi apa pun. Jangan
+TIDAK ADA fase aktif — WA2-lanjutan (Call States & Approval Sheet UI)
+DILARANG dimulai tanpa approval eksplisit Takeda. Tugas sesi: verifikasi
+posisi (read-only), audit worktree/HEAD/frozen, presentasikan status +
+opsi lanjutan, minta approval sebelum eksekusi apa pun. Jangan
 git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
 provider/credential/live integration/authority/frozen.
 ```

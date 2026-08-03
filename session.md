@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: 27c71f8 feat(ui): wire window countdown to local facade with local-only artifacts (UIF)
-Last updated: 2026-08-03 — Phase 29 COMPLETE (UI surface → facade; ROADMAP SELESAI)
+HEAD: b1003f9 feat(core): exact-option permit with changed-term invalidation and payment hard block (CON)
+Last updated: 2026-08-03 — WA7-lanjutan COMPLETE (decision continuation & hard block)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 81 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF 27c71f8)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 82 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON b1003f9)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: WA7-lanjutan — Decision Continuation & Hard Block
+Status: COMPLETE (sisa WA7)
+Completed: 2026-08-03 (CON b1003f9; frozen 094b696 OK)
+```
 
 ```text
 Phase: 29 — Optional Next Exact UI Surface
@@ -308,22 +314,23 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: 29 — Optional Next Exact UI Surface
-Status: COMPLETE — 2026-08-03 (UIF 27c71f8)
-Priority: UI wired to facade, local-only artifacts
+Phase: WA7-lanjutan — Decision Continuation & Hard Block
+Status: COMPLETE — 2026-08-03 (CON b1003f9)
+Priority: exact-option permit, changed-term invalidation, no-payment
 ```
 
 ### Outcome
 
-- Facade baru `start_countdown` di `local_facades.py` (komposisi WA1 CountdownTimer): step `start_timer` → `{ok, status: running, remaining_s}`; durasi invalid → step reject; `invoke` kini mengembalikan **`artifacts`** (objek lokal seperti timer — LOKAL ONLY, remote view/bridge tidak pernah menyertakan).
-- **UI surface di-wire ke facade**: `MainWindow(services, facades=None)` — default `default_facades()`; `start_countdown()` route via facade invoke — **UI tidak pernah bypass facade** (test: registry deny → window `start_countdown` False + `_countdown is None`); visual orb/driver (WA1) tetap identik.
-- TDD: RED 2 failed → GREEN 13 passed; regression 63 passed (wiring + facades + bridge + ring + window integration + countdown; hanya awareness pre-existing); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 21 passed; approval Takeda.
+- `jarvis/core/reservation_continuation.py` (baru): `ExactOptionPermit` — one-shot short-lived (TTL 120s, clock injectable): `create(option)` snapshot exact terms `{price, fees, date, cancellation}` → `approve()` LOKAL → `active`; `matches(candidate)` exact match → berlaku, **satu term berubah → `invalidated` SELAMANYA** (test: option asli pun tidak berlaku lagi).
+- `HardBlockGuard` — no-payment boundary: transfer/bayar/payment/deposit/kartu/cvv/otp/pin/password/rekening/bank → blocked + reason fixed `reservation_payment_hard_block`; teks normal aman.
+- `simulate_decision_flow()` — simulator: **changed price → permit invalidated + commit ditolak**; **customer turn payment → hard block + commit ditolak**; happy path exact → commit allowed. Kontrak statis tanpa provider/network/file.
+- TDD: RED 7 failed → GREEN 7 passed; regression 116 passed (continuation + gate + facades + bridge + ring + WA0–WA9 + UI wiring; 3× stabil); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 24 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: DITENTUKAN TAKEDA (roadmap utama 20.1→29 SELESAI)
+Phase: WA2-lanjutan — Call States & Approval Sheet UI (rekomendasi #2)
 Status: MENUNGGU KEPUTUSAN TAKEDA
 Guardrail: jangan mulai fase baru tanpa approval eksplisit Takeda.
 ```
@@ -352,7 +359,8 @@ WA9 controlled WhatsApp rollout ✅ (WRO 3fb6d2a, 2026-08-03)
 27 named local facade ✅ (FAC aaa4dba, 2026-08-03)
 28 mediated remote facade ✅ (RMF 0cae0a2, 2026-08-03)
 29 optional next exact UI surface ✅ (UIF 27c71f8, 2026-08-03)
-→ fase berikutnya: DITENTUKAN TAKEDA (roadmap selesai)
+WA7-lanjutan decision continuation ✅ (CON b1003f9, 2026-08-03)
+→ WA2-lanjutan call states (MENUNGGU keputusan Takeda)
 ```
 
 ## Mandatory completion protocol
@@ -384,18 +392,17 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: 27c71f8 (UIF). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: b1003f9 (CON). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Phase 29 COMPLETE (2026-08-03): UI surface → facade — window countdown
-di-wire ke facade lokal (artifacts lokal only), UI tidak pernah bypass
-facade. RED 2 → GREEN 13; regression 63 passed.
+WA7-lanjutan COMPLETE (2026-08-03): decision continuation & hard block —
+exact-option permit (TTL 120s, changed term → invalidated selamanya),
+hard block payment/CVV/OTP/PIN (reason fixed), simulator changed-price
+invalidation & no-payment proof. RED 7 → GREEN 7; regression 116 passed.
 
-ROADMAP UTAMA SELESAI (20.1 → 29, semua fase COMPLETE).
-Fase aktif: TIDAK ADA — fase berikutnya DITENTUKAN TAKEDA (tidak dipilih
-otomatis). Verifikasi posisi dulu, presentasikan status + opsi, minta
-approval sebelum eksekusi.
+Fase aktif: TIDAK ADA. WA2-lanjutan (Call States & Approval Sheet UI)
+DILARANG dimulai tanpa approval eksplisit Takeda.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,

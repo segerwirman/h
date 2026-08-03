@@ -378,9 +378,9 @@ Guardrail: ...
 
 **Implementasi (gate inti):** `jarvis/core/reservation_gate.py` — `ReservationCommitmentGate` gate murni: local approval (`reservation_approval_missing`); fixed disclosure labels (`commitment/cancellation_policy/no_refund/subject_to_availability`; asing → `reservation_unknown_label`; kosong → `reservation_disclosure_missing`); cancellation window 1–365 hari (`reservation_cancellation_window_missing`); failure = no-op (state tidak berubah, tidak mencatat — dikunci test); commitment tercatat hanya setelah green light sebagai metadata `ready`; reason codes closed set; tanpa auto-commit.
 
-**Decision continuation (belum dikerjakan):** exact option/price/fees/date/cancellation readback → local approval → short-lived exact-option permit; changed term invalidates permit.
+**Decision continuation:** ✅ COMPLETE — `jarvis/core/reservation_continuation.py` — `ExactOptionPermit` (readback exact option → local approval → short-lived permit TTL 120s; **changed term invalidates permit selamanya**); `HardBlockGuard` no-payment boundary; `simulate_decision_flow()` bukti changed-price invalidation & no-payment (RED 7 → GREEN 7; regression 116 passed; CON `b1003f9`).
 
-**Hard block (belum dikerjakan):** payment, deposit, bank transfer, card, CVV, OTP, PIN, password; user mengambil alih official payment channel.
+**Hard block:** ✅ COMPLETE (guard) — payment, deposit, bank transfer, card, CVV, OTP, PIN, password → reason fixed `reservation_payment_hard_block`; **belum dikerjakan**: user mengambil alih official payment channel (live lane).
 
 **Acceptance:** gate failure no-op + alasan fixed; tanpa auto-commit — TERPENUHI (gate inti). RED 7 failed → GREEN 7 passed; regression 58 passed; frozen `094b696` OK. Simulator changed-price invalidation & no-payment boundary: belum dikerjakan.
 
@@ -497,6 +497,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**DITENTUKAN TAKEDA — ROADMAP UTAMA 20.1→29 SELESAI** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: opsi tersedia — live lane (WA3/26/WA9 live proof, WA0 call hardware, gcal_create_proposed), facade lanjutan, actor binding, remediasi awareness pre-existing, atau fase baru pilihan Takeda.
+**WA2-lanjutan — Call States & Approval Sheet UI** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: DIALING → CONNECTED → AWAITING_DECISION/FAILED states, constraints & allowed disclosures field, approval sheet UI (offscreen test).
 Guardrail: tidak ada eksekusi tanpa approval eksplisit Takeda; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
