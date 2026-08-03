@@ -2,7 +2,7 @@
 
 > **Repository:** `E:\jarvis agent\h`
 > **Language:** Indonesian
-> **Current implementation status:** Phase WA6 Post-Call Calendar Proposal COMPLETE (2026-08-03); Phase WA7 next — menunggu keputusan Takeda
+> **Current implementation status:** Phase WA7 Reservation Commitment Gate COMPLETE (2026-08-03); Phase WA8 next — menunggu keputusan Takeda
 
 ## Start here in every new session
 
@@ -69,6 +69,7 @@
 | Phase WA4 | ✅ | Bounded call dialogue: `call_dialogue.py` — turn alternation ketat local↔remote (double-turn ditolak), stop word → `interrupted`, secret/PII guard (marker + 12–19 digit → ditolak & tidak disimpan), `MAX_TURNS=20` → `completed`, terikat session active; `summary()` metadata-only tanpa transcript; bus `call.dialogue.turn/ended` ringan tanpa teks. |
 | Phase WA5 | ✅ | Call memory & privacy: `call_memory.py` — `CallMemoryStore` in-memory (tanpa file write), field allowlist ketat `{session_id, status, duration_s, turn_count}` (transcript/audio/path ditolak), opt-in config `integrations.call.memory_enabled`, PII/secret guard (marker + 12–19 digit), retention bounded `MAX_ENTRIES=50` evict tertua + `clear()`; memory hanya metadata — dikunci test. |
 | Phase WA6 | ✅ | Post-call calendar proposal: `calendar_proposal.py` — one-shot `draft → approved/rejected`, field allowlist ketat (title/start_ts/duration_min; kwarg asing ditolak), `has_conflict()` anti double-booking, `admit_start` masa depan, local approval one-shot; TANPA authority create otomatis (kontrak statis: tanpa import provider/network/write; write path `gcal_create_proposed` fase live). |
+| Phase WA7 | ✅ | Reservation commitment gate: `reservation_gate.py` — gate murni: local approval + fixed disclosure labels (commitment/cancellation_policy/no_refund/subject_to_availability) + cancellation window 1–365 hari; failure = NO-OP dengan reason fixed (closed set); commitment tercatat hanya setelah green light sebagai metadata `ready` — tanpa auto-commit. |
 
 ## Capability evidence classification
 
@@ -144,8 +145,8 @@ python scripts/verify_frozen.py
 ```
 
 ## Next recommended phase
-**Phase WA7 — Reservation Commitment Gate** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
+**Phase WA8 — Customer-Service Case Manager** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
 
-Gate komitmen reservasi: reservasi = komitmen → wajib gate ekstra (local approval + fixed disclosure labels + cancellation window), tanpa auto-commit; setiap gate failure → no-op + alasan fixed. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
+Typed case manager: service hours, appointment, order-status inquiry dengan non-secret reference; setiap case punya field allowlist, disclosure policy, stop/escalation rules; tidak ada free-form mission yang memperluas authority. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
 
 For detailed current test evidence, changed files, and exact next implementation contract, read `.hermes/handoffs/current.md`.

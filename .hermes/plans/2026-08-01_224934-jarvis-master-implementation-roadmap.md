@@ -372,13 +372,17 @@ Guardrail: ...
 
 ## Phase WA7 — Inquiry vs Reservation Commitment Gate
 
+**Status:** ✅ COMPLETE (commitment gate inti) — 2026-08-03 (RES `584b235`).
+
 **Tujuan:** memisahkan inquiry, reversible hold, reservation without payment, financial commitment, dan sensitive identity.
 
-**Decision continuation:** exact option/price/fees/date/cancellation readback → local approval → short-lived exact-option permit. Changed term invalidates permit.
+**Implementasi (gate inti):** `jarvis/core/reservation_gate.py` — `ReservationCommitmentGate` gate murni: local approval (`reservation_approval_missing`); fixed disclosure labels (`commitment/cancellation_policy/no_refund/subject_to_availability`; asing → `reservation_unknown_label`; kosong → `reservation_disclosure_missing`); cancellation window 1–365 hari (`reservation_cancellation_window_missing`); failure = no-op (state tidak berubah, tidak mencatat — dikunci test); commitment tercatat hanya setelah green light sebagai metadata `ready`; reason codes closed set; tanpa auto-commit.
 
-**Hard block:** payment, deposit, bank transfer, card, CVV, OTP, PIN, password; user mengambil alih official payment channel.
+**Decision continuation (belum dikerjakan):** exact option/price/fees/date/cancellation readback → local approval → short-lived exact-option permit; changed term invalidates permit.
 
-**Acceptance:** simulator membuktikan changed-price invalidation dan no-payment boundary.
+**Hard block (belum dikerjakan):** payment, deposit, bank transfer, card, CVV, OTP, PIN, password; user mengambil alih official payment channel.
+
+**Acceptance:** gate failure no-op + alasan fixed; tanpa auto-commit — TERPENUHI (gate inti). RED 7 failed → GREEN 7 passed; regression 58 passed; frozen `094b696` OK. Simulator changed-price invalidation & no-payment boundary: belum dikerjakan.
 
 **Fase berikutnya:** **WA8 — Customer-Service Case Manager**.
 
@@ -462,6 +466,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase WA7 — Reservation Commitment Gate** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: reservasi = komitmen → wajib gate ekstra (local approval + fixed disclosure labels + cancellation window), tanpa auto-commit; setiap gate failure → no-op + alasan fixed.
-Guardrail: tidak ada auto-commit, gate failure selalu no-op dengan alasan fixed; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase WA8 — Customer-Service Case Manager** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: typed cases (service hours, appointment, order-status inquiry dengan non-secret reference); setiap case punya field allowlist, disclosure policy, stop/escalation rules.
+Guardrail: tidak ada free-form mission yang memperluas authority, case hanya typed + bounded; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase WA6 COMPLETE — 2026-08-03
+**Updated:** Phase WA7 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `cc97138` (CAL2); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `584b235` (RES); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -44,7 +44,9 @@ Phase WA5 call memory/privacy              COMPLETE
   → MEM b29dcba (opt-in metadata-only, bounded retention)
 Phase WA6 calendar proposal                COMPLETE
   → CAL2 cc97138 (allowlist + conflict check + local approval)
-  → sisa: tidak ada; Phase WA7 menunggu keputusan Takeda (dilarang)
+Phase WA7 reservation gate                 COMPLETE
+  → RES 584b235 (commitment gate, fixed reasons, no-op failures)
+  → sisa: tidak ada; Phase WA8 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -66,6 +68,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## Phase WA7 reservation gate milestone (2026-08-03)
+
+**Phase WA7 COMPLETE** — commit RES `584b235`. `jarvis/core/reservation_gate.py`: `ReservationCommitmentGate` — local approval + fixed disclosure labels (commitment/cancellation_policy/no_refund/subject_to_availability) + cancellation window 1–365 hari; failure = no-op dengan reason fixed (closed set); commitment tercatat hanya setelah green light sebagai metadata `ready` — tanpa auto-commit. RED 7 → GREEN 7; regression 58 passed; frozen `094b696` OK.
 
 ## Phase WA6 calendar proposal milestone (2026-08-03)
 
@@ -217,20 +223,21 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase WA7 — Reservation Commitment Gate** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Phase WA8 — Customer-Service Case Manager** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Reservasi sebagai komitmen — gate ekstra sebelum apa pun terjadi.
+Typed case manager untuk pertanyaan customer-service yang umum.
 
 ### Scope
 
-- reservasi = komitmen → wajib gate ekstra (local approval + fixed disclosure labels + cancellation window);
-- tanpa auto-commit; setiap gate failure → no-op + alasan fixed.
+- typed cases: service hours, appointment, order-status inquiry dengan non-secret reference;
+- setiap case punya field allowlist, disclosure policy, stop/escalation rules;
+- tidak ada free-form mission yang memperluas authority.
 
 ### Guardrails
 
-- Tidak ada auto-commit; gate failure selalu no-op dengan alasan fixed.
+- Tidak ada free-form mission; case hanya typed + bounded.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -247,12 +254,12 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase WA6 COMPLETE (2026-08-03): calendar proposal (CAL2 cc97138) —
-allowlist ketat + conflict check + local approval, tanpa auto-create.
+Phase WA7 COMPLETE (2026-08-03): reservation gate (RES 584b235) —
+commitment gate + fixed reasons + no-op failures, tanpa auto-commit.
 Worktree bersih kecuali 2 artifact (.curator_state.json, full_run.txt) —
 JANGAN di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase WA7 (Reservation Commitment Gate) DILARANG
+TIDAK ADA fase aktif. Phase WA8 (Customer-Service Case Manager) DILARANG
 dimulai sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi posisi
 (read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
 lanjutan, minta approval sebelum eksekusi apa pun. Jangan

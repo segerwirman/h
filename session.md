@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: cc97138 feat(core): post-call calendar proposal with conflict check and local approval (CAL2)
-Last updated: 2026-08-03 — Phase WA6 COMPLETE (post-call calendar proposal)
+HEAD: 584b235 feat(core): reservation commitment gate with fixed reasons and no-op failures (RES)
+Last updated: 2026-08-03 — Phase WA7 COMPLETE (reservation commitment gate)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 74 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 cc97138)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 75 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES 584b235)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: WA7 — Reservation Commitment Gate
+Status: COMPLETE
+Completed: 2026-08-03 (RES 584b235; frozen 094b696 OK)
+```
 
 ```text
 Phase: WA6 — Post-Call Calendar Proposal
@@ -266,24 +272,24 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: WA6 — Post-Call Calendar Proposal
-Status: COMPLETE — 2026-08-03 (CAL2 cc97138)
-Priority: conflict-free proposal, local approval, no auto-create
+Phase: WA7 — Reservation Commitment Gate
+Status: COMPLETE — 2026-08-03 (RES 584b235)
+Priority: commitment gate with fixed reasons, no auto-commit
 ```
 
 ### Outcome
 
-- `jarvis/core/calendar_proposal.py` (baru): `CalendarProposal` one-shot — `idle → draft → approved/rejected`; `create(title, start_ts, duration_min)` **field allowlist ketat** (kwarg asing `notes`/`attendees` ditolak); `admit_title` 1–120 (no control chars), `admit_duration` 5–1440 menit, `admit_start` masa depan (clock injectable); **conflict check** `has_conflict(existing)` mencegah double-booking; **local approval** `approve()` draft → approved (one-shot; "siap create" — create BUKAN otoritas modul ini); `reject()` → rejected.
-- `result()` metadata-only (title/start_ts/duration_min/status); **kontrak statis dikunci test**: module tidak mengimpor provider/network/write (`google`/`gcal`/`create_event`/`requests`/`open(`/`subprocess` tidak ada di source) — tidak ada authority create otomatis (write path `gcal_create_proposed` di fase live).
-- TDD: RED 8 failed → GREEN 8 passed; regression 51 passed (proposal + memory + dialogue + audio + session + countdown); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 15 passed; approval Takeda.
+- `jarvis/core/reservation_gate.py` (baru): `ReservationCommitmentGate` — gate murni (pure, tanpa side effect): **local approval** (`approved=False` → `reservation_approval_missing`); **fixed disclosure labels** (`commitment/cancellation_policy/no_refund/subject_to_availability`; asing → `reservation_unknown_label`; kosong → `reservation_disclosure_missing`); **cancellation window** int 1–365 (0/366/bool → `reservation_cancellation_window_missing`).
+- **No-op dikunci test**: gate failure tidak mengubah state/tidak mencatat commitment (snapshot identik); commitment hanya tercatat setelah green light sebagai metadata `status: "ready"` — **tanpa auto-commit** (tidak mengeksekusi apa pun); reason codes = closed set fixed.
+- TDD: RED 7 failed → GREEN 7 passed; regression 58 passed (gate + proposal + memory + dialogue + audio + session + countdown); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 15 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: WA7 — Reservation Commitment Gate
+Phase: WA8 — Customer-Service Case Manager
 Status: MENUNGGU KEPUTUSAN TAKEDA
-Guardrail: jangan mulai Phase WA7 tanpa approval eksplisit Takeda.
+Guardrail: jangan mulai Phase WA8 tanpa approval eksplisit Takeda.
 ```
 
 ## Planned phase order
@@ -303,8 +309,8 @@ WA3 real two-way audio proof ✅ (AUD 6bed7a2, 2026-08-03)
 WA4 bounded autonomous call dialogue ✅ (DIA 3e20ad1, 2026-08-03)
 WA5 call memory/privacy ✅ (MEM b29dcba, 2026-08-03)
 WA6 post-call Calendar proposal ✅ (CAL2 cc97138, 2026-08-03)
-→ WA7 reservation commitment gate (MENUNGGU keputusan Takeda)
-→ WA8 customer-service case manager
+WA7 reservation commitment gate ✅ (RES 584b235, 2026-08-03)
+→ WA8 customer-service case manager (MENUNGGU keputusan Takeda)
 → WA9 controlled WhatsApp rollout
 → 26 cross-integration live ring
 → 27 named local facade
@@ -341,16 +347,16 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: cc97138 (CAL2). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: 584b235 (RES). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Phase WA6 COMPLETE (2026-08-03): post-call calendar proposal — allowlist
-title/start/duration, conflict check anti double-booking, local approval
-one-shot, tanpa authority create otomatis (kontrak statis dikunci).
-RED 8 → GREEN 8; regression 51 passed.
+Phase WA7 COMPLETE (2026-08-03): reservation commitment gate — local
+approval + fixed disclosure labels + cancellation window; failure = no-op
+dengan reason fixed; tanpa auto-commit (green light metadata only).
+RED 7 → GREEN 7; regression 58 passed.
 
-Fase aktif: TIDAK ADA. Phase WA7 (Reservation Commitment Gate) DILARANG
+Fase aktif: TIDAK ADA. Phase WA8 (Customer-Service Case Manager) DILARANG
 dimulai sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu,
 presentasikan status + opsi, minta approval sebelum eksekusi.
 
