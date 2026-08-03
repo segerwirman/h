@@ -4,8 +4,20 @@ from __future__ import annotations
 import re
 
 
-def match_command(text: str) -> tuple[str, dict] | None:
+def match_command(text: str, *, remote: bool = False) -> tuple[str, dict] | None:
+    """Map direct Google requests; remote uses privacy-tiered wrappers only."""
     normalized = " ".join(str(text or "").lower().split())
+    if remote and re.search(r"\b(?:buat|create|kirim|send|ubah|edit|hapus|delete|balas|reply)\b", normalized):
+        return None
+    if remote and re.search(r"\b(?:briefing|ringkasan pagi)\b", normalized):
+        return "morning_briefing", {}
+    if remote and (re.search(r"\b(?:email|surel|gmail)\b", normalized)
+                   and re.search(r"\b(?:baru|unread|belum dibaca|masuk)\b", normalized)):
+        return "gmail_safe_summary", {}
+    if remote and re.search(r"\b(?:acara|agenda|kalender|calendar)\b", normalized):
+        return "gcal_safe_agenda", {}
+    if remote:
+        return None
     if not normalized:
         return None
     if re.search(r"\b(?:acara|agenda|kalender|calendar)\s+berikut", normalized):

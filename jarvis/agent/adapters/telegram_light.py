@@ -194,7 +194,8 @@ async def _one_turn_answer(text: str) -> ToolResult:
 
 async def _google_direct(text: str, *, context=None) -> ToolResult | None:
     from jarvis.integrations import google_direct
-    call = google_direct.match_command(text)
+    call = google_direct.match_command(
+        text, remote=getattr(context, "surface", "") == "remote")
     if call is None:
         return None
     name, args = call
@@ -203,7 +204,19 @@ async def _google_direct(text: str, *, context=None) -> ToolResult | None:
     from jarvis.agent import registry
     if registry.get(name) is None:
         return ToolResult.fail(google_direct.unavailable_message(name))
-    return await registry.execute(name, args, context=context)
+    result = await registry.execute(name, args, context=context)
+    if not result.ok or getattr(context, "surface", "") != "remote":
+        return result
+    if name not in {"gmail_safe_summary", "gcal_safe_agenda", "morning_briefing"}:
+        return result
+    from jarvis.agent.remote_read_policy import render_remote_read
+    rendered = render_remote_read(
+        result.content, chat_id=str(context.session_id),
+        expected_chat_id=str(context.session_id))
+    if not rendered.get("ok"):
+        return ToolResult.fail(str(rendered.get("reason", "remote_read_payload_rejected")))
+    return ToolResult.success(rendered["content"], display=rendered["content"])
+
 
 
 async def _tool(name: str, args: dict, *, context=None) -> ToolResult:

@@ -25,7 +25,7 @@ class InboundMessage:
             session_id=self.conversation_id, surface="remote",
             # Paired remote actors can request bounded research or one image
             # generation. Desktop, shell, and file-write authority remain local.
-            toolsets={"messaging", "agent", "web", "image", "skills", "memory"},
+            toolsets={"messaging", "agent", "web", "image", "skills", "memory", "gws_read"},
         )
 
 
