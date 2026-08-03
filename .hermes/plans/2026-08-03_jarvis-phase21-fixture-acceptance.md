@@ -1,6 +1,6 @@
 # JARVIS Phase 21 — Desktop-Safe Production-Path Fixture Acceptance (RANCANGAN)
 
-> **Status:** RANCANGAN — 2026-08-03. Belum dieksekusi. Phase 21 DILARANG dimulai tanpa approval eksplisit Takeda. Dokumen ini disimpan sebagai referensi rancangan; eksekusi (RED test, fixture script, canary update, commit) menunggu keputusan terpisah.
+> **Status:** ✅ EKSEKUSI SELESAI — 2026-08-03. Phase 21 COMPLETE: `fixture-accepted` untuk Phase 19 & 20 (title + reorder `verified: true`). Commit: PLAN `0d30794`, FIX `a109f69`, FIX2 `aaec855`. Acceptance run menemukan 4 remediasi production (G1 text_field identity, G2 plain listitem card, G4 verifikasi visual order pasca-reorder, + F1/F2 foreground title-bar click & drag thread) — detail di `session.md` dan master roadmap. Rancangan di bawah tetap berlaku sebagai deskripsi desain.
 
 ## Tujuan
 

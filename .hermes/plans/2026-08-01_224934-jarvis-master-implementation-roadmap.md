@@ -153,18 +153,25 @@ Guardrail: ...
 
 ## Phase 21 — Desktop-Safe Production-Path Fixture Acceptance Harness
 
+**Status:** ✅ COMPLETE — 2026-08-03 (3 commit: PLAN `0d30794`, FIX `a109f69`, FIX2 `aaec855`).
+
 **Tujuan:** membuktikan title setter dan scene reorder memakai production UIA backend pada fixture disposable, bukan aplikasi user.
 
 **Implementasi:**
-- fixture PyQt dengan stable automation IDs;
-- title field live observe → local confirmation → ValuePattern → recapture/value proof;
-- tiga scene cards → distinct RuntimeIds + same parent → one reorder → semantic-order proof;
-- reject stale surface, parent mismatch, changed RuntimeId, no-op, lease conflict;
-- fixture cleanup.
+- fixture PyQt disposable: QLineEdit judul + QListWidget 3 scene cards, bound eksplisit via HWND;
+- 21A title: observe → `set_content_title` (ValuePattern) → recapture + committed-value proof → verified;
+- 21B reorder: 3 cards same parent → satu native drag (DRIVER fisik) → recapture + visual-order proof → verified;
+- negative: stale ref ditolak, source==destination ditolak; fixture cleanup otomatis.
 
-**Acceptance:** production-path `fixture-accepted` proof dipisah jelas dari unit tests; action tidak dapat keluar fixture; external/user-app `live-proven` status tetap terpisah.
+**Remediasi production yang ditemukan acceptance run (TDD RED→GREEN):**
+- G1: `_element_from_control` tidak pernah mengisi `_uia_runtime_id` untuk `text_field` → `set_content_title` fail-closed di semua aplikasi; kini diisi bila tersedia (tanpa rid tetap observasi, setter tetap tolak).
+- G2: listitem non-dropdown dibuang → reorder tanpa target; kini parent List tanpa ComboBox → role `card` + RuntimeId + parent identity.
+- G4: RuntimeId item list TIDAK stabil pasca-reorder di UIA umum → verifikasi diubah ke same-surface recapture + jumlah card sama + urutan visual berubah; rid berubah tanpa perubahan visual → fail-closed (test negatif).
+- Fixture-side: seleksi by role (UIA Name Qt kosong), aktivasi window via klik title bar (WM_MOUSEACTIVATE), drag di thread agar event loop Qt live.
 
-**Fase berikutnya:** **22 — Scene List Production UX**; buat scene cards visible dan move controls usable.
+**Acceptance:** production-path `fixture-accepted` TERBUKTI untuk Phase 19 & 20 (title + reorder `verified: true`); action tidak keluar fixture; external/user-app `live-proven` tetap not established. 136 regression passed; frozen `094b696` OK.
+
+**Fase berikutnya:** **22 — Scene List Production UX** — MENUNGGU KEPUTUSAN TAKEDA; buat scene cards visible dan move controls usable.
 
 ---
 
@@ -403,6 +410,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase 21 — Desktop-Safe Production-Path Fixture Acceptance Harness** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: fixture PyQt disposable dengan stable automation IDs; production UIA backend untuk Phase 19 title setter dan Phase 20 scene reorder; local confirmation authority; satu action; recapture + value/semantic-order proof; reject stale surface/parent mismatch/changed RuntimeId/no-op/lease conflict; fixture cleanup. Hasil dilabeli `fixture-accepted`, bukan `live-proven`.
-Guardrail: disposable fixture only (tanpa filesystem/drop zone/user app/network/retry); untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase 22 — Content Studio Scene List Production UX** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: scene cards visible di Content Studio; selection + order number; deterministik Move Up/Down untuk selected scene; reuse `move_scene()` (jangan duplicate policy); timeline/asset sync; stable accessibility identity untuk lane Phase 21.
+Guardrail: local-only, hidden-by-default, first-up/last-down reject, tanpa generic drag/network/export write; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

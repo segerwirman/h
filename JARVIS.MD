@@ -2,7 +2,7 @@
 
 > **Repository:** `E:\jarvis agent\h`
 > **Language:** Indonesian
-> **Current implementation status:** Phase 20.3 Git Worktree Segmentation & Recovery Commits COMPLETE (2026-08-03, 59 commit); Phase 21 next — menunggu keputusan Takeda
+> **Current implementation status:** Phase 21 Desktop-Safe Production-Path Fixture Acceptance COMPLETE (2026-08-03, `fixture-accepted` untuk Phase 19/20); Phase 22 next — menunggu keputusan Takeda
 
 ## Start here in every new session
 
@@ -57,6 +57,7 @@
 | Phase 20.1 | ✅ | All 48 source tool modules and 99 runtime tools map to explicit groups; nine desktop-safe tools share exclusive `desktop` resource with generic computer control; optional safe Google/briefing modules are pre-mapped without enabling providers or broadening authority. |
 | Phase 20.2 | ✅ | Durable continuity metadata is synchronized; stale next-phase markers are removed/superseded; source/config/wiring/test/fixture/live evidence is classified without treating source or unit tests as live proof. |
 | Phase 20.3 | ✅ | Broadly dirty post-initial-commit worktree converted into 59 dependency-ordered, reviewable, reversible recovery commits (remediasi A46–A53, GWS A54–A57, telegram A58+TEL, monitoring A59–A70+MR, voice V1–V5, closure MR/MSG/TEL/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR, docs DOC `29f94cd`); worktree bersih kecuali 2 artifact yang diklasifikasi; frozen `094b696` dijaga; select-option kini native (CAP1). |
+| Phase 21 | ✅ | Production-path fixture acceptance: Phase 19 (title) + Phase 20 (reorder) terbukti `fixture-accepted` di fixture PyQt disposable via production UIA backend (ValuePattern + satu drag fisik + recapture + committed-value/visual-order proof). Acceptance run menemukan & meremediasi G1 (text_field identity), G2 (plain listitem card), G4 (verifikasi visual order — RuntimeId item tidak stabil pasca-reorder). Tetap BUKAN `live-proven`. |
 
 ## Capability evidence classification
 
@@ -132,8 +133,8 @@ python scripts/verify_frozen.py
 ```
 
 ## Next recommended phase
-**Phase 21 — Desktop-Safe Production-Path Fixture Acceptance Harness** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
+**Phase 22 — Content Studio Scene List Production UX** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
 
-Prove Phase 19/20 pada disposable PyQt/UIA fixture memakai production UIA backend, local confirmation, satu action, dan recapture; hasil dilabeli `fixture-accepted`, bukan `live-proven`. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
+Scene cards visible di Content Studio; selection + order number; deterministik Move Up/Down untuk selected scene; reuse `move_scene()` tanpa duplicate policy; timeline/asset sync; stable accessibility identity untuk lane Phase 21. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
 
 For detailed current test evidence, changed files, and exact next implementation contract, read `.hermes/handoffs/current.md`.

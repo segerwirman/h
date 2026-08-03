@@ -229,6 +229,7 @@ git diff --check
 
 **Priority:** P0 proof gap
 **Dependency:** recovery commits A, E, F.
+**Status:** ✅ COMPLETE — 2026-08-03. Production-path `fixture-accepted` untuk Phase 19/20 (title + reorder verified) via fixture PyQt disposable; acceptance run menemukan & meremediasi G1 (text_field identity), G2 (plain listitem card), G4 (verifikasi visual order pasca-reorder — RuntimeId tidak stabil), F1/F2 (foreground title-bar click, drag thread). Rincian: `session.md` + master roadmap.
 
 **Goal:** Prove Phase 19/20 against a disposable real PyQt Content Studio surface using the production UIA backend, local confirmation authority, one action, and recapture—without touching user applications.
 

@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase 20.3 COMPLETE — 2026-08-03
+**Updated:** Phase 21 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `29f94cd` (DOC); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `aaec855` (FIX2); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -18,8 +18,11 @@ Phase 20.2 continuity/audit metadata cleanup         COMPLETE
 Phase 20.3 segmentation — 59 commit                 COMPLETE
   → GWS A54–A57, telegram A58+TEL, monitoring A59–A70+MR,
     voice V1–V5, MR/MSG/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR,
-    docs continuity DOC 29f94cd
-  → sisa: tidak ada; Phase 21 menunggu keputusan Takeda (dilarang)
+    docs continuity DOC 29f94cd + DOC2 5b37a16
+Phase 21 fixture acceptance                       COMPLETE
+  → PLAN 0d30794, FIX a109f69, FIX2 aaec855
+  → Phase 19/20 `fixture-accepted` (title + reorder verified)
+  → sisa: tidak ada; Phase 22 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -29,6 +32,12 @@ Phase 20.3 segmentation — 59 commit                 COMPLETE
 **Phase 20.3 COMPLETE** — ditutup commit DOC `29f94cd` (13 file docs continuity masuk Git). Verifikasi 2026-08-03: HEAD `29f94cd`, branch main, index kosong, frozen OK, worktree bersih kecuali 2 artifact (`.curator_state.json` timestamp noise, `full_run.txt`) — keduanya diklasifikasi dan TIDAK di-commit. Phase 21 BELUM disetujui (dilarang tanpa approval eksplisit).
 
 Detail lengkap + resume prompt: lihat `session.md`.
+
+## Phase 21 fixture acceptance milestone (2026-08-03)
+
+**Phase 21 COMPLETE** — `fixture-accepted` untuk Phase 19/20. Commit: PLAN `0d30794`, FIX `a109f69`, FIX2 `aaec855`. Fixture PyQt disposable membuktikan production path: title (ValuePattern + committed-value proof) dan reorder (satu drag fisik + recapture + visual-order proof) — `{'accepted': True, 'title': {'verified': True}, 'reorder': {'verified': True}}`.
+
+Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_runtime_id` (set_content_title fail-closed di semua aplikasi), G2 listitem non-dropdown dibuang (reorder tanpa target), G4 RuntimeId item list tidak stabil pasca-reorder → verifikasi visual order + fail-closed, F1/F2 aktivasi window via klik title bar + drag di thread. 136 regression passed; frozen `094b696` OK. `live-proven` tetap tidak established.
 
 ## Phase 20.2 — Continuity & Audit Metadata Cleanup
 
@@ -140,23 +149,23 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase 21 — Desktop-Safe Production-Path Fixture Acceptance Harness** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Phase 22 — Content Studio Scene List Production UX** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Prove Phase 19 (title setter) dan Phase 20 (scene reorder) terhadap fixture PyQt disposable memakai production UIA backend, local confirmation authority, satu action, dan recapture — tanpa menyentuh aplikasi user.
+Scene order terlihat dan dapat diubah user secara deterministik di Content Studio, memakai `move_scene()` yang sudah ada (tanpa duplicate policy) dan identity lane yang sudah terbukti `fixture-accepted` (Phase 21).
 
-### Scope (dari master roadmap + stabilization roadmap)
+### Scope
 
-- fixture PyQt dengan stable automation IDs;
-- title field live observe → local confirmation → ValuePattern → recapture/value proof;
-- tiga scene cards → distinct RuntimeIds + same parent → satu reorder → semantic-order proof;
-- reject stale surface, parent mismatch, changed RuntimeId, no-op, lease conflict;
-- fixture cleanup; hasil dilabeli `fixture-accepted`, bukan `live-proven`.
+- scene cards visible dari `_scenes` lokal; selection + order number;
+- deterministik Move Up/Down untuk selected scene (first-up/last-down reject);
+- reuse `move_scene()` — jangan duplicate reorder logic;
+- refresh timeline + asset metadata mapping setelah reorder; selected mengikuti;
+- stable accessibility role/name/automation identity untuk lane Phase 21.
 
 ### Guardrails
 
-- Disposable fixture only; tidak ada filesystem/drop zone/user app/network/retry.
+- Local-only, hidden-by-default; tidak ada network, export write, generic drag, atau remote ingress.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -173,14 +182,15 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase 20.3 COMPLETE (2026-08-03, 59 commit, ditutup DOC 29f94cd). Worktree
+Phase 21 COMPLETE (2026-08-03): Phase 19/20 `fixture-accepted` via fixture
+PyQt disposable; 4 gap production diremediasi (G1/G2/G4 + F1/F2). Worktree
 bersih kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN
 di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase 21 (desktop-safe production-path fixture
-acceptance) DILARANG dimulai sampai Takeda menyetujui eksplisit. Tugas sesi:
-verifikasi posisi (read-only), audit worktree/HEAD/frozen, presentasikan
-status + opsi lanjutan, minta approval sebelum eksekusi apa pun. Jangan
+TIDAK ADA fase aktif. Phase 22 (Content Studio Scene List Production UX)
+DILARANG dimulai sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi
+posisi (read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
+lanjutan, minta approval sebelum eksekusi apa pun. Jangan
 git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
 provider/credential/live integration/authority/frozen.
 ```

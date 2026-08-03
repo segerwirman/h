@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: 29f94cd docs(continuity): sync session handoff and roadmaps to full-day segmentation milestone (DOC)
-Last updated: 2026-08-03 — Phase 20.3 COMPLETE (segmentation, 59 commit)
+HEAD: aaec855 fix(desktop): populate UIA identity for text fields and plain list cards; verify reorder by visual order (FIX2)
+Last updated: 2026-08-03 — Phase 21 COMPLETE (fixture-accepted)
 ```
-Git staging/commit: index kosong; 59 commit sesi ini (remediasi A46–A53, GWS A54–A57, telegram A58+TEL, monitoring A59–A70+MR, voice V1–V5, closure MR/MSG/TEL/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR, DOC 29f94cd)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 63 commit (59 segmentation + DOC2 5b37a16 + PLAN 0d30794 + FIX a109f69 + FIX2 aaec855)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: 21 — Desktop-Safe Production-Path Fixture Acceptance
+Status: COMPLETE
+Completed: 2026-08-03 (fixture-accepted; PLAN/FIX/FIX2; frozen 094b696 OK)
+```
 
 ```text
 Phase: 20.3 — Git Worktree Segmentation & Recovery Commits
@@ -194,24 +200,24 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: 20.3 — Git Worktree Segmentation & Recovery Commits
-Status: COMPLETE — 2026-08-03 (ditutup commit DOC 29f94cd)
-Priority: operational recovery checkpoints before capability expansion
+Phase: 21 — Desktop-Safe Production-Path Fixture Acceptance
+Status: COMPLETE — 2026-08-03 (PLAN 0d30794, FIX a109f69, FIX2 aaec855)
+Priority: production-path proof before user-facing UX expansion
 ```
 
 ### Outcome
 
-- 59 commit sesi ini: remediasi audit A46–A53, GWS safe-read A54–A57, telegram A58+TEL, monitoring A59–A70+MR, voice V1–V5, closure MR/MSG/TEL/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR, docs continuity DOC 29f94cd.
-- Semua slice: TDD RED→GREEN, isolated staged-only canary (conftest anti-editable wajib untuk `jarvis.monitoring.*`), compile/Ruff, cached check, production scan, frozen `094b696`, independent exact-hash review, approval Takeda.
-- Worktree bersih: hanya `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact) — diklasifikasi, JANGAN di-commit. Index kosong.
-- Acceptance Phase 20.3 terpenuhi: source/test/docs tidak tersisa untracked tanpa alasan; setiap commit dapat direvert sendiri.
+- Fixture PyQt disposable (QLineEdit judul + QListWidget 3 scene cards) membuktikan Phase 19 & 20 melalui production UIA backend: `{'accepted': True, 'title': {'executed': True, 'verified': True}, 'reorder': {'executed': True, 'verified': True}}` → **`fixture-accepted`** (bukan `live-proven`).
+- Acceptance run menemukan & meremediasi 4 gap production (TDD RED→GREEN): G1 `_uia_runtime_id` untuk text_field (set_content_title fail-closed di semua aplikasi); G2 plain listitem → role `card` + identitas + parent; G4 RuntimeId item list tidak stabil pasca-reorder → verifikasi visual order + fail-closed; F1/F2 aktivasi window (klik title bar) + drag di thread (event loop Qt live).
+- Evidence: 136 regression passed, py_compile + ruff + diff check PASS, frozen `094b696` OK, staged-only canary per commit, approval Takeda per commit.
+- Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: 21 — Desktop-Safe Production-Path Fixture Acceptance
+Phase: 22 — Content Studio Scene List Production UX
 Status: MENUNGGU KEPUTUSAN TAKEDA
-Guardrail: jangan mulai Phase 21 tanpa approval eksplisit Takeda.
+Guardrail: jangan mulai Phase 22 tanpa approval eksplisit Takeda.
 ```
 
 ## Planned phase order
@@ -219,8 +225,8 @@ Guardrail: jangan mulai Phase 21 tanpa approval eksplisit Takeda.
 ```text
 20.2 continuity cleanup ✅
 20.3 Git segmentation/recovery commits ✅ (59 commit, 2026-08-03)
-→ 21 desktop-safe production-path fixture (MENUNGGU keputusan Takeda)
-→ 22 Content Studio scene-list UX
+21 desktop-safe production-path fixture ✅ (fixture-accepted, 2026-08-03)
+→ 22 Content Studio scene-list UX (MENUNGGU keputusan Takeda)
 → 23 export timing/preview
 → 24 runtime lifecycle reliability
 → 25 credential-free canary
@@ -269,23 +275,24 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: 29f94cd (DOC). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: aaec855 (FIX2). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Phase 20.3 COMPLETE (2026-08-03): 59 commit sesi ini — remediasi audit
-A46–A53, GWS safe-read A54–A57, telegram A58+TEL, monitoring A59–A70+MR,
-voice V1–V5, closure MR/MSG/TEL/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR,
-docs continuity DOC 29f94cd. Semua slice TDD RED→GREEN, isolated
-staged-only canary (conftest anti-editable wajib untuk jarvis.monitoring.*),
-compile/Ruff, cached check, production scan, frozen 094b696, independent
-exact-hash review, approval Takeda. 2 blocker nyata di-fix (A62 credential
-substring, TEL remote fallthrough). Select-option kini native (CAP1).
-Desktop production path runtime-wired; tidak ada live-proven.
+Phase 21 COMPLETE (2026-08-03): production-path fixture acceptance —
+Phase 19 (title) + Phase 20 (reorder) terbukti `fixture-accepted` di fixture
+PyQt disposable via production UIA backend; {'accepted': True, 'title':
+{'verified': True}, 'reorder': {'verified': True}}. Acceptance run menemukan
+& meremediasi 4 gap production (TDD RED→GREEN): G1 text_field tanpa
+_uia_runtime_id (set_content_title fail-closed di semua aplikasi), G2
+listitem non-dropdown dibuang (reorder tanpa target), G4 RuntimeId item
+list tidak stabil pasca-reorder → verifikasi visual order + fail-closed,
+F1/F2 aktivasi window via klik title bar + drag di thread. 136 regression
+passed; frozen 094b696 OK. `live-proven` tetap tidak established.
 
-Fase aktif: TIDAK ADA. Phase 21 (desktop-safe production-path fixture
-acceptance) DILARANG dimulai sampai Takeda menyetujui eksplisit. Verifikasi
-posisi dulu, presentasikan status + opsi, minta approval sebelum eksekusi.
+Fase aktif: TIDAK ADA. Phase 22 (Content Studio Scene List Production UX)
+DILARANG dimulai sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu,
+presentasikan status + opsi, minta approval sebelum eksekusi.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,
