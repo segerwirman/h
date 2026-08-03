@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton, QTextEdit, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QHBoxLayout, QLabel, QLineEdit, QListWidget, QPushButton, QTextEdit,
+    QVBoxLayout, QWidget,
+)
 
 from jarvis.core.content_project import ContentProject, Scene
 from jarvis.core.content_title_policy import admit_title
@@ -46,6 +49,26 @@ class ContentStudioSheet(QWidget):
         notes = QTextEdit()
         notes.setPlaceholderText("Catatan brainstorming lokal")
         layout.addWidget(notes)
+        # ── Phase 22: scene list production UX ──
+        self._scene_list = QListWidget()
+        self._scene_list.setObjectName("jarvis-scene-list")
+        self._scene_list.setAccessibleName("Daftar Scene")
+        self._scene_list.itemClicked.connect(self._on_scene_clicked)
+        layout.addWidget(self._scene_list)
+        move_row = QWidget()
+        move_layout = QHBoxLayout(move_row)
+        self._move_up_button = QPushButton("▲ Naik")
+        self._move_up_button.setObjectName("jarvis-scene-move-up")
+        self._move_up_button.setAccessibleName("Pindahkan scene ke atas")
+        self._move_up_button.clicked.connect(lambda: self.move_selected_up())
+        self._move_down_button = QPushButton("▼ Turun")
+        self._move_down_button.setObjectName("jarvis-scene-move-down")
+        self._move_down_button.setAccessibleName("Pindahkan scene ke bawah")
+        self._move_down_button.clicked.connect(lambda: self.move_selected_down())
+        move_layout.addWidget(self._move_up_button)
+        move_layout.addWidget(self._move_down_button)
+        layout.addWidget(move_row)
+        self._render_scene_list()
         self.hide()
 
     def section_names(self) -> tuple[str, ...]:
@@ -99,6 +122,7 @@ class ContentStudioSheet(QWidget):
             return False
         self._scenes.append(Scene(*(value.strip() for value in values)))
         self._status.setText("Scene lokal ditambahkan.")
+        self._render_scene_list()
         return True
 
     def project(self) -> ContentProject:
@@ -127,6 +151,7 @@ class ContentStudioSheet(QWidget):
             return False
         self._selected_scene = index
         self._status.setText("Scene dipilih untuk gambar lokal.")
+        self._render_scene_list()
         return True
 
     def move_scene(self, from_index: object, to_index: object) -> dict:
@@ -156,6 +181,18 @@ class ContentStudioSheet(QWidget):
             elif t <= selected < f:
                 self._selected_scene = selected + 1
 
+        # asset mapping mengikuti scene yang sama setelah reorder
+        if self._asset is not None:
+            asset_index = self._asset.get("scene_index")
+            if isinstance(asset_index, int):
+                if asset_index == f:
+                    self._asset["scene_index"] = t
+                elif f < asset_index <= t:
+                    self._asset["scene_index"] = asset_index - 1
+                elif t <= asset_index < f:
+                    self._asset["scene_index"] = asset_index + 1
+
+        self._render_scene_list()
         self._status.setText("Urutan scene lokal diperbarui.")
         return {"ok": True, "from_index": f, "to_index": t, "intent": "content_studio_scene_reorder"}
 
@@ -173,6 +210,50 @@ class ContentStudioSheet(QWidget):
         else:
             self._status.setText("Gambar scene belum tersedia.")
         return result
+
+
+    def scene_list_widget(self):
+        """Widget daftar scene (Phase 22) — identity stabil untuk lane UIA."""
+        return self._scene_list
+
+    def move_up_button(self):
+        return self._move_up_button
+
+    def move_down_button(self):
+        return self._move_down_button
+
+    def selected_scene(self) -> int | None:
+        return self._selected_scene
+
+    def _on_scene_clicked(self, item) -> None:
+        self.select_scene(self._scene_list.row(item))
+
+    def _render_scene_list(self) -> None:
+        """Render ulang daftar scene dari _scenes lokal + state kontrol."""
+        self._scene_list.clear()
+        for index, scene in enumerate(self._scenes):
+            self._scene_list.addItem(f"{index + 1}. {scene.title}")
+        count = len(self._scenes)
+        has_selection = self._selected_scene is not None and 0 <= self._selected_scene < count
+        if has_selection:
+            self._scene_list.setCurrentRow(int(self._selected_scene))
+        self._move_up_button.setEnabled(has_selection and self._selected_scene != 0)
+        self._move_down_button.setEnabled(
+            has_selection and self._selected_scene != count - 1)
+
+    def move_selected_up(self) -> bool:
+        """Pindahkan scene terpilih satu langkah ke atas (first-up reject)."""
+        if self._selected_scene is None:
+            return False
+        return bool(self.move_scene(
+            self._selected_scene, self._selected_scene - 1).get("ok"))
+
+    def move_selected_down(self) -> bool:
+        """Pindahkan scene terpilih satu langkah ke bawah (last-down reject)."""
+        if self._selected_scene is None:
+            return False
+        return bool(self.move_scene(
+            self._selected_scene, self._selected_scene + 1).get("ok"))
 
 
 __all__ = ["ContentStudioSheet"]
