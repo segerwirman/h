@@ -299,13 +299,19 @@ Guardrail: ...
 
 ## Phase WA3 — Two-Way Audio Acceptance
 
+**Status:** ✅ COMPLETE (harness) — 2026-08-03 (AUD `6bed7a2`).
+
 **Tujuan:** membuktikan existing two-cable bridge pada hardware nyata.
 
-**Implementasi:** device uniqueness, loopback tone, latency/drop/sample-rate telemetry, stream cleanup, owned test account call, one concurrent call maximum.
+**Implementasi (harness):**
+- `jarvis/core/call_audio.py`: `CallAudioProof` — start hanya untuk session `active` (approved lokal WA2); stop via session cancel/end; inbound+outbound via injected `capture`/`playback` (fixture-only; STT/TTS/voice_listener FROZEN tidak disentuh);
+- `admit_duration` int 1–600s; deadline monotonic; `stop()` idempotent; `result()` metadata-only + `audio_exercised` jujur (tanpa fungsi audio → False); bus `call.audio.started/done` ringan.
 
-**Acceptance:** PCM nyata terbukti dua arah; UI status/text bukan proxy audio proof.
+**Belum dikerjakan (live acceptance):** hardware nyata (two-cable bridge, virtual cables) — live proof memerlukan sesi acceptance manual terpisah; `live-proven` tetap tidak established.
 
-**Fase berikutnya:** **WA4 — Bounded Autonomous Call Dialogue**.
+**Acceptance (harness):** dua arah audio path teruji via fixture; bounded duration; tanpa remote control/authority baru — TERPENUHI. RED 9 failed → GREEN 9 passed; regression 35 passed; frozen `094b696` OK.
+
+**Fase berikutnya:** **WA4 — Bounded Autonomous Call Dialogue** — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
 
@@ -440,6 +446,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase WA3 — Real Two-Way Audio Proof** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: inbound + outbound audio path teruji (capture loopback + playback), sinyal start/stop call via session WA2, bounded duration.
-Guardrail: tidak ada remote control/authority baru, audio proof hanya fixture/live terpisah; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase WA4 — Bounded Autonomous Call Dialogue** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: turn policy (local + remote), stop word + user interrupt, no secret/PII disclosure, per-turn objective guard, summary metadata-only.
+Guardrail: tidak ada authority baru, tidak ada disclosure secret/PII; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
