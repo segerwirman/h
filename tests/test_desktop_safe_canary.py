@@ -38,6 +38,8 @@ def test_canary_summarizes_all_disposable_acceptances_as_opaque_statuses():
         [sys.executable, str(SCRIPT.parent / "cua_safe_click_acceptance.py")],
         [sys.executable, str(SCRIPT.parent / "cua_safe_scroll_acceptance.py")],
         [sys.executable, str(SCRIPT.parent / "cua_safe_set_value_acceptance.py")],
+        [sys.executable, str(SCRIPT.parent / "content_studio_desktop_safe_acceptance.py")],
+        [sys.executable, str(SCRIPT.parent / "content_studio_desktop_safe_acceptance.py")],
     ]
     assert summary == {
         "accepted": True,
@@ -45,6 +47,8 @@ def test_canary_summarizes_all_disposable_acceptances_as_opaque_statuses():
             {"name": "click", "accepted": True, "executed": True, "verified": True},
             {"name": "scroll", "accepted": True, "executed": True, "verified": True},
             {"name": "set_value", "accepted": True, "executed": True, "verified": True},
+            {"name": "content_studio_title", "accepted": True, "executed": True, "verified": True},
+            {"name": "content_studio_reorder", "accepted": True, "executed": True, "verified": True},
         ],
     }
 
@@ -69,6 +73,8 @@ def test_canary_normalizes_timeout_and_passes_a_bounded_timeout_to_runner():
             {"name": "click", "accepted": False, "reason": "canary_fixture_failed"},
             {"name": "scroll", "accepted": False, "reason": "canary_fixture_not_run"},
             {"name": "set_value", "accepted": False, "reason": "canary_fixture_not_run"},
+            {"name": "content_studio_title", "accepted": False, "reason": "canary_fixture_not_run"},
+            {"name": "content_studio_reorder", "accepted": False, "reason": "canary_fixture_not_run"},
         ],
     }
 
@@ -91,6 +97,16 @@ def test_canary_normalizes_fixture_failure_without_leaking_raw_ui_error():
             {"name": "click", "accepted": False, "reason": "canary_fixture_failed"},
             {"name": "scroll", "accepted": False, "reason": "canary_fixture_not_run"},
             {"name": "set_value", "accepted": False, "reason": "canary_fixture_not_run"},
+            {"name": "content_studio_title", "accepted": False, "reason": "canary_fixture_not_run"},
+            {"name": "content_studio_reorder", "accepted": False, "reason": "canary_fixture_not_run"},
         ],
     }
     assert "password" not in repr(summary).lower()
+
+
+def test_canary_covers_content_studio_title_and_reorder():
+    # RED Phase 21: fixture content studio belum terdaftar di canary runner
+    module = _canary_module()
+    names = [name for name, _ in module._FIXTURES]
+    assert "content_studio_title" in names      # RED: belum ada
+    assert "content_studio_reorder" in names    # RED: belum ada

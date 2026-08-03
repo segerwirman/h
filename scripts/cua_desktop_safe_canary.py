@@ -19,6 +19,8 @@ _FIXTURES = (
     ("click", "cua_safe_click_acceptance.py"),
     ("scroll", "cua_safe_scroll_acceptance.py"),
     ("set_value", "cua_safe_set_value_acceptance.py"),
+    ("content_studio_title", "content_studio_desktop_safe_acceptance.py"),
+    ("content_studio_reorder", "content_studio_desktop_safe_acceptance.py"),
 )
 
 
