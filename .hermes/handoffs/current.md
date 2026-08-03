@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Remediasi awareness COMPLETE — 2026-08-03 (lanjutan roadmap)
+**Updated:** WA1-lanjutan COMPLETE — 2026-08-03 (lanjutan roadmap)
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `1f8b6b8` (AWK); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `d989dd3` (TIM3); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -70,7 +70,10 @@ WA2-lanjutan call states                   COMPLETE
   → sisa 27 tuntas
 Remediasi awareness test                   COMPLETE
   → AWK 1f8b6b8 (test merah terakhir hilang)
-  → berikutnya WA1-lanjutan timer (menunggu Takeda)
+  → selesai
+WA1-lanjutan timer lanjutan                COMPLETE
+  → TIM3 d989dd3 (multi-timer + pause/resume)
+  → sisa WA1 tuntas; berikutnya WA4-lanjutan (menunggu Takeda)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -92,6 +95,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## WA1-lanjutan milestone (2026-08-03)
+
+**WA1-lanjutan COMPLETE** — commit TIM3 `d989dd3`. `timer_manager.py`: multi-timer bounded 8 (label unik; duplicate ditolak; rentang 1s–7 hari), pause/resume anti-drift (deadline digeser), status_list metadata-only, done lazy, due + announce callback opsional (sekali per label — tanpa auto-TTS). Flake ring determinisme diperbaiki (remaining_s bukan kontrak). RED 8 → GREEN 8; regression 97 passed; frozen `094b696` OK.
 
 ## Remediasi awareness milestone (2026-08-03)
 
@@ -287,17 +294,18 @@ JARVIS.MD
 
 ## Next phase
 
-**WA1-lanjutan — Timer Lanjutan** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**WA4-lanjutan — Dialogue Lanjutan** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Melengkapi countdown timer dengan multi-timer + pause/resume.
+Melengkapi dialogue dengan rules lanjutan + simulator proof.
 
 ### Scope
 
-- multi-timer bersamaan (bounded count, label unik);
-- pause/resume + status list;
-- TTS announcement opsional; duplicate label clarify; rentang 7 hari.
+- one-question-at-a-time rule;
+- confirm dates/prices/reference;
+- escalation on payment/objective drift;
+- simulator successful-inquiry/safe-refusal/escalation proof.
 
 ### Guardrails
 
@@ -318,12 +326,12 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Remediasi awareness COMPLETE (2026-08-03): test merah terakhir hilang
-(AWK 1f8b6b8) — kontrak panel retired di-align, tanpa perubahan
-production. Worktree bersih kecuali 2 artifact (.curator_state.json,
-full_run.txt) — JANGAN di-commit. Index kosong. Frozen 094b696 OK.
+WA1-lanjutan COMPLETE (2026-08-03): timer manager (TIM3 d989dd3) —
+multi-timer + pause/resume + due announce, sisa WA1 tuntas. Worktree
+bersih kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN
+di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif — WA1-lanjutan (Timer Lanjutan) DILARANG dimulai
+TIDAK ADA fase aktif — WA4-lanjutan (Dialogue Lanjutan) DILARANG dimulai
 tanpa approval eksplisit Takeda. Tugas sesi: verifikasi posisi (read-only),
 audit worktree/HEAD/frozen, presentasikan status + opsi lanjutan, minta
 approval sebelum eksekusi apa pun. Jangan

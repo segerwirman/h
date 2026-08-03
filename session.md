@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: 1f8b6b8 test(ui): align awareness toggle test with retired-panel contract (AWK)
-Last updated: 2026-08-03 — Remediasi awareness COMPLETE (test merah hilang)
+HEAD: d989dd3 feat(core): multi-timer manager with pause/resume and optional announce (TIM3)
+Last updated: 2026-08-03 — WA1-lanjutan COMPLETE (timer lanjutan)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 85 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON + CST + CAP + AWK 1f8b6b8)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 86 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON + CST + CAP + AWK + TIM3 d989dd3)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: WA1-lanjutan — Timer Lanjutan
+Status: COMPLETE (sisa WA1)
+Completed: 2026-08-03 (TIM3 d989dd3; frozen 094b696 OK)
+```
 
 ```text
 Phase: Remediasi — awareness pre-existing test
@@ -332,22 +338,22 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: Remediasi — awareness pre-existing test
-Status: COMPLETE — 2026-08-03 (AWK 1f8b6b8)
-Priority: test merah terakhir dibersihkan
+Phase: WA1-lanjutan — Timer Lanjutan
+Status: COMPLETE — 2026-08-03 (TIM3 d989dd3)
+Priority: multi-timer, pause/resume, due announce
 ```
 
 ### Outcome
 
-- **Akar masalah**: test lama mengasumsikan icon `awareness` ada di action panel — config `action_panel.icons` TIDAK menyertakannya (icon retired; toggle tetap eksplisit via command palette `toggle_awareness`).
-- **Test di-update ke kontrak saat ini** (`test_awareness_toggle_is_explicit_opt_in_and_palette_only`): `"awareness" not in _buttons` (retired — dikunci); `set_indicator` no-op aman; `_toggle_awareness()` → running; kedua → paused. **TANPA perubahan production**.
-- TDD: pre-existing merah `KeyError: 'awareness'` → hijau; window integration 25 passed; regression 78 passed (window + wiring + sheet + states + capability + continuation + ring + facades + bridge); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 25 passed; approval Takeda.
+- `jarvis/core/timer_manager.py` (baru): `TimerManager` — **multi-timer** (`add(label, duration_s)`; `MAX_TIMERS=8`; duplicate label ditolak; rentang 1s–7 hari; 0/bool/negatif/lebih ditolak); **pause/resume anti-drift** (pause membekukan remaining; resume menggeser deadline); `status_list()` metadata-only; `remove()`; done lazy (deadline monotonic); **`due()`** label baru selesai + **announce callback opsional** (TTS) sekali per label — manager tidak pernah memanggil TTS sendiri.
+- **Flake permanen diperbaiki**: `test_ring_is_deterministic_offline` — remaining_s int ±1 di boundary detik; determinisme kini struktur + status (bukan detik); stabil 5×.
+- TDD: RED 8 failed → GREEN 8 passed; regression 97 passed (timer manager + ring + countdown + wiring + capability + sheet + states + continuation + facades + bridge + window); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 26 passed (3×); approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: WA1-lanjutan — Timer Lanjutan (rekomendasi #5)
+Phase: WA4-lanjutan — Dialogue Lanjutan (rekomendasi #6)
 Status: MENUNGGU KEPUTUSAN TAKEDA
 Guardrail: jangan mulai fase baru tanpa approval eksplisit Takeda.
 ```
@@ -380,7 +386,8 @@ WA7-lanjutan decision continuation ✅ (CON b1003f9, 2026-08-03)
 WA2-lanjutan call states ✅ (CST 3cd527d, 2026-08-03)
 27-lanjutan facade capability ✅ (CAP 7e72d79, 2026-08-03)
 remediasi awareness ✅ (AWK 1f8b6b8, 2026-08-03)
-→ WA1-lanjutan timer lanjutan (MENUNGGU keputusan Takeda)
+WA1-lanjutan timer lanjutan ✅ (TIM3 d989dd3, 2026-08-03)
+→ WA4-lanjutan dialogue lanjutan (MENUNGGU keputusan Takeda)
 ```
 
 ## Mandatory completion protocol
@@ -412,15 +419,16 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: 1f8b6b8 (AWK). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: d989dd3 (TIM3). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Remediasi awareness COMPLETE (2026-08-03): test merah terakhir dibersihkan
-(config panel retired icon awareness; toggle via palette tetap diuji).
-Window integration 25 passed; regression 78 passed.
+WA1-lanjutan COMPLETE (2026-08-03): multi-timer manager — bounded 8,
+label unik, rentang 1s–7 hari, pause/resume anti-drift, due + announce
+opsional; flake ring determinisme diperbaiki. RED 8 → GREEN 8; regression
+97 passed.
 
-Fase aktif: TIDAK ADA. WA1-lanjutan (Timer Lanjutan) DILARANG dimulai
+Fase aktif: TIDAK ADA. WA4-lanjutan (Dialogue Lanjutan) DILARANG dimulai
 tanpa approval eksplisit Takeda.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/

@@ -272,7 +272,7 @@ Guardrail: ...
 
 **Policy (implementasi):** 1–3600 detik bounded int, monotonic deadline (anti-drift), exact-once expiry (`timer.finished` sekali), local BUS/UI, clean shutdown (driver auto-stop), no shell task per timer.
 
-**Belum dikerjakan (timer lanjutan):** multi-timer bersamaan, pause/resume, status list, TTS announcement, duplicate label clarify, 7-hari rentang.
+**Belum dikerjakan (timer lanjutan):** — multi-timer bersamaan, pause/resume, status list, TTS announcement, duplicate label clarify, 7-hari rentang: ✅ COMPLETE (TIM3 `d989dd3`, 2026-08-03) — multi-timer bounded 8, label unik, pause/resume anti-drift, status_list, due + announce opsional; sisa: wire ke UI/facade (opsional).
 
 **Acceptance (intisari):** lifecycle + transisi status + bus signal teruji (RED 10 → GREEN 11); countdown tidak memakai Task Scheduler — TERPENUHI. Regression window 35 passed; frozen `094b696` OK.
 
@@ -497,6 +497,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**WA1-lanjutan — Timer Lanjutan** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: multi-timer bersamaan (bounded count, label unik), pause/resume + status list, TTS announcement opsional, duplicate label clarify, rentang 7 hari.
+**WA4-lanjutan — Dialogue Lanjutan** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: one-question-at-a-time rule, confirm dates/prices/reference, escalation on payment/objective drift, simulator successful-inquiry/safe-refusal/escalation proof.
 Guardrail: tidak ada eksekusi tanpa approval eksplisit Takeda; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
