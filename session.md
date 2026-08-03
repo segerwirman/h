@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: 9ec2bb0 feat(integrations): WhatsApp readiness gate with offline boolean checks (WAR)
-Last updated: 2026-08-03 — Phase WA0 COMPLETE (WhatsApp readiness)
+HEAD: 3e53f91 feat(core): native countdown timer with orb progress and light bus signals (TIM2)
+Last updated: 2026-08-03 — Phase WA1 COMPLETE (native countdown timer)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 68 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR 9ec2bb0)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 69 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 3e53f91)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: WA1 — Native Countdown Timer
+Status: COMPLETE
+Completed: 2026-08-03 (TIM2 3e53f91; frozen 094b696 OK)
+```
 
 ```text
 Phase: WA0 — WhatsApp Readiness
@@ -230,25 +236,25 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: WA0 — WhatsApp Readiness
-Status: COMPLETE — 2026-08-03 (WAR 9ec2bb0)
-Priority: know when it is safe to connect, without real credentials
+Phase: WA1 — Native Countdown Timer
+Status: COMPLETE — 2026-08-03 (TIM2 3e53f91)
+Priority: bounded local countdown with clear status transitions
 ```
 
 ### Outcome
 
-- `jarvis/integrations/whatsapp_readiness.py` (baru): gate boolean murni — `dependency_available()` (SDK `whatsapp`/`whatsapp_business_python` via `find_spec`), `credentials_ready()` (token + phone_id; absence → False, bukan crash), `toggle_enabled()` (`integrations.whatsapp.enabled`), `allowlist_configured()` (policy placeholder), `client_available()` (dependency AND credentials), `service_available()` (client AND toggle AND allowlist); `readiness()`/`readiness_summary()` metadata-only.
-- Integrasi canary: `probe_whatsapp()` kini memberi status nyata (`ready`/`absent`/`disabled`) — upgrade dari `unknown` Phase 25.
-- Guardrail teruji: offline penuh (tanpa kredensial nyata/jaringan/live client); tidak menulis ke secrets store; tidak mengekspos nilai; deterministik.
-- TDD: RED 8 failed → GREEN 8 passed; regression 15 passed (WA0 + probe); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 15 passed; approval Takeda.
+- `jarvis/core/countdown_timer.py` (baru): `admit_duration` int 1–3600s (bool/float/0/negatif/3601/NaN ditolak); `CountdownTimer` — `start()` (running), `cancel()` (cancelled + publish `timer.cancelled`, idempotent), `status()` lazy transition running → done + publish `timer.finished` (sekali), `remaining_s()`, `progress()` (0..1), clock injectable; **deadline monotonic — anti-drift** (selesai tepat waktu tanpa tick di batas).
+- `jarvis/ui/countdown_driver.py` (baru): adapter timer → `orb.set_progress` (orb.py FROZEN, tidak disentuh); berhenti otomatis saat done/cancelled; attach/detach idempotent; ticker di-inject.
+- Wiring window: `start_countdown(duration)` (validasi → QTimer 200ms → orb progress + log lokal), `cancel_countdown()` — murni lokal, hidden-by-default, tanpa remote/network/write.
+- TDD: RED 10 failed → GREEN 11 passed; regression window integration 35 passed (hanya awareness pre-existing yang gagal); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 11 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: WA1 — Native Countdown Timer
+Phase: WA2 — Call Session & Approval
 Status: MENUNGGU KEPUTUSAN TAKEDA
-Guardrail: jangan mulai Phase WA1 tanpa approval eksplisit Takeda.
+Guardrail: jangan mulai Phase WA2 tanpa approval eksplisit Takeda.
 ```
 
 ## Planned phase order
@@ -262,8 +268,8 @@ Guardrail: jangan mulai Phase WA1 tanpa approval eksplisit Takeda.
 24 runtime lifecycle reliability ✅ (LIF 1011794, 2026-08-03)
 25 credential-free canary ✅ (CAN 11430b6, 2026-08-03)
 WA0 WhatsApp readiness ✅ (WAR 9ec2bb0, 2026-08-03)
-→ WA1 native countdown timer (MENUNGGU keputusan Takeda)
-→ WA2 call session/approval
+WA1 native countdown timer ✅ (TIM2 3e53f91, 2026-08-03)
+→ WA2 call session/approval (MENUNGGU keputusan Takeda)
 → WA3 real two-way audio proof
 → WA4 bounded autonomous call dialogue
 → WA5 call memory/privacy
@@ -306,19 +312,20 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: 9ec2bb0 (WAR). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: 3e53f91 (TIM2). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Phase WA0 COMPLETE (2026-08-03): WhatsApp readiness gate — dependency
-(SDK belum ter-install → jujur False), credentials absence → False bukan
-crash, toggle + allowlist placeholder; client_available/service_available
-boolean; probe canary whatsapp kini status nyata. RED 8 → GREEN 8;
-regression 15 passed.
+Phase WA1 COMPLETE (2026-08-03): native countdown timer — CountdownTimer
+core (bounded 1-3600s, deadline monotonic anti-drift, transisi
+running→done/cancelled, bus signal timer.finished/timer.cancelled sekali),
+CountdownDriver (orb.set_progress, orb.py frozen tidak disentuh), wiring
+window start_countdown/cancel_countdown. RED 10 → GREEN 11; regression
+window 35 passed.
 
-Fase aktif: TIDAK ADA. Phase WA1 (Native Countdown Timer) DILARANG dimulai
-sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu, presentasikan
-status + opsi, minta approval sebelum eksekusi.
+Fase aktif: TIDAK ADA. Phase WA2 (Call Session & Approval) DILARANG
+dimulai sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu,
+presentasikan status + opsi, minta approval sebelum eksekusi.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,

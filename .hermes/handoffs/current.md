@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase WA0 COMPLETE — 2026-08-03
+**Updated:** Phase WA1 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `9ec2bb0` (WAR); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `3e53f91` (TIM2); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -32,7 +32,9 @@ Phase 25 credential-free canary               COMPLETE
   → CAN 11430b6 (probe status boolean, tanpa nilai secret)
 Phase WA0 whatsapp readiness                 COMPLETE
   → WAR 9ec2bb0 (readiness gate boolean, offline penuh)
-  → sisa: tidak ada; Phase WA1 menunggu keputusan Takeda (dilarang)
+Phase WA1 countdown timer                    COMPLETE
+  → TIM2 3e53f91 (native timer + orb progress + bus signals)
+  → sisa: tidak ada; Phase WA2 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -54,6 +56,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## Phase WA1 countdown timer milestone (2026-08-03)
+
+**Phase WA1 COMPLETE** — commit TIM2 `3e53f91`. `jarvis/core/countdown_timer.py`: `CountdownTimer` bounded 1–3600s, deadline monotonic anti-drift, transisi running → done/cancelled, bus `timer.finished`/`timer.cancelled` sekali, remaining_s/progress, clock injectable. `jarvis/ui/countdown_driver.py`: timer → `orb.set_progress` (orb.py FROZEN tidak disentuh), auto-stop, attach/detach idempotent. Wiring window `start_countdown`/`cancel_countdown` (QTimer 200ms + log lokal). Murni lokal tanpa remote/network/write. RED 10 → GREEN 11; regression window 35 passed; frozen `094b696` OK.
 
 ## Phase WA0 whatsapp readiness milestone (2026-08-03)
 
@@ -181,22 +187,22 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase WA1 — Native Countdown Timer** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Phase WA2 — Call Session & Approval** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Timer countdown native di UI orb — durasi terbatas, cancel, selesai tepat waktu, transisi status jelas.
+Bounded call session state machine dengan local approval flow.
 
 ### Scope
 
-- durasi terbatas (bounded, finite integer);
-- cancel; selesai tepat waktu (bukan drif);
-- sinyal ringan ke bus (tanpa remote/network/write);
-- transisi status jelas: running → done/cancelled.
+- bounded session (start/done/cancel);
+- local approval flow;
+- remote proposal hanya enum (bukan eksekusi);
+- TTL + one-shot; metadata result saja.
 
 ### Guardrails
 
-- Tanpa remote/network/write; murni lokal, hidden-by-default.
+- Tidak ada authority baru; proposal remote tidak pernah mengeksekusi.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -213,13 +219,12 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase WA0 COMPLETE (2026-08-03): whatsapp readiness (WAR 9ec2bb0) — gate
-boolean offline: dependency, credentials absence, toggle + allowlist,
-client/service available. Worktree bersih kecuali 2 artifact
-(.curator_state.json, full_run.txt) — JANGAN di-commit. Index kosong.
-Frozen 094b696 OK.
+Phase WA1 COMPLETE (2026-08-03): countdown timer (TIM2 3e53f91) — native
+timer bounded + orb progress + bus signals, murni lokal. Worktree bersih
+kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN di-commit.
+Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase WA1 (Native Countdown Timer) DILARANG dimulai
+TIDAK ADA fase aktif. Phase WA2 (Call Session & Approval) DILARANG dimulai
 sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi posisi
 (read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
 lanjutan, minta approval sebelum eksekusi apa pun. Jangan

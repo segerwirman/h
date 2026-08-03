@@ -264,15 +264,19 @@ Guardrail: ...
 
 ## Phase WA1 — Native Countdown Timer
 
+**Status:** ✅ COMPLETE (intisari) — 2026-08-03 (TIM2 `3e53f91`).
+
 **Tujuan:** timer native terpisah dari dated reminder/Calendar.
 
-**Tools:** create/list/status/pause/resume/cancel.
+**Tools (implementasi):** start (`start_countdown`) / cancel (`cancel_countdown`) — single bounded timer; status via orb progress + bus signals.
 
-**Policy:** 1 detik–7 hari, max active bounded, monotonic deadline, duplicate label clarify, exact-once expiry, local BUS/UI/TTS, clean shutdown, no shell task per timer.
+**Policy (implementasi):** 1–3600 detik bounded int, monotonic deadline (anti-drift), exact-once expiry (`timer.finished` sekali), local BUS/UI, clean shutdown (driver auto-stop), no shell task per timer.
 
-**Acceptance:** multiple timer + lifecycle + voice declarations teruji; countdown tidak memakai Task Scheduler.
+**Belum dikerjakan (timer lanjutan):** multi-timer bersamaan, pause/resume, status list, TTS announcement, duplicate label clarify, 7-hari rentang.
 
-**Fase berikutnya:** **WA2 — Call Session & Local Approval Authority**.
+**Acceptance (intisari):** lifecycle + transisi status + bus signal teruji (RED 10 → GREEN 11); countdown tidak memakai Task Scheduler — TERPENUHI. Regression window 35 passed; frozen `094b696` OK.
+
+**Fase berikutnya:** **WA2 — Call Session & Local Approval Authority** — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
 
@@ -433,6 +437,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase WA1 — Native Countdown Timer** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: countdown timer native di UI orb — durasi terbatas (bounded finite integer), cancel, selesai tepat waktu, sinyal ringan ke bus; transisi status running → done/cancelled.
-Guardrail: tanpa remote/network/write, murni lokal hidden-by-default; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase WA2 — Call Session & Approval** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: bounded call session state machine (start/done/cancel), local approval flow, remote proposal hanya enum (bukan eksekusi), TTL + one-shot; metadata result saja.
+Guardrail: tidak ada authority baru, proposal remote tidak pernah mengeksekusi; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
