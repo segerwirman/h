@@ -243,6 +243,7 @@ class CronScheduler:
     def __init__(self):
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._interval = 20.0   # Phase 24: tick interval, dipakai stop() join
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
@@ -256,7 +257,14 @@ class CronScheduler:
         _logger.info("cron.scheduler_started")
 
     def stop(self) -> None:
+        """Stop scheduler dan join thread dengan batas bounded (Phase 24)."""
         self._stop.set()
+        thread = self._thread
+        if (thread is not None and thread.is_alive()
+                and thread is not threading.current_thread()):
+            thread.join(timeout=self._interval + 1.0)
+        if thread is not None and not thread.is_alive():
+            self._thread = None
 
     def _ensure_internal_jobs(self) -> None:
         if get_job(_INTERNAL_CONSOLIDATE) is None:
@@ -265,7 +273,7 @@ class CronScheduler:
                    internal=True)
 
     def _loop(self) -> None:
-        while not self._stop.wait(20):
+        while not self._stop.wait(self._interval):
             try:
                 now = time.time()
                 for job in list_jobs():

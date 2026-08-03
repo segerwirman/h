@@ -140,6 +140,7 @@ class SetupQueue:
         self._lock = threading.RLock()
         self._stop = threading.Event()
         interval = max(0.05, min(1.0, self._ttl_s / 2))
+        self._sweep_interval = interval   # Phase 24: dipakai close() join
         self._sweeper = threading.Thread(
             target=self._sweep_loop, name="remote-setup-sweeper", daemon=True,
             kwargs={"interval": interval},
@@ -147,8 +148,12 @@ class SetupQueue:
         self._sweeper.start()
 
     def close(self) -> None:
-        """Stop the autonomous sweeper; staging cleanup stops too."""
+        """Stop the autonomous sweeper dan join thread (bounded, Phase 24)."""
         self._stop.set()
+        sweeper = self._sweeper
+        if (sweeper is not None and sweeper.is_alive()
+                and sweeper is not threading.current_thread()):
+            sweeper.join(timeout=self._sweep_interval + 1.0)
 
     def _sweep_loop(self, *, interval: float) -> None:
         while not self._stop.wait(interval):
