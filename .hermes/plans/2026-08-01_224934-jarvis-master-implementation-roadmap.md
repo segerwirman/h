@@ -437,15 +437,19 @@ Guardrail: ...
 
 # TRACK 4 — BOUNDED CAPABILITY EXPANSION
 
-## Phase 27 — Named Local Capability Request Facade
+## Phase 27 — Named Local Capability Facade
 
-**Tujuan:** enum facade untuk capability proven saja: Content Studio title/reorder, Focus Mode, browser media, timer, approved call-session start/status/hangup.
+**Status:** ✅ COMPLETE — 2026-08-03 (FAC `aaa4dba`).
 
-**Permanent reject:** arbitrary tool/action, coordinate, selector, key, path, URL, screenshot, raw text dispatch, login/payment.
+**Tujuan:** komposisi lokal yang dipanggil agent dengan nama eksplisit.
 
-**Acceptance:** original per-capability policy/confirmation/verification tetap berlaku.
+**Implementasi:** `jarvis/core/local_facades.py` — `LocalFacadeRegistry` komposisi lokal bernama: steps fixed tuple immutable, deny-unknown (`facade_unknown`), langkah gagal → berhenti + report per-step; facade default `check_order_status` (ServiceCase WA8) & `book_reservation` (CalendarProposal WA6 → ReservationCommitmentGate WA7).
 
-**Fase berikutnya:** **28 — Mediated Remote Proposal Facade**.
+**Acceptance:** facade bernama; fixed steps; deny-unknown; tanpa authority baru — TERPENUHI. RED 8 failed → GREEN 8 passed; regression 96 passed; frozen `094b696` OK.
+
+**Belum dikerjakan (facade lanjutan):** enum facade untuk capability lain — Content Studio title/reorder, Focus Mode, browser media, timer, approved call-session start/status/hangup; permanent reject rules (arbitrary tool/action, coordinate, selector, key, path, URL, screenshot, raw text dispatch, login/payment); per-capability policy/confirmation/verification tetap berlaku.
+
+**Fase berikutnya:** **28 — Mediated Remote Facade** — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
 
@@ -481,6 +485,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase 27 — Named Local Capability Facade** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: komposisi lokal yang dipanggil agent dengan nama eksplisit (contoh: `book_reservation`, `check_order_status`); setiap facade = daftar fixed langkah lokal, deny-unknown.
-Guardrail: tanpa authority baru, deny-unknown; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase 28 — Mediated Remote Facade** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: facade lokal (Phase 27) diekspos ke remote hanya sebagai PROPOSAL enum/allowlist; eksekusi tetap lokal via approval eksplisit; remote tidak pernah memanggil facade langsung; metadata result saja.
+Guardrail: remote tidak pernah mengeksekusi, approval lokal wajib; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

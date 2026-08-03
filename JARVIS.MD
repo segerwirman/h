@@ -2,7 +2,7 @@
 
 > **Repository:** `E:\jarvis agent\h`
 > **Language:** Indonesian
-> **Current implementation status:** Phase 26 Cross-Integration Live Ring COMPLETE (2026-08-03); Phase 27 next — menunggu keputusan Takeda
+> **Current implementation status:** Phase 27 Named Local Facade COMPLETE (2026-08-03); Phase 28 next — menunggu keputusan Takeda
 
 ## Start here in every new session
 
@@ -73,6 +73,7 @@
 | Phase WA8 | ✅ | Customer-service case manager: `service_case.py` — typed fixed set `{service_hours, appointment, order_status}` (free-form/warranty ditolak), non-secret reference, field allowlist (note 1–300 + secret guard), disclosure policy per type (payment_details tidak pernah), stop/escalation rules (secret/payment/OTP/CVV → escalated + reason fixed + stop), one-shot close, result metadata-only; TANPA free-form mission. |
 | Phase WA9 | ✅ | Controlled WhatsApp rollout: `whatsapp_rollout.py` — gate outbound lokal deny-by-default: toggle config (default False), allowlist policy, opt-out/revoke, rate limiting sliding 60s (5/menit), daily caps (50/hari, reset per-hari); deny reasons fixed set; kontrak statis: tanpa import SDK/network/file — TANPA live integration di fase ini. |
 | Phase 26 | ✅ | Cross-integration live ring: `integration_ring.py` — `run_ring()` alur deterministik offline memakai 10 modul inti WA0→WA9 bersama; ring ok = semua step selesai (status gate jujur apa adanya); deterministik tanpa kredensial; metadata-only; kontrak statis tanpa SDK/network/file — proof ring, BUKAN live-proven. |
+| Phase 27 | ✅ | Named local facade: `local_facades.py` — `LocalFacadeRegistry` komposisi lokal bernama; steps fixed tuple immutable (tidak bisa diubah runtime), deny-unknown (`facade_unknown`), langkah gagal → berhenti + report per-step; facade default `check_order_status` (WA8) & `book_reservation` (WA6+WA7) — komposisi murni modul inti, TANPA authority baru; kontrak statis tanpa provider/network/file. |
 
 ## Capability evidence classification
 
@@ -148,8 +149,8 @@ python scripts/verify_frozen.py
 ```
 
 ## Next recommended phase
-**Phase 27 — Named Local Facade** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
+**Phase 28 — Mediated Remote Facade** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
 
-Facade lokal bernama: komposisi lokal yang bisa dipanggil agent dengan nama eksplisit (contoh: `book_reservation`, `check_order_status`); setiap facade = daftar fixed langkah lokal, deny-unknown, tanpa authority baru. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
+Facade remote termediasi: facade lokal (Phase 27) diekspos ke remote hanya sebagai PROPOSAL enum/allowlist; eksekusi tetap lokal via approval eksplisit; remote tidak pernah memanggil facade langsung; metadata result saja. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
 
 For detailed current test evidence, changed files, and exact next implementation contract, read `.hermes/handoffs/current.md`.
