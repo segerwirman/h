@@ -46,6 +46,7 @@ def _start_voice_pipeline(ui, *, stop_requested: threading.Event | None = None):
                                              voice_text_only_observer,
                                              voice_live_transport,
                                              voice_native_tools,
+                                             voice_proposal_install,
                                              whatsapp_voice)
             # Adapter credential di luar file FROZEN: suara tetap identik,
             # hanya sumber API key yang berpindah dari plaintext ke store.
@@ -67,6 +68,8 @@ def _start_voice_pipeline(ui, *, stop_requested: threading.Event | None = None):
             # core/prompt.txt tetap tidak tersentuh.
             voice_tasks.install(legacy)
             voice_l1.install(legacy)
+            # 18A proposal hook is config-gated and fail-open; it never executes.
+            voice_proposal_install.install(legacy)
             voice_notices.install(legacy)
             voice_text_only_observer.install(legacy)
             voice_live_transport.install(legacy)
@@ -143,6 +146,11 @@ def run(no_voice: bool = False, *, ui_factory=None) -> int:
     from jarvis.ui.window import JarvisUI
     build_ui = ui_factory or JarvisUI
     ui = build_ui(services={"assistant": assistant, "vision": vision})
+    try:
+        from jarvis.integrations import desktop_safe_lifecycle
+        desktop_safe_lifecycle.install(ui._win.__class__)
+    except Exception as exc:                                 # noqa: BLE001
+        logger.warning("desktop_safe.ui_teardown_unavailable", error=str(exc)[:120])
 
     # Wake Trigger (Module 10) — idempotent: an active/speaking session is
     # never re-woken, and the acknowledgment goes through MainWindow._speak_line.
@@ -217,6 +225,17 @@ def run(no_voice: bool = False, *, ui_factory=None) -> int:
     except Exception as e:
         logger.warning("agent.cron_unavailable", error=str(e)[:150])
 
+    # Phase 17H — separate monitor-only lifecycle; never reuses agent cron.
+    monitor_worker = None
+    try:
+        from jarvis.monitoring import runtime as monitor_runtime
+        monitor_worker = monitor_runtime.start()
+        if monitor_worker.launch():
+            supervisor.add_stop("monitor_worker", monitor_worker.stop)
+            supervisor.add_thread("monitor_worker", monitor_worker.thread)
+    except Exception as exc:
+        logger.warning("monitor.worker_unavailable", error=type(exc).__name__)
+
     # ── cinematic boot: visual-only readiness checks, never a briefing ──
     from jarvis.core.boot import BootSequence
     from jarvis.ui.orb import OrbState
@@ -226,6 +245,18 @@ def run(no_voice: bool = False, *, ui_factory=None) -> int:
 
     def on_boot_done(_ready: str, results) -> None:
         ui.write_log("SYS: CORE ONLINE — command input ready.")
+        # Fase 17D: opt-in, daemon-only local briefing after readiness.
+        # No fetch/scheduler/Telegram authority enters the boot callback.
+        try:
+            from jarvis.integrations import boot_briefing
+            boot_briefing.start_if_enabled(
+                lambda text: (
+                    ui._win._record_task_result("HASIL", text),
+                    ui._win._speak_line(text),
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("boot.briefing_unavailable", error=type(exc).__name__)
         if no_voice:
             ui.set_state("IDLE")
         else:

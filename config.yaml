@@ -220,6 +220,15 @@ ui:
           USER:    "#ff8a80"
           AI:      "#ff5252"
 
+# Fase 16D — briefing lokal (Calendar + Gmail). Semua default OFF; opt-in.
+briefing:
+  on_boot:
+    calendar: false
+    email_content: false
+    monitor: false
+  telegram:
+    send_summary: false
+
 orb:
   dock_inset_px: 200            # inset from corner when docked
   dock_diameter: 140
@@ -282,9 +291,11 @@ notifications:                   # Mark L Change 1 — boot notification hub
       })();
 
 action_panel:                    # Mark L Change 3 + 7
-  icons: [vision, upload, spotify, home, awareness, focus_mode, palette,
+  icons: [vision, upload, spotify, home, studio, focus_mode, palette,
           timeline, tasks, capabilities, messaging, gateway_ops, settings]
-          # capabilities/messaging/gateway_ops adalah sheet lokal; home: MK50 §7.3
+          # awareness (UI U1): retired from default; watcher stays default-off,
+          # opt in by re-adding 'awareness' here. capabilities/messaging/
+          # gateway_ops adalah sheet lokal; home: MK50 §7.3
   icon_px: 22
   height: 56
   spacing: 26
@@ -703,6 +714,8 @@ routing:
   voice_l1_hook:
     enabled: false              # default no-op; aktifkan manual untuk uji L1
     timeout_ms: 50              # resolver lambat selalu fall-open ke Gemini
+  voice_desktop_proposals:
+    enabled: false              # 18A: voice may only stage bounded local proposals
   voice_notice_bridge:
     enabled: false              # default no-op; batch notice L1/T2 hanya saat turn_complete
   light:

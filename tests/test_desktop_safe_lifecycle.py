@@ -41,6 +41,7 @@ def test_desktop_service_exclusive_claim_allows_only_one_parallel_owner():
 
     assert sorted(accepted for _, accepted in results) == [False, True]
 
+
 def test_owner_registry_does_not_leak_across_repeated_soak_action_cycles():
     """Fase 10.5: successful actions must retire their observation ownership."""
     from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
@@ -67,6 +68,7 @@ def test_owner_registry_does_not_leak_across_repeated_soak_action_cycles():
 
     assert len(authority._owners) <= 4
     assert len(gate._observations) <= 64
+
 
 def test_clear_all_revokes_every_observation_even_if_same_owner_has_multiple_refs():
     from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
@@ -95,134 +97,6 @@ def test_clear_all_revokes_every_observation_even_if_same_owner_has_multiple_ref
             observation.id, "uia-next", session_id="session-a")
         assert outcome is None
         assert "observasi" in error
-
-def test_click_recapture_failure_releases_lease_and_never_retries_executor():
-    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
-    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
-    from jarvis.automation.cua_safety import CuaSafetyGate
-    from jarvis.core.element_model import ElementScope, ScreenElementTree, UIElement
-
-    tree = ScreenElementTree()
-    tree.add(UIElement(
-        "uia-next", ElementScope.PAGE_MAIN, "button", name="Next",
-        rect=(1, 2, 30, 20), visible=True, confidence=.95, provenance="uia",
-        states={"_uia_runtime_id": "fixture-next"},
-    ))
-
-    class Lease:
-        def __init__(self): self.calls = []
-        def claim(self, owner): self.calls.append(("claim", owner)); return True
-        def release(self, owner): self.calls.append(("release", owner))
-
-    calls = []
-    lease = Lease()
-    gate = CuaSafetyGate()
-    captures = iter((CaptureFrame("uia:fixture", tree), RuntimeError("capture failed")))
-
-    def capture():
-        item = next(captures)
-        if isinstance(item, Exception):
-            raise item
-        return item
-
-    authority = SafeDesktopSession(
-        gate, CaptureAdapter(gate, capture), lambda _rect: None, desktop=lease,
-        click_native=lambda ref: calls.append(ref),
-    )
-    observation = authority.observe_for("session-a")
-
-    outcome, error = authority.click(
-        observation.id, "uia-next", session_id="session-a")
-
-    assert error == ""
-    assert outcome.executed is True
-    assert outcome.verified is False
-    assert "recapture" in outcome.reason
-    assert len(calls) == 1
-    assert lease.calls == [("claim", "session-a"), ("release", "session-a")]
-    again, again_error = authority.click(observation.id, "uia-next", session_id="session-a")
-    assert again is None
-    assert "observasi" in again_error
-    assert len(calls) == 1
-
-def test_click_native_exception_is_executed_unverified_and_never_retries():
-    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
-    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
-    from jarvis.automation.cua_safety import CuaSafetyGate
-    from jarvis.core.element_model import ElementScope, ScreenElementTree, UIElement
-
-    tree = ScreenElementTree()
-    tree.add(UIElement(
-        "uia-next", ElementScope.PAGE_MAIN, "button", name="Next",
-        rect=(1, 2, 30, 20), visible=True, confidence=.95, provenance="uia",
-        states={"_uia_runtime_id": "fixture-next"},
-    ))
-    gate = CuaSafetyGate()
-    attempts = []
-
-    def native_click(ref):
-        attempts.append(ref)
-        raise RuntimeError("late failure")
-
-    authority = SafeDesktopSession(
-        gate, CaptureAdapter(gate, lambda: CaptureFrame("uia:fixture", tree)),
-        lambda _rect: None, click_native=native_click,
-    )
-    observation = authority.observe_for("session-a")
-
-    outcome, error = authority.click(
-        observation.id, "uia-next", session_id="session-a")
-
-    assert error == ""
-    assert outcome.executed is True
-    assert outcome.verified is False
-    assert len(attempts) == 1
-    again, again_error = authority.click(observation.id, "uia-next", session_id="session-a")
-    assert again is None
-    assert "observasi" in again_error
-
-def test_clear_all_waits_for_inflight_action_then_revokes_remaining_refs():
-    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
-    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
-    from jarvis.automation.cua_safety import CuaSafetyGate
-    from jarvis.core.element_model import ElementScope, ScreenElementTree, UIElement
-
-    tree = ScreenElementTree()
-    tree.add(UIElement(
-        "uia-next", ElementScope.PAGE_MAIN, "button", name="Next",
-        rect=(1, 2, 30, 20), visible=True, confidence=.95, provenance="uia",
-        states={"_uia_runtime_id": "fixture-next"},
-    ))
-    gate = CuaSafetyGate()
-    entered = threading.Event()
-    release = threading.Event()
-    cleared = threading.Event()
-
-    def native_click(_ref):
-        entered.set()
-        assert release.wait(timeout=2)
-
-    authority = SafeDesktopSession(
-        gate, CaptureAdapter(gate, lambda: CaptureFrame("uia:fixture", tree)),
-        lambda _rect: None, click_native=native_click,
-    )
-    observation = authority.observe_for("session-a")
-    action = threading.Thread(
-        target=lambda: authority.click(observation.id, "uia-next", session_id="session-a"),
-    )
-    action.start()
-    assert entered.wait(timeout=2)
-    teardown = threading.Thread(target=lambda: (authority.clear_all(), cleared.set()))
-    teardown.start()
-
-    assert not cleared.wait(timeout=.1)
-    release.set()
-    action.join(timeout=2)
-    teardown.join(timeout=2)
-    assert cleared.is_set()
-    again, error = authority.click(observation.id, "uia-next", session_id="session-a")
-    assert again is None
-    assert "observasi" in error
 
 
 def test_set_value_executor_exception_invalidates_observation_and_releases_lease():
@@ -315,6 +189,216 @@ def test_set_value_recapture_failure_is_executed_unverified_and_releases_lease()
     assert again is None
     assert "observasi" in again_error
     assert len(calls) == 1
+
+
+def test_click_recapture_failure_releases_lease_and_never_retries_executor():
+    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+    from jarvis.core.element_model import ElementScope, ScreenElementTree, UIElement
+
+    tree = ScreenElementTree()
+    tree.add(UIElement(
+        "uia-next", ElementScope.PAGE_MAIN, "button", name="Next",
+        rect=(1, 2, 30, 20), visible=True, confidence=.95, provenance="uia",
+        states={"_uia_runtime_id": "fixture-next"},
+    ))
+
+    class Lease:
+        def __init__(self): self.calls = []
+        def claim(self, owner): self.calls.append(("claim", owner)); return True
+        def release(self, owner): self.calls.append(("release", owner))
+
+    calls = []
+    lease = Lease()
+    gate = CuaSafetyGate()
+    captures = iter((CaptureFrame("uia:fixture", tree), RuntimeError("capture failed")))
+
+    def capture():
+        item = next(captures)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    authority = SafeDesktopSession(
+        gate, CaptureAdapter(gate, capture), lambda _rect: None, desktop=lease,
+        click_native=lambda ref: calls.append(ref),
+    )
+    observation = authority.observe_for("session-a")
+
+    outcome, error = authority.click(
+        observation.id, "uia-next", session_id="session-a")
+
+    assert error == ""
+    assert outcome.executed is True
+    assert outcome.verified is False
+    assert "recapture" in outcome.reason
+    assert len(calls) == 1
+    assert lease.calls == [("claim", "session-a"), ("release", "session-a")]
+    again, again_error = authority.click(observation.id, "uia-next", session_id="session-a")
+    assert again is None
+    assert "observasi" in again_error
+    assert len(calls) == 1
+
+
+def test_click_native_exception_is_executed_unverified_and_never_retries():
+    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+    from jarvis.core.element_model import ElementScope, ScreenElementTree, UIElement
+
+    tree = ScreenElementTree()
+    tree.add(UIElement(
+        "uia-next", ElementScope.PAGE_MAIN, "button", name="Next",
+        rect=(1, 2, 30, 20), visible=True, confidence=.95, provenance="uia",
+        states={"_uia_runtime_id": "fixture-next"},
+    ))
+    gate = CuaSafetyGate()
+    attempts = []
+
+    def native_click(ref):
+        attempts.append(ref)
+        raise RuntimeError("late failure")
+
+    authority = SafeDesktopSession(
+        gate, CaptureAdapter(gate, lambda: CaptureFrame("uia:fixture", tree)),
+        lambda _rect: None, click_native=native_click,
+    )
+    observation = authority.observe_for("session-a")
+
+    outcome, error = authority.click(
+        observation.id, "uia-next", session_id="session-a")
+
+    assert error == ""
+    assert outcome.executed is True
+    assert outcome.verified is False
+    assert len(attempts) == 1
+    again, again_error = authority.click(observation.id, "uia-next", session_id="session-a")
+    assert again is None
+    assert "observasi" in again_error
+
+
+def test_scroll_recapture_failure_is_executed_unverified_and_releases_lease():
+    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+    from jarvis.core.element_model import ElementScope, ScreenElementTree, UIElement
+
+    tree = ScreenElementTree()
+    tree.add(UIElement(
+        "uia-scroll", ElementScope.PAGE_MAIN, "scrollbar", name="",
+        rect=(1, 2, 20, 120), visible=True, confidence=.95, provenance="uia",
+        states={"position": 0.0, "_uia_runtime_id": "fixture-scroll"},
+    ))
+
+    class Lease:
+        def __init__(self): self.calls = []
+        def claim(self, owner): self.calls.append(("claim", owner)); return True
+        def release(self, owner): self.calls.append(("release", owner))
+
+    calls = []
+    lease = Lease()
+    gate = CuaSafetyGate()
+    captures = iter((CaptureFrame("uia:fixture", tree), RuntimeError("capture failed")))
+
+    def capture():
+        item = next(captures)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    authority = SafeDesktopSession(
+        gate, CaptureAdapter(gate, capture), lambda _rect: None, desktop=lease,
+        scroll_rect=lambda rect, delta: calls.append((rect, delta)),
+    )
+    observation = authority.observe_for("session-a")
+
+    outcome, error = authority.scroll(
+        observation.id, "uia-scroll", direction="down", session_id="session-a")
+
+    assert error == ""
+    assert outcome.executed is True
+    assert outcome.verified is False
+    assert "recapture" in outcome.reason
+    assert calls == [((1, 2, 20, 120), -3)]
+    assert lease.calls == [("claim", "session-a"), ("release", "session-a")]
+
+
+def test_clear_all_waits_for_inflight_action_then_revokes_remaining_refs():
+    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+    from jarvis.core.element_model import ElementScope, ScreenElementTree, UIElement
+
+    tree = ScreenElementTree()
+    tree.add(UIElement(
+        "uia-next", ElementScope.PAGE_MAIN, "button", name="Next",
+        rect=(1, 2, 30, 20), visible=True, confidence=.95, provenance="uia",
+        states={"_uia_runtime_id": "fixture-next"},
+    ))
+    gate = CuaSafetyGate()
+    entered = threading.Event()
+    release = threading.Event()
+    cleared = threading.Event()
+
+    def native_click(_ref):
+        entered.set()
+        assert release.wait(timeout=2)
+
+    authority = SafeDesktopSession(
+        gate, CaptureAdapter(gate, lambda: CaptureFrame("uia:fixture", tree)),
+        lambda _rect: None, click_native=native_click,
+    )
+    observation = authority.observe_for("session-a")
+    action = threading.Thread(
+        target=lambda: authority.click(observation.id, "uia-next", session_id="session-a"),
+    )
+    action.start()
+    assert entered.wait(timeout=2)
+    teardown = threading.Thread(target=lambda: (authority.clear_all(), cleared.set()))
+    teardown.start()
+
+    assert not cleared.wait(timeout=.1)
+    release.set()
+    action.join(timeout=2)
+    teardown.join(timeout=2)
+    assert cleared.is_set()
+    again, error = authority.click(observation.id, "uia-next", session_id="session-a")
+    assert again is None
+    assert "observasi" in error
+
+
+def test_lifecycle_bridge_clear_all_during_owned_observation_prevents_later_action(monkeypatch):
+    from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
+    from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame
+    from jarvis.automation.cua_safety import CuaSafetyGate
+    from jarvis.core.element_model import ElementScope, ScreenElementTree, UIElement
+    from jarvis.integrations import desktop_safe_lifecycle
+
+    tree = ScreenElementTree()
+    tree.add(UIElement(
+        "uia-next", ElementScope.PAGE_MAIN, "button", name="Next",
+        rect=(1, 2, 30, 20), visible=True, confidence=.95, provenance="uia",
+        states={"_uia_runtime_id": "fixture-next"},
+    ))
+    gate = CuaSafetyGate()
+    calls = []
+    authority = SafeDesktopSession(
+        gate, CaptureAdapter(gate, lambda: CaptureFrame("uia:fixture", tree)),
+        lambda _rect: calls.append(_rect),
+    )
+    observation = authority.observe_for("session-a")
+    monkeypatch.setattr(desktop_safe_lifecycle, "desktop_safe_session", lambda: authority)
+
+    class Window:
+        def closeEvent(self, _event): return "legacy"
+
+    desktop_safe_lifecycle.install(Window)
+    assert Window().closeEvent(object()) == "legacy"
+    outcome, error = authority.click(observation.id, "uia-next", session_id="session-a")
+    assert outcome is None
+    assert "observasi" in error
+    assert calls == []
 
 
 def test_select_option_native_exception_is_executed_unverified_and_never_retries():

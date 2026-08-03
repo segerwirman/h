@@ -2,6 +2,12 @@
 from __future__ import annotations
 
 
+def test_voice_desktop_proposals_default_off_and_routing_is_not_clobbered():
+    from jarvis.core import config
+    assert config.get("routing.voice_desktop_proposals.enabled") is False
+    assert config.get("routing.voice_l1_hook.timeout_ms") == 50
+
+
 def test_hook_stages_but_never_executes_focus_mode(monkeypatch):
     import asyncio
     from jarvis.integrations.voice_proposal_hook import VoiceProposalHook
