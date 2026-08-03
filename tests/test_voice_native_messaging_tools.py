@@ -28,6 +28,12 @@ def test_message_handoff_builds_native_task_without_exposing_message_text_in_err
     assert task == "Kirim pesan WhatsApp ke Budi: rahasia test"
 
 
+def test_native_telegram_send_requires_confirmation_and_allowlisted_target():
+    from jarvis.agent.tools.native_messaging import TelegramSendMessage
+
+    tool = TelegramSendMessage()
+    assert tool.needs_confirmation(chat_id="123", message="halo") is True
+    assert "Telegram" in tool.confirmation_text(chat_id="123", message="halo")
 
 
 def test_voice_rules_hold_direct_message_send_for_native_confirmation_flow():
