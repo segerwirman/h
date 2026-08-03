@@ -289,7 +289,7 @@ Guardrail: ...
 
 **State (implementasi):** idle → awaiting → active → done / cancelled / expired (TTL monotonic 30–3600s); remote proposal ENUM-only (`RemoteCallProposal` ACCEPT/DECLINE/END/EXTEND) tanpa eksekusi; `approve()` lokal one-shot; end/cancel idempotent; `result()` metadata-only (tanpa transcript/audio/path/raw — dikunci test); bus `call.*` ringan hanya session_id.
 
-**Belum dikerjakan (call lanjutan):** DIALING → CONNECTED → AWAITING_DECISION/FAILED states, constraints & allowed disclosures field, approval sheet UI.
+**Belum dikerjakan (call lanjutan):** — DIALING → CONNECTED → AWAITING_DECISION/FAILED states, constraints & allowed disclosures field, approval sheet UI: ✅ COMPLETE (CST `3cd527d`, 2026-08-03) — states + constraints + allowed disclosures + ApprovalSheet metadata-only; sisa: tidak ada.
 
 **Acceptance:** tidak ada call tanpa approved session; payment/account recovery/sensitive secrets ditolak; actor/session/TTL/one-shot/metadata result — TERPENUHI (state machine inti). RED 8 failed → GREEN 8 passed; regression 33 passed; frozen `094b696` OK.
 
@@ -497,6 +497,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**WA2-lanjutan — Call States & Approval Sheet UI** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: DIALING → CONNECTED → AWAITING_DECISION/FAILED states, constraints & allowed disclosures field, approval sheet UI (offscreen test).
+**27-lanjutan — Facade Capability & Permanent Reject Rules** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: enum facade untuk Content Studio title/reorder, Focus Mode, browser media, call-session start/status/hangup; permanent reject rules (coordinate/selector/key/path/URL/screenshot/raw dispatch/login/payment).
 Guardrail: tidak ada eksekusi tanpa approval eksplisit Takeda; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

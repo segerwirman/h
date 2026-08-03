@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: b1003f9 feat(core): exact-option permit with changed-term invalidation and payment hard block (CON)
-Last updated: 2026-08-03 — WA7-lanjutan COMPLETE (decision continuation & hard block)
+HEAD: 3cd527d feat(core): call dialing/connected/decision states with constraints and metadata-only approval sheet (CST)
+Last updated: 2026-08-03 — WA2-lanjutan COMPLETE (call states & approval sheet)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 82 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON b1003f9)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 83 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON + CST 3cd527d)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: WA2-lanjutan — Call States & Approval Sheet UI
+Status: COMPLETE (sisa WA2)
+Completed: 2026-08-03 (CST 3cd527d; frozen 094b696 OK)
+```
 
 ```text
 Phase: WA7-lanjutan — Decision Continuation & Hard Block
@@ -314,23 +320,22 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: WA7-lanjutan — Decision Continuation & Hard Block
-Status: COMPLETE — 2026-08-03 (CON b1003f9)
-Priority: exact-option permit, changed-term invalidation, no-payment
+Phase: WA2-lanjutan — Call States & Approval Sheet UI
+Status: COMPLETE — 2026-08-03 (CST 3cd527d)
+Priority: dialing/connected/decision states, constraints, approval sheet
 ```
 
 ### Outcome
 
-- `jarvis/core/reservation_continuation.py` (baru): `ExactOptionPermit` — one-shot short-lived (TTL 120s, clock injectable): `create(option)` snapshot exact terms `{price, fees, date, cancellation}` → `approve()` LOKAL → `active`; `matches(candidate)` exact match → berlaku, **satu term berubah → `invalidated` SELAMANYA** (test: option asli pun tidak berlaku lagi).
-- `HardBlockGuard` — no-payment boundary: transfer/bayar/payment/deposit/kartu/cvv/otp/pin/password/rekening/bank → blocked + reason fixed `reservation_payment_hard_block`; teks normal aman.
-- `simulate_decision_flow()` — simulator: **changed price → permit invalidated + commit ditolak**; **customer turn payment → hard block + commit ditolak**; happy path exact → commit allowed. Kontrak statis tanpa provider/network/file.
-- TDD: RED 7 failed → GREEN 7 passed; regression 116 passed (continuation + gate + facades + bridge + ring + WA0–WA9 + UI wiring; 3× stabil); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 24 passed; approval Takeda.
+- `CallSession` diperluas (backward compatible — test WA2 core tetap hijau): states baru `active → dialing → connected → awaiting_decision`; `fail()` dari dialing/connected → `failed`; `end()`/`cancel()` dari semua state non-terminal; transisi invalid ditolak; **constraints field** (hanya `{max_duration_min, max_turns}`, key asing ditolak); **allowed disclosures field** (max 8 × 40 chars; `disclosure_allowed(field)`); `result()` metadata termasuk constraints/disclosures; bus `call.dialing/connected/awaiting_decision/failed` ringan.
+- `jarvis/ui/approval_sheet.py` (baru): `ApprovalSheet` Qt offscreen — metadata proposal (proposal_id + facade_name + status), tombol Approve/Reject → signal `approved/rejected(proposal_id)`; `raw_payload()` selalu None — tidak pernah menyimpan args/secret.
+- TDD: RED 10 failed + 2 error → GREEN 12 passed; regression 79 passed (states + sheet + WA2 core + audio + dialogue + memory + continuation + ring + UI wiring); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 20 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: WA2-lanjutan — Call States & Approval Sheet UI (rekomendasi #2)
+Phase: 27-lanjutan — Facade Capability & Permanent Reject Rules (rekomendasi #3)
 Status: MENUNGGU KEPUTUSAN TAKEDA
 Guardrail: jangan mulai fase baru tanpa approval eksplisit Takeda.
 ```
@@ -360,7 +365,8 @@ WA9 controlled WhatsApp rollout ✅ (WRO 3fb6d2a, 2026-08-03)
 28 mediated remote facade ✅ (RMF 0cae0a2, 2026-08-03)
 29 optional next exact UI surface ✅ (UIF 27c71f8, 2026-08-03)
 WA7-lanjutan decision continuation ✅ (CON b1003f9, 2026-08-03)
-→ WA2-lanjutan call states (MENUNGGU keputusan Takeda)
+WA2-lanjutan call states ✅ (CST 3cd527d, 2026-08-03)
+→ 27-lanjutan facade capability (MENUNGGU keputusan Takeda)
 ```
 
 ## Mandatory completion protocol
@@ -392,17 +398,17 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: b1003f9 (CON). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: 3cd527d (CST). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-WA7-lanjutan COMPLETE (2026-08-03): decision continuation & hard block —
-exact-option permit (TTL 120s, changed term → invalidated selamanya),
-hard block payment/CVV/OTP/PIN (reason fixed), simulator changed-price
-invalidation & no-payment proof. RED 7 → GREEN 7; regression 116 passed.
+WA2-lanjutan COMPLETE (2026-08-03): call states & approval sheet —
+DIALING/CONNECTED/AWAITING_DECISION/FAILED, constraints + allowed
+disclosures field, approval sheet metadata-only offscreen. RED 12 →
+GREEN 12; regression 79 passed.
 
-Fase aktif: TIDAK ADA. WA2-lanjutan (Call States & Approval Sheet UI)
-DILARANG dimulai tanpa approval eksplisit Takeda.
+Fase aktif: TIDAK ADA. 27-lanjutan (Facade Capability & Permanent Reject
+Rules) DILARANG dimulai tanpa approval eksplisit Takeda.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,
