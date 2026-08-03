@@ -67,13 +67,11 @@ def test_tone_loopback_uses_sounddevice(monkeypatch):
 
     class FakeSD:
         @staticmethod
-        def playrec(data, samplerate, channels, output_device, input_device,
-                    dtype):
+        def playrec(data, samplerate, channels, device, dtype):
             calls["data"] = data
             calls["samplerate"] = samplerate
             calls["channels"] = channels
-            calls["output_device"] = output_device
-            calls["input_device"] = input_device
+            calls["device"] = device
             return data.reshape(-1, 1)      # tone ter-loopback (RMS tinggi)
 
         @staticmethod
@@ -85,10 +83,7 @@ def test_tone_loopback_uses_sounddevice(monkeypatch):
                               duration_s=2, freq_hz=440)
     assert result["ok"] is True
     assert result["audio_exercised"] is True
-    assert calls["output_device"] == 2
-    assert calls["input_device"] == 1
-    assert calls["samplerate"] == ah.SAMPLE_RATE
-    assert calls["channels"] == 1
+    assert calls["device"] == (1, 2)        # (input=capture, output=playback)
 
 
 def test_live_proof_wires_call_audio(monkeypatch):

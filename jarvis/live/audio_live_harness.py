@@ -74,8 +74,7 @@ def tone_loopback(capture_index: int, playback_index: int,
     tone = (0.5 * np.sin(2 * np.pi * freq_hz * t)).astype(np.float32)
     try:
         recorded = sd.playrec(tone, samplerate=SAMPLE_RATE, channels=1,
-                              output_device=playback_index,
-                              input_device=capture_index,
+                              device=(capture_index, playback_index),
                               dtype="float32")
         sd.wait()
     except Exception:  # noqa: BLE001
