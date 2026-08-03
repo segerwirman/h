@@ -335,14 +335,18 @@ Guardrail: ...
 
 ## Phase WA5 — Call Memory, Transcript Privacy & Recall
 
+**Status:** ✅ COMPLETE (memory & privacy) — 2026-08-03 (MEM `b29dcba`).
+
 **Tujuan:** JARVIS mengingat hasil call tanpa menyimpan raw audio/full transcript default.
 
-**Retention:** volatile turn buffer → bounded call record → optional approved durable semantic memory.
+**Retention:** volatile turn buffer → bounded call record → optional approved durable semantic memory (recall/durable memory belum dikerjakan).
 
-**Stored:** safe summary, confirmed facts, unresolved items, quoted price, reference code, duration/outcome.
-**Not stored:** PCM, full transcript, full phone, OTP/PIN/password/card/CVV/passport/account secrets.
+**Stored (implementasi):** safe summary metadata-only (session_id, status, duration_s, turn_count) — allowlist ketat.
+**Not stored (dikunci test):** PCM, full transcript, full phone, OTP/PIN/password/card/CVV/passport/account secrets; tanpa file write (in-memory).
 
-**Acceptance:** scoped device-local/user, retention bounded, searchable/deletable, tidak bocor ke remote memory.
+**Implementasi:** `jarvis/core/call_memory.py` — `CallMemoryStore` in-memory ring buffer; field allowlist ketat; opt-in config `integrations.call.memory_enabled` (default False); PII/secret guard (marker + 12–19 digit); retention bounded `MAX_ENTRIES=50` evict tertua; `clear()`; `list_summaries()` metadata-only.
+
+**Acceptance:** scoped device-local/user, retention bounded, searchable/deletable, tidak bocor ke remote memory — TERPENUHI (bagian memory). RED 7 failed → GREEN 7 passed; regression 32 passed; frozen `094b696` OK.
 
 **Fase berikutnya:** **WA6 — Post-Call Calendar Proposal**.
 
@@ -452,6 +456,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase WA5 — Call Memory & Privacy** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: simpan hanya ringkasan metadata (tanpa transcript/audio), retention bounded + clear, opt-in config; tidak ada PII/secret di memori call; post-call summary hanya field allowlist.
-Guardrail: tidak ada transcript/audio yang disimpan, memory hanya metadata; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase WA6 — Post-Call Calendar Proposal** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: proposal kalender pasca-call — hanya field allowlist (title/time/duration), tanpa konflik & tanpa double-booking, local approval sebelum create, metadata result saja.
+Guardrail: tidak ada create kalender otomatis, proposal menunggu approval lokal; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
