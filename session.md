@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: 3fb6d2a feat(integrations): controlled WhatsApp rollout policy with deny-by-default gates (WRO)
-Last updated: 2026-08-03 — Phase WA9 COMPLETE (controlled WhatsApp rollout)
+HEAD: fd7d999 feat(runtime): cross-integration proof ring exercising all core modules offline (RIN)
+Last updated: 2026-08-03 — Phase 26 COMPLETE (cross-integration live ring)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 77 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO 3fb6d2a)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 78 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN fd7d999)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: 26 — Cross-Integration Live Ring
+Status: COMPLETE
+Completed: 2026-08-03 (RIN fd7d999; frozen 094b696 OK)
+```
 
 ```text
 Phase: WA9 — Controlled WhatsApp Rollout
@@ -284,24 +290,25 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: WA9 — Controlled WhatsApp Rollout
-Status: COMPLETE — 2026-08-03 (WRO 3fb6d2a)
-Priority: deny-by-default rollout gates, no live integration
+Phase: 26 — Cross-Integration Live Ring
+Status: COMPLETE — 2026-08-03 (RIN fd7d999)
+Priority: offline proof ring, all core modules together
 ```
 
 ### Outcome
 
-- `jarvis/integrations/whatsapp_rollout.py` (baru): `WhatsAppRolloutPolicy` — gate outbound lokal **deny-by-default**: **toggle config** `integrations.whatsapp.rollout_enabled` (default False → `wa_rollout_disabled`); **allowlist** (di luar → `wa_contact_not_allowlisted`); **opt-out/revoke** (`opt_out` → `wa_contact_opted_out`; `revoke_opt_out` memulihkan); **rate limiting** sliding 60s (default 5/menit → `wa_rate_limited`); **daily caps** per-hari bucket (default 50 → `wa_daily_cap_reached`).
-- Deny reasons fixed set; **kontrak statis dikunci test**: tanpa import SDK/network/file (`import whatsapp`/`requests`/`socket`/`http`/`open(`/`subprocess` tidak ada di source) — **tanpa live integration di fase ini**; clock + config injectable.
-- TDD: RED 7 failed → GREEN 7 passed; regression 81 passed (rollout + readiness + case + gate + proposal + memory + dialogue + audio + session + countdown); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 15 passed; approval Takeda.
+- `jarvis/runtime/integration_ring.py` (baru): `run_ring()` — satu alur deterministik offline memakai **10 modul inti WA0→WA9 bersama-sama**: readiness (WA0) → rollout (WA9, deny-by-default) → countdown (WA1) → session (WA2, approved lokal) → audio (WA3, fake capture/playback) → dialogue (WA4, 2 turn) → memory (WA5, opt-in) → proposal (WA6, approved) → reservation (WA7, green light) → case (WA8, disclosure OK).
+- **Jujur**: ring `ok` = semua step selesai dieksekusi; status gate per step apa adanya (rollout deny tetap terlihat — deny-by-default adalah hasil, bukan kegagalan ring); tanpa kredensial/jaringan deterministik (2 run identik); tanpa config → rollout deny + readiness `credentials_ready: False`.
+- `{ok, steps}` metadata-only (tanpa nilai secret — dikunci test); **kontrak statis**: tanpa import SDK/network/file — **proof ring, bukan live-proven**.
+- TDD: RED 7 failed → GREEN 7 passed; regression 88 passed (ring + seluruh modul WA0–WA9); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 14 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: 26 — Cross-Integration Live Ring
+Phase: 27 — Named Local Facade
 Status: MENUNGGU KEPUTUSAN TAKEDA
-Guardrail: jangan mulai Phase 26 tanpa approval eksplisit Takeda.
+Guardrail: jangan mulai Phase 27 tanpa approval eksplisit Takeda.
 ```
 
 ## Planned phase order
@@ -324,8 +331,8 @@ WA6 post-call Calendar proposal ✅ (CAL2 cc97138, 2026-08-03)
 WA7 reservation commitment gate ✅ (RES 584b235, 2026-08-03)
 WA8 customer-service case manager ✅ (CSE 25b3789, 2026-08-03)
 WA9 controlled WhatsApp rollout ✅ (WRO 3fb6d2a, 2026-08-03)
-→ 26 cross-integration live ring (MENUNGGU keputusan Takeda)
-→ 27 named local facade
+26 cross-integration live ring ✅ (RIN fd7d999, 2026-08-03)
+→ 27 named local facade (MENUNGGU keputusan Takeda)
 → 28 mediated remote facade
 → 29 optional next exact UI surface
 ```
@@ -359,18 +366,18 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: 3fb6d2a (WRO). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: fd7d999 (RIN). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Phase WA9 COMPLETE (2026-08-03): controlled WhatsApp rollout — toggle +
-allowlist + opt-out/revoke + rate limit + daily cap, deny-by-default,
-tanpa live integration (kontrak statis dikunci). RED 7 → GREEN 7;
-regression 81 passed.
+Phase 26 COMPLETE (2026-08-03): cross-integration live ring — 10 modul inti
+WA0→WA9 dieksekusi bersama offline, deterministik, metadata-only, tanpa
+kredensial/live provider (proof ring, bukan live-proven). RED 7 → GREEN 7;
+regression 88 passed.
 
-Fase aktif: TIDAK ADA. Phase 26 (Cross-Integration Live Ring) DILARANG
-dimulai sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu,
-presentasikan status + opsi, minta approval sebelum eksekusi.
+Fase aktif: TIDAK ADA. Phase 27 (Named Local Facade) DILARANG dimulai
+sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu, presentasikan
+status + opsi, minta approval sebelum eksekusi.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,

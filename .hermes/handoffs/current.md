@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase WA9 COMPLETE — 2026-08-03
+**Updated:** Phase 26 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `3fb6d2a` (WRO); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `fd7d999` (RIN); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -50,7 +50,9 @@ Phase WA8 service case manager             COMPLETE
   → CSE 25b3789 (typed cases + disclosure policy + escalation)
 Phase WA9 whatsapp rollout policy          COMPLETE
   → WRO 3fb6d2a (deny-by-default gates, no live integration)
-  → sisa: tidak ada; Phase 26 menunggu keputusan Takeda (dilarang)
+Phase 26 cross-integration ring            COMPLETE
+  → RIN fd7d999 (10 core modules offline, metadata-only)
+  → sisa: tidak ada; Phase 27 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -72,6 +74,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## Phase 26 ring milestone (2026-08-03)
+
+**Phase 26 COMPLETE** — commit RIN `fd7d999`. `jarvis/runtime/integration_ring.py`: `run_ring()` — 10 modul inti WA0→WA9 dieksekusi bersama offline, deterministik, metadata-only, tanpa kredensial/live provider (proof ring, bukan live-proven); ring ok = semua step selesai; status gate jujur apa adanya. RED 7 → GREEN 7; regression 88 passed; frozen `094b696` OK.
 
 ## Phase WA9 rollout milestone (2026-08-03)
 
@@ -235,21 +241,21 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase 26 — Cross-Integration Live Ring** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Phase 27 — Named Local Facade** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Exercise ring aman yang membuktikan rangkaian inti berjalan bersama.
+Komposisi lokal yang dipanggil agent dengan nama eksplisit.
 
 ### Scope
 
-- fixture + canary ring (bounded, deterministik, offline);
-- membuktikan rangkaian inti berjalan bersama;
-- tanpa kredensial/live provider; proof ring, bukan live-proven.
+- facade bernama (contoh: `book_reservation`, `check_order_status`);
+- daftar fixed langkah lokal per facade; deny-unknown;
+- tanpa authority baru.
 
 ### Guardrails
 
-- Tidak ada kredensial/live provider; hanya proof ring.
+- Tidak ada authority baru; deny-unknown.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -266,13 +272,13 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase WA9 COMPLETE (2026-08-03): rollout (WRO 3fb6d2a) — deny-by-default
-gates, tanpa live integration. Worktree bersih kecuali 2 artifact
-(.curator_state.json, full_run.txt) — JANGAN di-commit. Index kosong.
-Frozen 094b696 OK.
+Phase 26 COMPLETE (2026-08-03): ring (RIN fd7d999) — 10 modul inti
+offline bersama, metadata-only, proof ring bukan live-proven. Worktree
+bersih kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN
+di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase 26 (Cross-Integration Live Ring) DILARANG
-dimulai sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi posisi
+TIDAK ADA fase aktif. Phase 27 (Named Local Facade) DILARANG dimulai
+sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi posisi
 (read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
 lanjutan, minta approval sebelum eksekusi apa pun. Jangan
 git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah

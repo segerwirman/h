@@ -421,11 +421,17 @@ Guardrail: ...
 
 ## Phase 26 — Cross-Integration Explicit Live Acceptance Ring
 
-**Tujuan:** live proof terpisah untuk voice, Telegram, heavy provider, image, Google, WhatsApp. Setiap integration memerlukan explicit approval.
+**Status:** ✅ COMPLETE (offline proof ring) — 2026-08-03 (RIN `fd7d999`).
 
-**Acceptance:** kegagalan satu integration tidak menghapus offline readiness lain; evidence live tidak dicampur dengan unit claims.
+**Tujuan:** exercise ring yang membuktikan rangkaian inti berjalan bersama.
 
-**Fase berikutnya:** **27 — Named Local Capability Facade**.
+**Implementasi:** `jarvis/runtime/integration_ring.py` — `run_ring()` alur deterministik offline memakai 10 modul inti WA0→WA9 bersama (readiness → rollout → countdown → session → audio → dialogue → memory → proposal → reservation → case); ring ok = semua step selesai; status gate jujur apa adanya (deny-by-default adalah hasil).
+
+**Acceptance:** semua modul inti ter-exercise bersama; deterministik; metadata-only — TERPENUHI. RED 7 failed → GREEN 7 passed; regression 88 passed; frozen `094b696` OK.
+
+**Belum dikerjakan (live lane):** live proof terpisah untuk voice, Telegram, heavy provider, image, Google, WhatsApp — setiap integration memerlukan explicit approval; kegagalan satu integration tidak menghapus offline readiness lain; evidence live tidak dicampur dengan unit claims.
+
+**Fase berikutnya:** **27 — Named Local Capability Facade** — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
 
@@ -475,6 +481,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase 26 — Cross-Integration Live Ring** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: exercise ring aman (fixture + canary) yang membuktikan rangkaian inti berjalan bersama; tanpa kredensial/live provider; hanya proof ring, bukan live-proven.
-Guardrail: tanpa kredensial/live provider, hanya proof ring; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase 27 — Named Local Capability Facade** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: komposisi lokal yang dipanggil agent dengan nama eksplisit (contoh: `book_reservation`, `check_order_status`); setiap facade = daftar fixed langkah lokal, deny-unknown.
+Guardrail: tanpa authority baru, deny-unknown; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
