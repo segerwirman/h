@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: aaa4dba feat(core): named local facade registry composing core modules with deny-unknown (FAC)
-Last updated: 2026-08-03 — Phase 27 COMPLETE (named local facade)
+HEAD: 0cae0a2 feat(core): mediated remote facade bridge with local-only approval and TTL (RMF)
+Last updated: 2026-08-03 — Phase 28 COMPLETE (mediated remote facade)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 79 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC aaa4dba)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 80 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF 0cae0a2)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: 28 — Mediated Remote Facade
+Status: COMPLETE
+Completed: 2026-08-03 (RMF 0cae0a2; frozen 094b696 OK)
+```
 
 ```text
 Phase: 27 — Named Local Facade
@@ -296,25 +302,24 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: 27 — Named Local Facade
-Status: COMPLETE — 2026-08-03 (FAC aaa4dba)
-Priority: fixed-step local composition, deny-unknown
+Phase: 28 — Mediated Remote Facade
+Status: COMPLETE — 2026-08-03 (RMF 0cae0a2)
+Priority: remote proposal-only, local approval, TTL
 ```
 
 ### Outcome
 
-- `jarvis/core/local_facades.py` (baru): `LocalFacadeRegistry` — komposisi lokal bernama; `register(name, steps)` dengan steps = **tuple immutable** (langkah fixed, tidak bisa diubah runtime — dikunci test); `invoke(name, **kwargs)` dengan context lokal per call; **deny-unknown** (`free_form_mission` → `facade_unknown`); langkah gagal → berhenti + report per-step.
-- **Facade default** — komposisi murni modul inti existing (tanpa authority baru): `check_order_status` (ServiceCase WA8 open + disclose) dan `book_reservation` (CalendarProposal WA6 create+approve → ReservationCommitmentGate WA7 green light).
-- Secret input ditolak; result metadata-only; **kontrak statis**: tanpa import provider/network/file.
-- TDD: RED 8 failed → GREEN 8 passed; regression 96 passed (facades + ring + seluruh modul WA0–WA9); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 15 passed; approval Takeda.
+- `jarvis/core/remote_facade_bridge.py` (baru): `RemoteFacadeBridge` — mediasi remote → facade lokal (Phase 27): remote HANYA bisa `propose(facade_name, **args)` (deny-unknown → `facade_unknown`; args disimpan LOKAL); `remote_view()`/`pending()` metadata-only `{proposal_id, facade_name, status}` — TANPA args (dikunci test); eksekusi hanya via `approve()`/`reject()` LOKAL — one-shot + TTL 300s (`proposal_expired`); bridge tidak mengekspos `invoke`/`execute`/`run` (dikunci test) — remote tidak pernah memanggil facade langsung.
+- `result(pid)` metadata-only; status: `awaiting_approval → done/failed/rejected/expired`; **kontrak statis**: tanpa import provider/network/file.
+- TDD: RED 8 failed → GREEN 8 passed; regression 104 passed (bridge + facades + ring + seluruh modul WA0–WA9); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 16 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: 28 — Mediated Remote Facade
+Phase: 29 — Optional Next Exact UI Surface
 Status: MENUNGGU KEPUTUSAN TAKEDA
-Guardrail: jangan mulai Phase 28 tanpa approval eksplisit Takeda.
+Guardrail: jangan mulai Phase 29 tanpa approval eksplisit Takeda.
 ```
 
 ## Planned phase order
@@ -339,8 +344,8 @@ WA8 customer-service case manager ✅ (CSE 25b3789, 2026-08-03)
 WA9 controlled WhatsApp rollout ✅ (WRO 3fb6d2a, 2026-08-03)
 26 cross-integration live ring ✅ (RIN fd7d999, 2026-08-03)
 27 named local facade ✅ (FAC aaa4dba, 2026-08-03)
-→ 28 mediated remote facade (MENUNGGU keputusan Takeda)
-→ 29 optional next exact UI surface
+28 mediated remote facade ✅ (RMF 0cae0a2, 2026-08-03)
+→ 29 optional next exact UI surface (MENUNGGU keputusan Takeda)
 ```
 
 ## Mandatory completion protocol
@@ -372,17 +377,18 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: aaa4dba (FAC). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: 0cae0a2 (RMF). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Phase 27 COMPLETE (2026-08-03): named local facade — registry komposisi
-lokal, steps fixed immutable, deny-unknown, komposisi murni modul inti
-(WA6/WA7/WA8), tanpa authority baru. RED 8 → GREEN 8; regression 96 passed.
+Phase 28 COMPLETE (2026-08-03): mediated remote facade — remote hanya
+propose (deny-unknown, args lokal), approval/reject lokal one-shot + TTL,
+tanpa invoke remote, view metadata-only. RED 8 → GREEN 8; regression
+104 passed.
 
-Fase aktif: TIDAK ADA. Phase 28 (Mediated Remote Facade) DILARANG dimulai
-sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu, presentasikan
-status + opsi, minta approval sebelum eksekusi.
+Fase aktif: TIDAK ADA. Phase 29 (Optional Next Exact UI Surface) DILARANG
+dimulai sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu,
+presentasikan status + opsi, minta approval sebelum eksekusi.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,

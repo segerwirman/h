@@ -455,11 +455,17 @@ Guardrail: ...
 
 ## Phase 28 — Mediated Remote Proposal Facade
 
-**Tujuan:** paired remote actor hanya membuat proposal enum; tidak approve/execute dan tidak menerima UIA refs/transcript/audio/path.
+**Status:** ✅ COMPLETE (bridge inti) — 2026-08-03 (RMF `0cae0a2`).
 
-**Acceptance:** actor/session/TTL/one-shot/fixed labels/local approval/metadata result.
+**Tujuan:** facade lokal hanya diekspos ke remote sebagai proposal termediasi.
 
-**Fase berikutnya:** **29 — Next Exact Trusted UI Surface**.
+**Implementasi:** `jarvis/core/remote_facade_bridge.py` — `RemoteFacadeBridge`: remote HANYA `propose` (deny-unknown → `facade_unknown`; args disimpan LOKAL); `remote_view()`/`pending()` metadata-only tanpa args; eksekusi hanya via `approve()`/`reject()` LOKAL — one-shot + TTL 300s (`proposal_expired`); bridge TANPA `invoke`/`execute`/`run`; `result(pid)` metadata-only; status `awaiting_approval → done/failed/rejected/expired`.
+
+**Acceptance:** remote hanya propose; approval lokal; tanpa invoke remote — TERPENUHI. RED 8 failed → GREEN 8 passed; regression 104 passed; frozen `094b696` OK.
+
+**Belum dikerjakan (actor binding lanjutan):** paired remote actor identity binding; larangan eksplisit remote menerima UIA refs/transcript/audio/path.
+
+**Fase berikutnya:** **29 — Next Exact Trusted UI Surface** — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
 
@@ -485,6 +491,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase 28 — Mediated Remote Facade** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: facade lokal (Phase 27) diekspos ke remote hanya sebagai PROPOSAL enum/allowlist; eksekusi tetap lokal via approval eksplisit; remote tidak pernah memanggil facade langsung; metadata result saja.
-Guardrail: remote tidak pernah mengeksekusi, approval lokal wajib; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase 29 — Optional Next Exact UI Surface** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: pilih permukaan UI nyata yang di-wire ke facade lokal (mis. panel countdown/timer di orb atau Content Studio action bar); fixture acceptance + offscreen test.
+Guardrail: tanpa authority baru, UI hanya memakai facade yang sudah ada; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
