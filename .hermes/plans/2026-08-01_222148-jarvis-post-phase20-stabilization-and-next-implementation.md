@@ -326,6 +326,7 @@ git diff --check
 
 **Priority:** P1 reliability
 **Dependency:** Git recovery checkpoints complete.
+**Status:** ✅ COMPLETE — 2026-08-03 (LIF `1011794`): ownership table 16 entri (cron, telegram, monitor worker, awareness, voice pipeline monitor, wake, browser, sweeper, dispatch, fire-and-forget, boot, classifier), cron/sweeper bounded join, subprocess limit didokumentasikan. Rincian: `session.md` + master roadmap.
 
 **Goal:** Ensure every boot-started or task-owned thread/process has an explicit owner, stop path, join policy, and safe failure state.
 

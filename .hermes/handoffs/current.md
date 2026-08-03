@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase 23 COMPLETE — 2026-08-03
+**Updated:** Phase 24 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `999c121` (TIM); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `1011794` (LIF); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -26,7 +26,9 @@ Phase 22 scene list UX                          COMPLETE
   → SCN a54c9af (list visible, Move Up/Down, asset mapping)
 Phase 23 export timing/preview                 COMPLETE
   → TIM 999c121 (duration policy, cumulative SRT, preview in-memory)
-  → sisa: tidak ada; Phase 24 menunggu keputusan Takeda (dilarang)
+Phase 24 lifecycle reliability                COMPLETE
+  → LIF 1011794 (ownership table, bounded joins, subprocess limit doc)
+  → sisa: tidak ada; Phase 25 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -48,6 +50,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## Phase 24 lifecycle reliability milestone (2026-08-03)
+
+**Phase 24 COMPLETE** — commit LIF `1011794`. `jarvis/runtime/lifecycle_audit.py`: `LIFECYCLE_OWNERSHIP` (16 entri: cron, telegram, monitor worker, awareness, voice pipeline monitor, wake, browser, sweeper, dispatch, fire-and-forget, boot, classifier) + `audit_ownership()` + `SUBPROCESS_LIMITATION`. Fix: `CronScheduler.stop()` join bounded; `SetupQueue.close()` join bounded. Audit konfirmasi telegram/monitor/awareness/state/wake/browser/dispatch sudah benar (bounded join + lease release di finally); RuntimeSupervisor idempotent. RED 5 → GREEN 7; regression lifecycle 74 passed; frozen `094b696` OK.
 
 ## Phase 23 export timing milestone (2026-08-03)
 
@@ -163,21 +169,21 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase 24 — Runtime Lifecycle Reliability Sweep** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Phase 25 — Credential-Free Canary** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Setiap thread/process/lease boot-started atau task-owned punya owner eksplisit, stop path, join policy, dan failure state jujur.
+Probe sistem tanpa menyentuh kredensial — status provider jujur (sehat/absent) sejak boot.
 
 ### Scope
 
-- agent workers (dispatch), voice non-daemon thread, monitor worker, Telegram polling daemon, cron scheduler, wake trigger, browser/computer session leases, OAuth/composer worker;
-- RED: shutdown dengan task aktif tidak boleh meninggalkan lease desktop/browser; monitor/voice threads menerima stop + bounded join; timeout/cancel state jujur;
-- clean shutdown evidence untuk normal boot dan `--no-voice`; batas subprocess non-killable didokumentasikan.
+- `--no-voice` boot smoke + startup probe credential-free (daftar layanan provider dengan status sehat/absent tanpa menyentuh kredensial);
+- audit kecil apakah ada boot path yang menyentuh kredensial sebelum siap;
+- default `DISABLE_TELEGRAM=1`-like mode diuji.
 
 ### Guardrails
 
-- Tidak ada authority baru; hanya missing lifecycle hooks yang ditambahkan; jangan rewrite service yang bekerja.
+- Tidak ada penyimpanan/sentuhan kredensial baru; probe hanya status boolean.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -194,14 +200,14 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase 23 COMPLETE (2026-08-03): export timing & preview (TIM 999c121) —
-duration policy bounded, cumulative SRT standar, preview in-memory tanpa
-file write. Worktree bersih kecuali 2 artifact (.curator_state.json,
+Phase 24 COMPLETE (2026-08-03): lifecycle reliability (LIF 1011794) —
+ownership table 16 entri, cron/sweeper bounded join, subprocess limit
+dokumentasi. Worktree bersih kecuali 2 artifact (.curator_state.json,
 full_run.txt) — JANGAN di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase 24 (Runtime Lifecycle Reliability Sweep)
-DILARANG dimulai sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi
-posisi (read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
+TIDAK ADA fase aktif. Phase 25 (Credential-Free Canary) DILARANG dimulai
+sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi posisi
+(read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
 lanjutan, minta approval sebelum eksekusi apa pun. Jangan
 git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
 provider/credential/live integration/authority/frozen.

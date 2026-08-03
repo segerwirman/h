@@ -2,7 +2,7 @@
 
 > **Repository:** `E:\jarvis agent\h`
 > **Language:** Indonesian
-> **Current implementation status:** Phase 23 Content Studio Export Timing & Preview Hardening COMPLETE (2026-08-03); Phase 24 next — menunggu keputusan Takeda
+> **Current implementation status:** Phase 24 Runtime Lifecycle Reliability Sweep COMPLETE (2026-08-03); Phase 25 next — menunggu keputusan Takeda
 
 ## Start here in every new session
 
@@ -60,6 +60,7 @@
 | Phase 21 | ✅ | Production-path fixture acceptance: Phase 19 (title) + Phase 20 (reorder) terbukti `fixture-accepted` di fixture PyQt disposable via production UIA backend (ValuePattern + satu drag fisik + recapture + committed-value/visual-order proof). Acceptance run menemukan & meremediasi G1 (text_field identity), G2 (plain listitem card), G4 (verifikasi visual order — RuntimeId item tidak stabil pasca-reorder). Tetap BUKAN `live-proven`. |
 | Phase 22 | ✅ | Content Studio scene list production UX: `QListWidget` scene cards visible dengan order number, selection via klik, Move Up/Down deterministik (first-up/last-down reject) reuse `move_scene()`, selected + asset mapping ikut reorder, timeline auto-refresh, accessibility identity stabil untuk lane UIA. |
 | Phase 23 | ✅ | Content Studio export timing & preview hardening: bounded duration policy (1–600s/scene, total cap 3600s, bool/float/NaN ditolak), cumulative SRT standar, `shot_list_csv` membawa duration tervalidasi, `preview_export` in-memory (storyboard/captions/shot-list) tanpa file write; fixed export allowlist tetap authoritative. |
+| Phase 24 | ✅ | Runtime lifecycle reliability sweep: static ownership table `LIFECYCLE_OWNERSHIP` (16 entri: owner/stop/join/failure state) + `audit_ownership()`; fix `CronScheduler.stop()` dan `SetupQueue.close()` dengan bounded join; `SUBPROCESS_LIMITATION` didokumentasikan (cooperative terminate, state `terminate_requested` jujur); kontrak dispatch lease release di finally dikunci test. |
 
 ## Capability evidence classification
 
@@ -135,8 +136,8 @@ python scripts/verify_frozen.py
 ```
 
 ## Next recommended phase
-**Phase 24 — Runtime Lifecycle Reliability Sweep** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
+**Phase 25 — Credential-Free Canary** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
 
-Setiap thread/process/lease boot-started atau task-owned punya owner, stop path, join policy, dan failure state jujur (agent workers, voice, monitor, Telegram, cron, wake, browser/computer leases, OAuth/composer worker, normal boot & `--no-voice`); clean shutdown evidence; lease selalu released; batas subprocess non-killable didokumentasikan. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
+Probe tanpa kredensial: `--no-voice` boot smoke + startup probe credential-free (daftar layanan provider dengan status sehat/absent tanpa menyentuh kredensial), default `DISABLE_TELEGRAM=1`-like mode; audit kecil apakah ada boot path yang menyentuh kredensial sebelum siap. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
 
 For detailed current test evidence, changed files, and exact next implementation contract, read `.hermes/handoffs/current.md`.

@@ -214,13 +214,19 @@ Guardrail: ...
 
 ## Phase 24 — Runtime Lifecycle Reliability Sweep
 
-**Tujuan:** memastikan setiap thread/process/lease punya owner, stop, join, timeout, dan failure state yang jujur.
+**Status:** ✅ COMPLETE — 2026-08-03 (LIF `1011794`).
 
-**Scope:** agent workers, voice, monitor, Telegram, cron, wake, browser/computer leases, OAuth/composer worker, normal boot dan `--no-voice`.
+**Tujuan:** memastikan setiap thread/process/lease boot-started atau task-owned punya owner, stop path, join policy, dan failure state jujur.
 
-**Acceptance:** clean shutdown evidence; lease selalu released; non-killable subprocess limitation didokumentasikan, bukan disembunyikan.
+**Implementasi:**
+- `jarvis/runtime/lifecycle_audit.py` (baru): static ownership table `LIFECYCLE_OWNERSHIP` 16 entri (cron, telegram, monitor worker, awareness, voice pipeline monitor, wake, browser, sweeper, dispatch, fire-and-forget, boot, classifier) — owner/stop/join/failure state; `audit_ownership()`; `SUBPROCESS_LIMITATION` (cooperative terminate + state `terminate_requested` jujur);
+- fix: `CronScheduler.stop()` join bounded (`_interval+1`); `SetupQueue.close()` join bounded (`_sweep_interval+1`);
+- audit: telegram/monitor/awareness/state/wake/browser/dispatch sudah benar (bounded join + lease release di finally — dikunci test kontrak); RuntimeSupervisor idempotent (test existing);
+- kontrak statis: dispatch `finally` melepas slot + browser/computer/desktop-safe session.
 
-**Fase berikutnya:** **25 — Credential-Free Canary Matrix**.
+**Acceptance:** shutdown tidak meninggalkan lease (kontrak dikunci); stop + bounded join (cron/sweeper di-fix, sisanya dikonfirmasi); timeout/cancel state jujur; batas subprocess non-killable didokumentasikan — TERPENUHI. RED 5 failed → GREEN 7 passed; regression lifecycle 74 passed; frozen `094b696` OK.
+
+**Fase berikutnya:** **25 — Credential-Free Canary** — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
 
@@ -421,6 +427,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase 24 — Runtime Lifecycle Reliability Sweep** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: ownership table statis untuk semua thread/process/lease boot-started & task-owned; RED: shutdown dengan task aktif tidak meninggalkan lease desktop/browser; monitor/voice threads menerima stop + bounded join; timeout/cancel state jujur; clean shutdown evidence normal & `--no-voice`; batas subprocess non-killable didokumentasikan.
-Guardrail: tidak ada authority baru, hanya missing lifecycle hooks; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase 25 — Credential-Free Canary** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: `--no-voice` boot smoke + startup probe credential-free (status sehat/absent tanpa menyentuh kredensial); audit boot path yang menyentuh kredensial sebelum siap; default `DISABLE_TELEGRAM=1`-like mode diuji.
+Guardrail: tidak ada penyimpanan/sentuhan kredensial baru, probe hanya status boolean; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
