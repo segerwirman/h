@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** WA5-lanjutan COMPLETE — 2026-08-03 (lanjutan roadmap)
+**Updated:** WA6-lanjutan COMPLETE — 2026-08-03 (lanjutan roadmap)
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `778f89f` (DUR); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `ff99300` (CAL3); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -79,7 +79,10 @@ WA4-lanjutan dialogue lanjutan             COMPLETE
   → sisa WA4 tuntas
 WA5-lanjutan durable memory                COMPLETE
   → DUR 778f89f (opt-in memory + recall)
-  → sisa WA5 tuntas; berikutnya WA6-lanjutan (menunggu Takeda)
+  → sisa WA5 tuntas
+WA6-lanjutan calendar review               COMPLETE
+  → CAL3 ff99300 (typed outcomes + second approval)
+  → sisa WA6 tuntas; berikutnya 28-lanjutan (menunggu Takeda)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -101,6 +104,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## WA6-lanjutan milestone (2026-08-03)
+
+**WA6-lanjutan COMPLETE** — commit CAL3 `ff99300`. `calendar_review.py`: `OutcomeType` 5 typed outcome + `map_outcome()`; timezone known-set; proposal bounded (terms ≤200, price 0–1e9, reference ≤40 non-secret, reminder 1–10080); second local approval (first → awaiting_second → second → approved); `review()` metadata-only; write path provider TETAP fase live (kontrak statis). RED 7 → GREEN 7; regression 58 passed; frozen `094b696` OK.
 
 ## WA5-lanjutan milestone (2026-08-03)
 
@@ -308,17 +315,16 @@ JARVIS.MD
 
 ## Next phase
 
-**WA6-lanjutan — Calendar Review Lanjutan** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**28-lanjutan — Actor Binding** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Lengkapi review proposal kalender dengan mappings typed outcome.
+Ikat identitas paired remote actor ke proposal.
 
 ### Scope
 
-- mappings typed outcome (hotel stay, flight departure/arrival, service appointment, callback);
-- timezone; status confirmed/tentative; terms/price/reference/reminder;
-- second local approval; write path `gcal_create_proposed` tetap fase live.
+- paired remote actor identity binding;
+- larangan eksplisit remote menerima UIA refs/transcript/audio/path.
 
 ### Guardrails
 
@@ -339,15 +345,15 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-WA5-lanjutan COMPLETE (2026-08-03): durable memory (DUR 778f89f) —
-opt-in + approval + secret filter + recall bounded, sisa WA5 tuntas.
-Worktree bersih kecuali 2 artifact (.curator_state.json, full_run.txt) —
-JANGAN di-commit. Index kosong. Frozen 094b696 OK.
+WA6-lanjutan COMPLETE (2026-08-03): calendar review (CAL3 ff99300) —
+typed outcomes + timezone + second approval, sisa WA6 tuntas. Worktree
+bersih kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN
+di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif — WA6-lanjutan (Calendar Review Lanjutan) DILARANG
-dimulai tanpa approval eksplisit Takeda. Tugas sesi: verifikasi posisi
-(read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
-lanjutan, minta approval sebelum eksekusi apa pun. Jangan
+TIDAK ADA fase aktif — 28-lanjutan (Actor Binding) DILARANG dimulai tanpa
+approval eksplisit Takeda. Tugas sesi: verifikasi posisi (read-only),
+audit worktree/HEAD/frozen, presentasikan status + opsi lanjutan, minta
+approval sebelum eksekusi apa pun. Jangan
 git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
 provider/credential/live integration/authority/frozen.
 ```

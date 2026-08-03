@@ -497,6 +497,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**WA6-lanjutan — Calendar Review Lanjutan** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: mappings typed outcome (hotel stay, flight departure/arrival, service appointment, callback), timezone, status confirmed/tentative, terms/price/reference/reminder, second local approval; write path `gcal_create_proposed` tetap fase live.
+**28-lanjutan — Actor Binding** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: paired remote actor identity binding; larangan eksplisit remote menerima UIA refs/transcript/audio/path.
 Guardrail: tidak ada eksekusi tanpa approval eksplisit Takeda; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
