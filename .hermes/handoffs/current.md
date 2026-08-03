@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase WA3 COMPLETE — 2026-08-03
+**Updated:** Phase WA4 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `6bed7a2` (AUD); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `3e20ad1` (DIA); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -38,7 +38,9 @@ Phase WA2 call session/approval             COMPLETE
   → CAL bbd6437 (state machine + enum proposal + local approval)
 Phase WA3 two-way audio proof              COMPLETE
   → AUD 6bed7a2 (bounded proof, session-linked, fixture-only)
-  → sisa: tidak ada; Phase WA4 menunggu keputusan Takeda (dilarang)
+Phase WA4 call dialogue                     COMPLETE
+  → DIA 3e20ad1 (turn alternation + stop word + secret guard)
+  → sisa: tidak ada; Phase WA5 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -60,6 +62,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## Phase WA4 call dialogue milestone (2026-08-03)
+
+**Phase WA4 COMPLETE** — commit DIA `3e20ad1`. `jarvis/core/call_dialogue.py`: `CallDialogue` — turn alternation ketat local↔remote (double-turn ditolak), stop word → `interrupted`, secret/PII guard (marker + 12–19 digit → ditolak & tidak disimpan), MAX_TURNS 20 → `completed`, terikat session active; `summary()` metadata-only tanpa transcript; bus `call.dialogue.turn/ended` ringan tanpa teks. RED 8 → GREEN 8; regression 36 passed; frozen `094b696` OK.
 
 ## Phase WA3 two-way audio proof milestone (2026-08-03)
 
@@ -199,22 +205,22 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase WA4 — Bounded Autonomous Call Dialogue** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Phase WA5 — Call Memory & Privacy** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Turn-based bounded dialogue dalam sesi call yang sudah di-approve.
+Call memory yang aman: ringkasan metadata saja, retention terkontrol.
 
 ### Scope
 
-- turn policy (local + remote);
-- stop word + user interrupt;
-- no secret/PII disclosure;
-- per-turn objective guard; summary metadata-only.
+- simpan hanya ringkasan metadata (tanpa transcript/audio);
+- retention bounded + clear; opt-in config;
+- tidak ada PII/secret di memori call;
+- post-call summary hanya field allowlist.
 
 ### Guardrails
 
-- Tidak ada authority baru; tidak ada disclosure secret/PII.
+- Tidak ada transcript/audio yang disimpan; memory hanya metadata.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -231,14 +237,14 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase WA3 COMPLETE (2026-08-03): two-way audio proof (AUD 6bed7a2) —
-bounded proof session-linked, fixture-only, metadata result. Worktree
-bersih kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN
-di-commit. Index kosong. Frozen 094b696 OK.
+Phase WA4 COMPLETE (2026-08-03): call dialogue (DIA 3e20ad1) — turn
+alternation ketat, stop word, secret guard, summary metadata-only.
+Worktree bersih kecuali 2 artifact (.curator_state.json, full_run.txt) —
+JANGAN di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase WA4 (Bounded Autonomous Call Dialogue)
-DILARANG dimulai sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi
-posisi (read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
+TIDAK ADA fase aktif. Phase WA5 (Call Memory & Privacy) DILARANG dimulai
+sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi posisi
+(read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
 lanjutan, minta approval sebelum eksekusi apa pun. Jangan
 git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
 provider/credential/live integration/authority/frozen.

@@ -317,13 +317,19 @@ Guardrail: ...
 
 ## Phase WA4 — Bounded Autonomous Call Dialogue
 
-**Tujuan:** JARVIS berbicara menuju objective yang disetujui tanpa unrestricted phone-agent authority.
+**Status:** ✅ COMPLETE — 2026-08-03 (DIA `3e20ad1`).
 
-**Rules:** honest assistant disclosure where needed, one question at a time, confirm dates/prices/reference, max duration/turns, remote speech treated as untrusted data, no arbitrary tool calls, hang up/escalate on secret/payment/objective drift.
+**Tujuan:** turn-based bounded dialogue dalam sesi call yang sudah di-approve.
 
-**Acceptance:** simulator membuktikan successful inquiry, safe refusal, and escalation; live call separately approved.
+**Implementasi:**
+- `jarvis/core/call_dialogue.py`: `CallDialogue` — turn alternation ketat local↔remote (double-turn ditolak); stop word (`stop/berhenti/cukup/tutup/selesai/jangan lanjut/tidak usah/sudah cukup`) → `interrupted`; secret/PII guard (marker password/token/api key/secret/kartu/norek/otp/pin/credential atau 12–19 digit → ditolak & tidak disimpan); `MAX_TURNS=20` → `completed`; terikat session active; session end/expired → ended, cancel → interrupted;
+- `summary()` metadata-only (session_id/status/turn_count/sources — tanpa konten teks/transcript, dikunci test); bus `call.dialogue.turn/ended` ringan (session_id + index + source, tanpa teks).
 
-**Fase berikutnya:** **WA5 — Call Memory & Transcript Privacy**.
+**Acceptance:** turn policy + stop word + no PII + objective guard + summary metadata-only — TERPENUHI. RED 8 failed → GREEN 8 passed; regression 36 passed; frozen `094b696` OK.
+
+**Belum dikerjakan (dialogue lanjutan):** one-question-at-a-time rule, confirm dates/prices/reference, escalation on payment/objective drift, simulator successful-inquiry/safe-refusal/escalation proof; live call acceptance terpisah.
+
+**Fase berikutnya:** **WA5 — Call Memory & Privacy** — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
 
@@ -446,6 +452,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase WA4 — Bounded Autonomous Call Dialogue** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: turn policy (local + remote), stop word + user interrupt, no secret/PII disclosure, per-turn objective guard, summary metadata-only.
-Guardrail: tidak ada authority baru, tidak ada disclosure secret/PII; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase WA5 — Call Memory & Privacy** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: simpan hanya ringkasan metadata (tanpa transcript/audio), retention bounded + clear, opt-in config; tidak ada PII/secret di memori call; post-call summary hanya field allowlist.
+Guardrail: tidak ada transcript/audio yang disimpan, memory hanya metadata; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

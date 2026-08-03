@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: 6bed7a2 feat(core): bounded two-way audio proof harness linked to approved call session (AUD)
-Last updated: 2026-08-03 — Phase WA3 COMPLETE (two-way audio proof)
+HEAD: 3e20ad1 feat(core): bounded turn-based call dialogue with stop word and secret guard (DIA)
+Last updated: 2026-08-03 — Phase WA4 COMPLETE (bounded call dialogue)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 71 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD 6bed7a2)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 72 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA 3e20ad1)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: WA4 — Bounded Autonomous Call Dialogue
+Status: COMPLETE
+Completed: 2026-08-03 (DIA 3e20ad1; frozen 094b696 OK)
+```
 
 ```text
 Phase: WA3 — Real Two-Way Audio Proof
@@ -248,24 +254,24 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: WA3 — Real Two-Way Audio Proof
-Status: COMPLETE — 2026-08-03 (AUD 6bed7a2)
-Priority: two-way audio proof bounded, linked to approved session
+Phase: WA4 — Bounded Autonomous Call Dialogue
+Status: COMPLETE — 2026-08-03 (DIA 3e20ad1)
+Priority: turn-based bounded dialogue with secret guard
 ```
 
 ### Outcome
 
-- `jarvis/core/call_audio.py` (baru): `CallAudioProof` one-shot — `running → done/cancelled`; **start hanya untuk session `active` (approved lokal via WA2)**; **sinyal stop via session** (`cancel` → cancelled; `end`/`expired` → done); inbound+outbound via injected `capture(duration)→samples` / `playback(duration)→bool` (fixture-only, STT/TTS/voice_listener FROZEN tidak disentuh); `admit_duration` int 1–600s; deadline monotonic anti-drift; `stop()` idempotent.
-- `result()` metadata-only (status/duration/samples/`audio_exercised` — tanpa path/raw/payload/wav/file, dikunci test); jujur: tanpa fungsi audio → `audio_exercised: False`; bus `call.audio.started/done` ringan (session_id).
-- TDD: RED 9 failed → GREEN 9 passed; regression 35 passed (audio + session + countdown + lifecycle); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 17 passed; approval Takeda.
+- `jarvis/core/call_dialogue.py` (baru): `CallDialogue` one-shot — `running → completed/interrupted/ended`; **start hanya untuk session `active`**; **turn policy ketat** (alternasi local ↔ remote; double-turn ditolak); **stop word** (`stop/berhenti/cukup/tutup/selesai/jangan lanjut/tidak usah/sudah cukup`) → `interrupted`; **no secret/PII disclosure** (marker password/token/api key/secret/kartu/norek/otp/pin/credential atau 12–19 digit → ditolak & tidak disimpan); `MAX_TURNS=20` → `completed`; session end/expired → `ended`, cancel → `interrupted`.
+- `summary()` metadata-only (session_id/status/turn_count/sources — tanpa konten teks/transcript, dikunci test); bus `call.dialogue.turn/ended` ringan (session_id + index + source, tanpa teks).
+- TDD: RED 8 failed → GREEN 8 passed; regression 36 passed (dialogue + audio + session + countdown); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 25 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: WA4 — Bounded Autonomous Call Dialogue
+Phase: WA5 — Call Memory & Privacy
 Status: MENUNGGU KEPUTUSAN TAKEDA
-Guardrail: jangan mulai Phase WA4 tanpa approval eksplisit Takeda.
+Guardrail: jangan mulai Phase WA5 tanpa approval eksplisit Takeda.
 ```
 
 ## Planned phase order
@@ -282,8 +288,8 @@ WA0 WhatsApp readiness ✅ (WAR 9ec2bb0, 2026-08-03)
 WA1 native countdown timer ✅ (TIM2 3e53f91, 2026-08-03)
 WA2 call session/approval ✅ (CAL bbd6437, 2026-08-03)
 WA3 real two-way audio proof ✅ (AUD 6bed7a2, 2026-08-03)
-→ WA4 bounded autonomous call dialogue (MENUNGGU keputusan Takeda)
-→ WA5 call memory/privacy
+WA4 bounded autonomous call dialogue ✅ (DIA 3e20ad1, 2026-08-03)
+→ WA5 call memory/privacy (MENUNGGU keputusan Takeda)
 → WA6 post-call Calendar proposal
 → WA7 reservation commitment gate
 → WA8 customer-service case manager
@@ -323,19 +329,18 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: 6bed7a2 (AUD). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: 3e20ad1 (DIA). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Phase WA3 COMPLETE (2026-08-03): two-way audio proof — CallAudioProof
-start hanya untuk session active (approved), stop via session cancel/end,
-inbound+outbound injected (fixture-only, STT/TTS frozen tidak disentuh),
-duration 1-600s, result metadata-only, jujur audio_exercised. RED 9 →
-GREEN 9; regression 35 passed.
+Phase WA4 COMPLETE (2026-08-03): bounded call dialogue — turn alternation
+ketat, stop word → interrupted, secret/PII guard (ditolak & tidak
+disimpan), MAX_TURNS 20 → completed, summary metadata-only tanpa
+transcript, bus ringan tanpa teks. RED 8 → GREEN 8; regression 36 passed.
 
-Fase aktif: TIDAK ADA. Phase WA4 (Bounded Autonomous Call Dialogue)
-DILARANG dimulai sampai Takeda menyetujui eksplisit. Verifikasi posisi
-dulu, presentasikan status + opsi, minta approval sebelum eksekusi.
+Fase aktif: TIDAK ADA. Phase WA5 (Call Memory & Privacy) DILARANG dimulai
+sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu, presentasikan
+status + opsi, minta approval sebelum eksekusi.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,

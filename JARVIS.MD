@@ -2,7 +2,7 @@
 
 > **Repository:** `E:\jarvis agent\h`
 > **Language:** Indonesian
-> **Current implementation status:** Phase WA3 Real Two-Way Audio Proof COMPLETE (2026-08-03); Phase WA4 next — menunggu keputusan Takeda
+> **Current implementation status:** Phase WA4 Bounded Autonomous Call Dialogue COMPLETE (2026-08-03); Phase WA5 next — menunggu keputusan Takeda
 
 ## Start here in every new session
 
@@ -66,6 +66,7 @@
 | Phase WA1 | ✅ | Native countdown timer: `countdown_timer.py` — bounded int 1–3600s, deadline monotonic anti-drift, transisi running → done/cancelled, bus signal `timer.finished`/`timer.cancelled` sekali (idempotent); `countdown_driver.py` — timer → `orb.set_progress` (orb.py frozen tidak disentuh), auto-stop saat done; wiring window `start_countdown`/`cancel_countdown` (QTimer 200ms, log lokal); murni lokal tanpa remote/network/write. |
 | Phase WA2 | ✅ | Bounded call session state machine: `call_session.py` — idle → awaiting → active → done / cancelled / expired (TTL monotonic 30–3600s), remote proposal ENUM-only (`RemoteCallProposal`) tanpa eksekusi, `approve()` lokal one-shot, `end()`/`cancel()` idempotent, `result()` metadata-only (tanpa transcript/audio/path/raw), bus `call.*` ringan (session_id saja). |
 | Phase WA3 | ✅ | Two-way audio proof: `call_audio.py` — `CallAudioProof` start hanya untuk session `active` (approved lokal), stop via session cancel/end, inbound+outbound via injected capture/playback (fixture-only; STT/TTS/voice_listener FROZEN tidak disentuh), duration bounded 1–600s, deadline monotonic, `result()` metadata-only + `audio_exercised` jujur, bus `call.audio.started/done` ringan. |
+| Phase WA4 | ✅ | Bounded call dialogue: `call_dialogue.py` — turn alternation ketat local↔remote (double-turn ditolak), stop word → `interrupted`, secret/PII guard (marker + 12–19 digit → ditolak & tidak disimpan), `MAX_TURNS=20` → `completed`, terikat session active; `summary()` metadata-only tanpa transcript; bus `call.dialogue.turn/ended` ringan tanpa teks. |
 
 ## Capability evidence classification
 
@@ -141,8 +142,8 @@ python scripts/verify_frozen.py
 ```
 
 ## Next recommended phase
-**Phase WA4 — Bounded Autonomous Call Dialogue** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
+**Phase WA5 — Call Memory & Privacy** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
 
-Turn-based bounded dialogue: turn policy (local + remote), stop word + user interrupt, no secret/PII disclosure, per-turn objective guard, summary metadata-only. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
+Call memory policy: simpan hanya ringkasan metadata (tanpa transcript/audio), retention bounded + clear, opt-in config; tidak ada PII/secret di memori call; post-call summary hanya field allowlist. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
 
 For detailed current test evidence, changed files, and exact next implementation contract, read `.hermes/handoffs/current.md`.
