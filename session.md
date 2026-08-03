@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: a54c9af feat(ui): Content Studio scene list with deterministic move controls and asset mapping (SCN)
-Last updated: 2026-08-03 — Phase 22 COMPLETE (scene list UX)
+HEAD: 999c121 feat(core): bounded scene duration policy, cumulative SRT timing, and in-memory preview (TIM)
+Last updated: 2026-08-03 — Phase 23 COMPLETE (export timing & preview)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 64 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN a54c9af)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 65 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM 999c121)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: 23 — Content Studio Export Timing & Preview Hardening
+Status: COMPLETE
+Completed: 2026-08-03 (TIM 999c121; frozen 094b696 OK)
+```
 
 ```text
 Phase: 22 — Content Studio Scene List Production UX
@@ -206,24 +212,25 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: 22 — Content Studio Scene List Production UX
-Status: COMPLETE — 2026-08-03 (SCN a54c9af)
-Priority: user-facing scene order control after production-path proof
+Phase: 23 — Content Studio Export Timing & Preview Hardening
+Status: COMPLETE — 2026-08-03 (TIM 999c121)
+Priority: export usefulness without new write/network authority
 ```
 
 ### Outcome
 
-- Scene list `QListWidget` visible dari `_scenes` lokal (`1. S0`, `2. S1`, ...); klik = selection; ▲ Naik / ▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject + button disabled); selected mengikuti scene yang dipindah; **asset mapping `_asset["scene_index"]` ikut reorder**; refresh timeline otomatis; accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`).
-- TDD: RED 6 failed → GREEN 6 passed; regression content suite 41 passed; py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 16 passed; approval Takeda.
-- ⚠️ Temuan audit (pre-existing, di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+- `jarvis/core/content_timing_policy.py` (baru, pure/in-memory): `admit_duration` (int finite 1–600s; bool/float/NaN/negatif/0 ditolak), `admit_durations` (total cap 3600s), `cumulative_timings`, `srt_timestamp` (HH:MM:SS,mmm standar), `build_srt` (cumulative; text-count mismatch ditolak), `default_durations` (5s backward-compat).
+- `content_export`: `export_project(..., durations=)` — None → default 5s (backward-compatible); invalid → `{ok: False}` tanpa content; `captions_srt` cumulative dari durasi tervalidasi (ganti hardcoded 5s + stamp non-standar); `shot_list_csv` membawa `duration_s` tervalidasi; **`preview_export`** in-memory (storyboard dengan baris Timing, captions, shot-list) tanpa file write.
+- Sheet: `preview_export(fmt, durations)` — status lokal, tanpa disk write.
+- TDD: RED 12 failed → GREEN 13 passed; regression 85 passed; py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 19 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: 23 — Content Studio Export Timing & Preview Hardening
+Phase: 24 — Runtime Lifecycle Reliability Sweep
 Status: MENUNGGU KEPUTUSAN TAKEDA
-Guardrail: jangan mulai Phase 23 tanpa approval eksplisit Takeda.
+Guardrail: jangan mulai Phase 24 tanpa approval eksplisit Takeda.
 ```
 
 ## Planned phase order
@@ -233,8 +240,8 @@ Guardrail: jangan mulai Phase 23 tanpa approval eksplisit Takeda.
 20.3 Git segmentation/recovery commits ✅ (59 commit, 2026-08-03)
 21 desktop-safe production-path fixture ✅ (fixture-accepted, 2026-08-03)
 22 Content Studio scene-list UX ✅ (SCN a54c9af, 2026-08-03)
-→ 23 export timing/preview (MENUNGGU keputusan Takeda)
-→ 24 runtime lifecycle reliability
+23 export timing/preview ✅ (TIM 999c121, 2026-08-03)
+→ 24 runtime lifecycle reliability (MENUNGGU keputusan Takeda)
 → 25 credential-free canary
 → WA0 WhatsApp readiness
 → WA1 native countdown timer
@@ -281,22 +288,19 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: a54c9af (SCN). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: 999c121 (TIM). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Phase 22 COMPLETE (2026-08-03): Content Studio scene list production UX —
-QListWidget scene cards visible (order number), selection via klik, Move
-Up/Down deterministik reuse move_scene() (first-up/last-down reject),
-selected & asset mapping ikut reorder, accessibility identity stabil
-(jarvis-scene-list, jarvis-scene-move-up/down). RED 6 → GREEN 6; regression
-content 41 passed. Catatan: test_window_integration awareness toggle gagal
-pre-existing (stale sejak U1, tidak terkait Content Studio) — remediasi
-terpisah.
+Phase 23 COMPLETE (2026-08-03): Content Studio export timing & preview —
+content_timing_policy (duration 1-600s, total cap 3600s, cumulative SRT
+standar), export_project dengan durations tervalidasi (default 5s
+backward-compat), preview_export in-memory (storyboard/captions/shot-list)
+tanpa file write. RED 12 → GREEN 13; regression 85 passed.
 
-Fase aktif: TIDAK ADA. Phase 23 (Content Studio Export Timing & Preview
-Hardening) DILARANG dimulai sampai Takeda menyetujui eksplisit. Verifikasi
-posisi dulu, presentasikan status + opsi, minta approval sebelum eksekusi.
+Fase aktif: TIDAK ADA. Phase 24 (Runtime Lifecycle Reliability Sweep)
+DILARANG dimulai sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu,
+presentasikan status + opsi, minta approval sebelum eksekusi.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,

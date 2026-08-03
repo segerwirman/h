@@ -195,13 +195,18 @@ Guardrail: ...
 
 ## Phase 23 — Content Studio Export Timing & Preview Hardening
 
+**Status:** ✅ COMPLETE — 2026-08-03 (TIM `999c121`).
+
 **Tujuan:** menambah duration policy, cumulative SRT timing, dan in-memory preview.
 
-**Implementasi:** finite bounded duration, total project cap, valid SRT, preview storyboard/captions/shot-list; fixed export allowlist tetap source of truth.
+**Implementasi:**
+- `jarvis/core/content_timing_policy.py` (baru, pure/in-memory): `admit_duration` int finite 1–600s (bool/float/NaN/negatif/0 ditolak), `admit_durations` total cap 3600s, `cumulative_timings`, `srt_timestamp` HH:MM:SS,mmm, `build_srt` cumulative (text-count mismatch ditolak), `default_durations` 5s backward-compat;
+- `content_export`: `export_project(..., durations=)` — None → default 5s; invalid → `{ok: False}` tanpa content; `captions_srt` cumulative; `shot_list_csv` membawa `duration_s` tervalidasi; `preview_export` in-memory (storyboard + baris Timing, captions, shot-list) tanpa file write;
+- sheet `preview_export(fmt, durations)`; fixed export allowlist tetap authoritative.
 
-**Acceptance:** strings/in-memory only; no automatic file write, video render, upload, publish, destination path.
+**Acceptance:** strings/in-memory only; no automatic file write, video render, upload, publish, destination path — TERPENUHI. RED 12 failed → GREEN 13 passed; regression 85 passed; frozen `094b696` OK.
 
-**Fase berikutnya:** **24 — Runtime Lifecycle Reliability**.
+**Fase berikutnya:** **24 — Runtime Lifecycle Reliability Sweep** — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
 
@@ -416,6 +421,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase 23 — Content Studio Export Timing & Preview Hardening** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: bounded per-scene duration policy (finite integer, range terkendali, total project capped); caption timestamp generation (cumulative SRT) berdasarkan durasi tervalidasi; local in-memory preview (storyboard/captions/shot-list); fixed export allowlist tetap authoritative.
-Guardrail: strings/in-memory only (tanpa render video, cloud share, destination path, automatic write); untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase 24 — Runtime Lifecycle Reliability Sweep** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: ownership table statis untuk semua thread/process/lease boot-started & task-owned; RED: shutdown dengan task aktif tidak meninggalkan lease desktop/browser; monitor/voice threads menerima stop + bounded join; timeout/cancel state jujur; clean shutdown evidence normal & `--no-voice`; batas subprocess non-killable didokumentasikan.
+Guardrail: tidak ada authority baru, hanya missing lifecycle hooks; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

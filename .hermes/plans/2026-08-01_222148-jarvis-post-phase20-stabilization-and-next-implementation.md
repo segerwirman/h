@@ -298,6 +298,7 @@ git diff --check
 
 **Priority:** P1 product completeness
 **Dependency:** Phase 22.
+**Status:** ✅ COMPLETE — 2026-08-03 (TIM `999c121`): duration policy bounded (1–600s/scene, total 3600s), cumulative SRT standar, `shot_list_csv` duration tervalidasi, `preview_export` in-memory tanpa file write. Rincian: `session.md` + master roadmap.
 
 **Goal:** Improve export usefulness without adding rendering, publishing, or file-writing authority.
 

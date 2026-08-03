@@ -2,7 +2,7 @@
 
 > **Repository:** `E:\jarvis agent\h`
 > **Language:** Indonesian
-> **Current implementation status:** Phase 22 Content Studio Scene List Production UX COMPLETE (2026-08-03); Phase 23 next — menunggu keputusan Takeda
+> **Current implementation status:** Phase 23 Content Studio Export Timing & Preview Hardening COMPLETE (2026-08-03); Phase 24 next — menunggu keputusan Takeda
 
 ## Start here in every new session
 
@@ -59,6 +59,7 @@
 | Phase 20.3 | ✅ | Broadly dirty post-initial-commit worktree converted into 59 dependency-ordered, reviewable, reversible recovery commits (remediasi A46–A53, GWS A54–A57, telegram A58+TEL, monitoring A59–A70+MR, voice V1–V5, closure MR/MSG/TEL/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR, docs DOC `29f94cd`); worktree bersih kecuali 2 artifact yang diklasifikasi; frozen `094b696` dijaga; select-option kini native (CAP1). |
 | Phase 21 | ✅ | Production-path fixture acceptance: Phase 19 (title) + Phase 20 (reorder) terbukti `fixture-accepted` di fixture PyQt disposable via production UIA backend (ValuePattern + satu drag fisik + recapture + committed-value/visual-order proof). Acceptance run menemukan & meremediasi G1 (text_field identity), G2 (plain listitem card), G4 (verifikasi visual order — RuntimeId item tidak stabil pasca-reorder). Tetap BUKAN `live-proven`. |
 | Phase 22 | ✅ | Content Studio scene list production UX: `QListWidget` scene cards visible dengan order number, selection via klik, Move Up/Down deterministik (first-up/last-down reject) reuse `move_scene()`, selected + asset mapping ikut reorder, timeline auto-refresh, accessibility identity stabil untuk lane UIA. |
+| Phase 23 | ✅ | Content Studio export timing & preview hardening: bounded duration policy (1–600s/scene, total cap 3600s, bool/float/NaN ditolak), cumulative SRT standar, `shot_list_csv` membawa duration tervalidasi, `preview_export` in-memory (storyboard/captions/shot-list) tanpa file write; fixed export allowlist tetap authoritative. |
 
 ## Capability evidence classification
 
@@ -134,8 +135,8 @@ python scripts/verify_frozen.py
 ```
 
 ## Next recommended phase
-**Phase 23 — Content Studio Export Timing & Preview Hardening** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
+**Phase 24 — Runtime Lifecycle Reliability Sweep** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
 
-bounded per-scene duration policy; cumulative SRT timing berbasis durasi tervalidasi; in-memory preview (storyboard/captions/shot-list); fixed export allowlist tetap source of truth; strings/in-memory only, tanpa render/publish/write otomatis. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
+Setiap thread/process/lease boot-started atau task-owned punya owner, stop path, join policy, dan failure state jujur (agent workers, voice, monitor, Telegram, cron, wake, browser/computer leases, OAuth/composer worker, normal boot & `--no-voice`); clean shutdown evidence; lease selalu released; batas subprocess non-killable didokumentasikan. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
 
 For detailed current test evidence, changed files, and exact next implementation contract, read `.hermes/handoffs/current.md`.

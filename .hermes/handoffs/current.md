@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase 22 COMPLETE — 2026-08-03
+**Updated:** Phase 23 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `a54c9af` (SCN); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `999c121` (TIM); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -24,7 +24,9 @@ Phase 21 fixture acceptance                       COMPLETE
   → Phase 19/20 `fixture-accepted` (title + reorder verified)
 Phase 22 scene list UX                          COMPLETE
   → SCN a54c9af (list visible, Move Up/Down, asset mapping)
-  → sisa: tidak ada; Phase 23 menunggu keputusan Takeda (dilarang)
+Phase 23 export timing/preview                 COMPLETE
+  → TIM 999c121 (duration policy, cumulative SRT, preview in-memory)
+  → sisa: tidak ada; Phase 24 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -46,6 +48,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## Phase 23 export timing milestone (2026-08-03)
+
+**Phase 23 COMPLETE** — commit TIM `999c121`. `content_timing_policy` (pure): duration 1–600s int (bool/float/NaN ditolak), total cap 3600s, cumulative SRT HH:MM:SS,mmm, `build_srt` (mismatch text-count ditolak), default 5s backward-compat. `export_project(..., durations=)` validasi; `captions_srt` cumulative; `shot_list_csv` duration tervalidasi; `preview_export` in-memory (storyboard+Timing, captions, shot-list) tanpa file write; sheet `preview_export`. RED 12 → GREEN 13; regression 85 passed; frozen `094b696` OK.
 
 ## Phase 20.2 — Continuity & Audit Metadata Cleanup
 
@@ -157,22 +163,21 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase 23 — Content Studio Export Timing & Preview Hardening** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Phase 24 — Runtime Lifecycle Reliability Sweep** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Export lebih berguna tanpa menambah rendering, publishing, atau file-write authority.
+Setiap thread/process/lease boot-started atau task-owned punya owner eksplisit, stop path, join policy, dan failure state jujur.
 
 ### Scope
 
-- bounded per-scene duration policy (finite integer, range terkendali, total project capped);
-- caption timestamp generation (cumulative SRT) berdasarkan durasi tervalidasi;
-- local in-memory preview untuk storyboard/captions/shot-list;
-- fixed export allowlist tetap authoritative.
+- agent workers (dispatch), voice non-daemon thread, monitor worker, Telegram polling daemon, cron scheduler, wake trigger, browser/computer session leases, OAuth/composer worker;
+- RED: shutdown dengan task aktif tidak boleh meninggalkan lease desktop/browser; monitor/voice threads menerima stop + bounded join; timeout/cancel state jujur;
+- clean shutdown evidence untuk normal boot dan `--no-voice`; batas subprocess non-killable didokumentasikan.
 
 ### Guardrails
 
-- Strings/in-memory only; tidak ada render video, cloud share, destination path, atau automatic write.
+- Tidak ada authority baru; hanya missing lifecycle hooks yang ditambahkan; jangan rewrite service yang bekerja.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -189,15 +194,15 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase 22 COMPLETE (2026-08-03): Content Studio scene list UX (SCN a54c9af) —
-list visible, Move Up/Down deterministik, selected & asset mapping ikut
-reorder. Worktree bersih kecuali 2 artifact (.curator_state.json,
+Phase 23 COMPLETE (2026-08-03): export timing & preview (TIM 999c121) —
+duration policy bounded, cumulative SRT standar, preview in-memory tanpa
+file write. Worktree bersih kecuali 2 artifact (.curator_state.json,
 full_run.txt) — JANGAN di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase 23 (Content Studio Export Timing & Preview
-Hardening) DILARANG dimulai sampai Takeda menyetujui eksplisit. Tugas sesi:
-verifikasi posisi (read-only), audit worktree/HEAD/frozen, presentasikan
-status + opsi lanjutan, minta approval sebelum eksekusi apa pun. Jangan
+TIDAK ADA fase aktif. Phase 24 (Runtime Lifecycle Reliability Sweep)
+DILARANG dimulai sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi
+posisi (read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
+lanjutan, minta approval sebelum eksekusi apa pun. Jangan
 git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
 provider/credential/live integration/authority/frozen.
 ```
