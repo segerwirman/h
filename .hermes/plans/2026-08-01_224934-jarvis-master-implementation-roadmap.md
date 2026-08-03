@@ -447,7 +447,7 @@ Guardrail: ...
 
 **Acceptance:** facade bernama; fixed steps; deny-unknown; tanpa authority baru — TERPENUHI. RED 8 failed → GREEN 8 passed; regression 96 passed; frozen `094b696` OK.
 
-**Belum dikerjakan (facade lanjutan):** enum facade untuk capability lain — Content Studio title/reorder, Focus Mode, browser media, timer, approved call-session start/status/hangup; permanent reject rules (arbitrary tool/action, coordinate, selector, key, path, URL, screenshot, raw text dispatch, login/payment); per-capability policy/confirmation/verification tetap berlaku.
+**Belum dikerjakan (facade lanjutan):** — enum facade untuk capability lain — Content Studio title/reorder, Focus Mode, browser media, timer, approved call-session start/status/hangup; permanent reject rules; per-capability policy/confirmation/verification: ✅ COMPLETE (CAP `7e72d79`, 2026-08-03) — enum 8 capability + permanent rejects + per-capability allowlist/confirmation; sisa: wire ke desktop tools nyata (fixture acceptance per capability, fase terpisah).
 
 **Fase berikutnya:** **28 — Mediated Remote Facade** — MENUNGGU KEPUTUSAN TAKEDA.
 
@@ -497,6 +497,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**27-lanjutan — Facade Capability & Permanent Reject Rules** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: enum facade untuk Content Studio title/reorder, Focus Mode, browser media, call-session start/status/hangup; permanent reject rules (coordinate/selector/key/path/URL/screenshot/raw dispatch/login/payment).
+**Remediasi — awareness toggle pre-existing test** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: `test_window_integration.py::test_awareness_toggle_is_explicit_opt_in_and_lights_indicator` — `KeyError: 'awareness'` sejak UI U1; update test ke kontrak saat ini (awareness icon retired) atau hapus dengan alasan terdokumentasi.
 Guardrail: tidak ada eksekusi tanpa approval eksplisit Takeda; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

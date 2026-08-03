@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** WA2-lanjutan COMPLETE — 2026-08-03 (lanjutan roadmap)
+**Updated:** 27-lanjutan COMPLETE — 2026-08-03 (lanjutan roadmap)
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `3cd527d` (CST); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `7e72d79` (CAP); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -64,7 +64,10 @@ WA7-lanjutan decision continuation         COMPLETE
   → sisa WA7 tuntas
 WA2-lanjutan call states                   COMPLETE
   → CST 3cd527d (dialing/connected/decision + approval sheet)
-  → sisa WA2 tuntas; berikutnya 27-lanjutan (menunggu Takeda)
+  → sisa WA2 tuntas
+27-lanjutan facade capability             COMPLETE
+  → CAP 7e72d79 (capability enum + permanent rejects)
+  → sisa 27 tuntas; berikutnya remediasi awareness (menunggu Takeda)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -86,6 +89,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## 27-lanjutan milestone (2026-08-03)
+
+**27-lanjutan COMPLETE** — commit CAP `7e72d79`. `facade_capability.py`: `FacadeCapability` enum 8 capability + `CapabilityPolicy` deny-first (permanent rejects coordinate/x/y/selector/key/path/url/screenshot/raw_dispatch/login/payment → `facade_permanent_reject`; field allowlist per capability → `facade_policy_field_rejected`; per-capability confirmation CONTENT_TITLE/REORDER + CALL_START/HANGUP wajib). RED 6 → GREEN 6; regression 45 passed; frozen `094b696` OK.
 
 ## WA2-lanjutan milestone (2026-08-03)
 
@@ -273,16 +280,16 @@ JARVIS.MD
 
 ## Next phase
 
-**27-lanjutan — Facade Capability & Permanent Reject Rules** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Remediasi — awareness toggle pre-existing test** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Enum facade untuk capability proven lain + permanent reject rules.
+Membersihkan satu-satunya test merah pre-existing.
 
 ### Scope
 
-- facade: Content Studio title/reorder, Focus Mode, browser media, call-session start/status/hangup;
-- permanent reject rules (coordinate/selector/key/path/URL/screenshot/raw dispatch/login/payment).
+- `test_window_integration.py::test_awareness_toggle_is_explicit_opt_in_and_lights_indicator` — `KeyError: 'awareness'`;
+- update test ke kontrak UI saat ini (awareness icon retired) atau hapus dengan alasan terdokumentasi.
 
 ### Guardrails
 
@@ -303,15 +310,15 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-WA2-lanjutan COMPLETE (2026-08-03): call states (CST 3cd527d) —
-dialing/connected/decision + constraints + approval sheet, sisa WA2
+27-lanjutan COMPLETE (2026-08-03): facade capability (CAP 7e72d79) —
+enum 8 capability + permanent rejects + per-capability policy, sisa 27
 tuntas. Worktree bersih kecuali 2 artifact (.curator_state.json,
 full_run.txt) — JANGAN di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif — 27-lanjutan (Facade Capability & Permanent Reject
-Rules) DILARANG dimulai tanpa approval eksplisit Takeda. Tugas sesi:
-verifikasi posisi (read-only), audit worktree/HEAD/frozen, presentasikan
-status + opsi lanjutan, minta approval sebelum eksekusi apa pun. Jangan
+TIDAK ADA fase aktif — Remediasi awareness pre-existing test DILARANG
+dimulai tanpa approval eksplisit Takeda. Tugas sesi: verifikasi posisi
+(read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
+lanjutan, minta approval sebelum eksekusi apa pun. Jangan
 git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
 provider/credential/live integration/authority/frozen.
 ```

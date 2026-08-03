@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: 3cd527d feat(core): call dialing/connected/decision states with constraints and metadata-only approval sheet (CST)
-Last updated: 2026-08-03 — WA2-lanjutan COMPLETE (call states & approval sheet)
+HEAD: 7e72d79 feat(core): facade capability enum with permanent reject rules and per-capability policy (CAP)
+Last updated: 2026-08-03 — 27-lanjutan COMPLETE (facade capability & reject rules)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 83 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON + CST 3cd527d)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 84 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON + CST + CAP 7e72d79)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: 27-lanjutan — Facade Capability & Permanent Reject Rules
+Status: COMPLETE (sisa 27)
+Completed: 2026-08-03 (CAP 7e72d79; frozen 094b696 OK)
+```
 
 ```text
 Phase: WA2-lanjutan — Call States & Approval Sheet UI
@@ -320,22 +326,22 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: WA2-lanjutan — Call States & Approval Sheet UI
-Status: COMPLETE — 2026-08-03 (CST 3cd527d)
-Priority: dialing/connected/decision states, constraints, approval sheet
+Phase: 27-lanjutan — Facade Capability & Permanent Reject Rules
+Status: COMPLETE — 2026-08-03 (CAP 7e72d79)
+Priority: capability enum, permanent rejects, per-capability policy
 ```
 
 ### Outcome
 
-- `CallSession` diperluas (backward compatible — test WA2 core tetap hijau): states baru `active → dialing → connected → awaiting_decision`; `fail()` dari dialing/connected → `failed`; `end()`/`cancel()` dari semua state non-terminal; transisi invalid ditolak; **constraints field** (hanya `{max_duration_min, max_turns}`, key asing ditolak); **allowed disclosures field** (max 8 × 40 chars; `disclosure_allowed(field)`); `result()` metadata termasuk constraints/disclosures; bus `call.dialing/connected/awaiting_decision/failed` ringan.
-- `jarvis/ui/approval_sheet.py` (baru): `ApprovalSheet` Qt offscreen — metadata proposal (proposal_id + facade_name + status), tombol Approve/Reject → signal `approved/rejected(proposal_id)`; `raw_payload()` selalu None — tidak pernah menyimpan args/secret.
-- TDD: RED 10 failed + 2 error → GREEN 12 passed; regression 79 passed (states + sheet + WA2 core + audio + dialogue + memory + continuation + ring + UI wiring); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 20 passed; approval Takeda.
+- `jarvis/core/facade_capability.py` (baru): `FacadeCapability` enum fixed set 8 capability (`CONTENT_TITLE, CONTENT_REORDER, FOCUS_MODE, BROWSER_MEDIA, TIMER, CALL_START, CALL_STATUS, CALL_HANGUP`) + `CapabilityPolicy` deny-first: admit_capability (free_form/arbitrary_tool → `facade_capability_unknown`); **permanent rejects** (`coordinate/x/y/selector/key/path/url/screenshot/raw_dispatch/login/payment` → `facade_permanent_reject` — 9 kasus diuji); verify_policy field allowlist per capability (`facade_policy_field_rejected`).
+- **Per-capability confirmation** tetap berlaku: CONTENT_TITLE/REORDER + CALL_START/HANGUP wajib; TIMER/FOCUS_MODE/BROWSER_MEDIA/CALL_STATUS tidak; reason codes closed set; kontrak statis tanpa provider/network/file.
+- TDD: RED 6 failed → GREEN 6 passed; regression 45 passed (capability + facades + bridge + states + continuation + ring); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 16 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: 27-lanjutan — Facade Capability & Permanent Reject Rules (rekomendasi #3)
+Phase: Remediasi — awareness toggle pre-existing test (rekomendasi #4)
 Status: MENUNGGU KEPUTUSAN TAKEDA
 Guardrail: jangan mulai fase baru tanpa approval eksplisit Takeda.
 ```
@@ -366,7 +372,8 @@ WA9 controlled WhatsApp rollout ✅ (WRO 3fb6d2a, 2026-08-03)
 29 optional next exact UI surface ✅ (UIF 27c71f8, 2026-08-03)
 WA7-lanjutan decision continuation ✅ (CON b1003f9, 2026-08-03)
 WA2-lanjutan call states ✅ (CST 3cd527d, 2026-08-03)
-→ 27-lanjutan facade capability (MENUNGGU keputusan Takeda)
+27-lanjutan facade capability ✅ (CAP 7e72d79, 2026-08-03)
+→ remediasi awareness pre-existing (MENUNGGU keputusan Takeda)
 ```
 
 ## Mandatory completion protocol
@@ -398,17 +405,17 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: 3cd527d (CST). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: 7e72d79 (CAP). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-WA2-lanjutan COMPLETE (2026-08-03): call states & approval sheet —
-DIALING/CONNECTED/AWAITING_DECISION/FAILED, constraints + allowed
-disclosures field, approval sheet metadata-only offscreen. RED 12 →
-GREEN 12; regression 79 passed.
+27-lanjutan COMPLETE (2026-08-03): facade capability — enum 8 capability,
+permanent rejects (coordinate/selector/key/path/url/screenshot/raw/login/
+payment), per-capability field allowlist + confirmation, deny-first.
+RED 6 → GREEN 6; regression 45 passed.
 
-Fase aktif: TIDAK ADA. 27-lanjutan (Facade Capability & Permanent Reject
-Rules) DILARANG dimulai tanpa approval eksplisit Takeda.
+Fase aktif: TIDAK ADA. Remediasi awareness pre-existing test DILARANG
+dimulai tanpa approval eksplisit Takeda.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,
