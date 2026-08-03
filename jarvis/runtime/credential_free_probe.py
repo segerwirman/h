@@ -52,6 +52,21 @@ def probe_voice(*, no_voice: bool) -> str:
     return "ready" if probe_llm() == "ready" else "absent"
 
 
+def probe_whatsapp() -> str:
+    """Status nyata dari gate readiness Phase WA0 (boolean, tanpa nilai)."""
+    try:
+        from jarvis.integrations import whatsapp_readiness
+        if whatsapp_readiness.service_available():
+            return "ready"
+        if whatsapp_readiness.credentials_ready():
+            return "absent"          # kredensial ada tapi gate lain belum siap
+        if whatsapp_readiness.toggle_enabled():
+            return "absent"
+        return "disabled"            # toggle off
+    except Exception:  # noqa: BLE001
+        return "unknown"
+
+
 def probe_providers(*, no_voice: bool = False) -> dict[str, str]:
     """Status boolean per provider; hanya label, tidak pernah nilai secret."""
     return {
@@ -60,7 +75,7 @@ def probe_providers(*, no_voice: bool = False) -> dict[str, str]:
         "llm": probe_llm(),
         "voice": probe_voice(no_voice=no_voice),
         "image": "unknown",      # belum ada probe aman tanpa menyentuh nilai
-        "whatsapp": "unknown",   # belum ada integrasi
+        "whatsapp": probe_whatsapp(),
     }
 
 
