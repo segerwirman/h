@@ -232,13 +232,15 @@ Guardrail: ...
 
 ## Phase 25 — Credential-Free Integration Canary Matrix
 
+**Status:** ✅ COMPLETE — 2026-08-03 (CAN `11430b6`).
+
 **Tujuan:** status readiness jujur untuk Telegram, heavy provider, image, Google, WhatsApp, vision, voice tanpa membaca secret values.
 
-**Output:** `component`, `configured`, `runtime_wired`, `live_proof`, fixed `reason_code`.
+**Output (implementasi):** `jarvis/runtime/credential_free_probe.py` — `probe_providers(no_voice=)` → `{telegram, google, llm, voice, image, whatsapp}` status ∈ `{ready, absent, disabled, skipped, unknown}`; `probe_summary()` metadata-only; `_has_secret` nilai → bool → dibuang; toggle off → `disabled`; `--no-voice` → voice `skipped`; image/whatsapp → `unknown` (jujur); guardrail dikunci test (tidak menulis ke secrets store, tidak mengekspos nilai, deterministik tanpa kredensial).
 
-**Acceptance:** membedakan source-present/configured/wired/tested/live; no token/account/path/raw exception.
+**Acceptance:** membedakan source-present/configured/wired/tested/live; no token/account/path/raw exception — TERPENUHI. RED 7 failed → GREEN 7 passed; regression 38 passed; frozen `094b696` OK.
 
-**Fase berikutnya:** **WA0 — WhatsApp Call Readiness Truth**; specialization untuk call/audio hardware.
+**Fase berikutnya:** **WA0 — WhatsApp Call Readiness Truth**; specialization untuk call/audio hardware — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
 
@@ -427,6 +429,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase 25 — Credential-Free Canary** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: `--no-voice` boot smoke + startup probe credential-free (status sehat/absent tanpa menyentuh kredensial); audit boot path yang menyentuh kredensial sebelum siap; default `DISABLE_TELEGRAM=1`-like mode diuji.
-Guardrail: tidak ada penyimpanan/sentuhan kredensial baru, probe hanya status boolean; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase WA0 — WhatsApp Readiness** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: readiness gate — dependency check + credential absence check + `client_available()`/`service_available()` (official API shape) + toggle config + allowlist policy placeholder; tests offline tanpa kredensial nyata/jaringan.
+Guardrail: tidak ada kredensial nyata/jaringan/live client di test, hanya gate boolean; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

@@ -355,6 +355,7 @@ git diff --check
 
 **Priority:** P1 release confidence
 **Dependency:** Phase 24.
+**Status:** ✅ COMPLETE — 2026-08-03 (CAN `11430b6`): probe status boolean per provider (telegram/google/llm/voice/image/whatsapp), `--no-voice` → voice skipped, tanpa menyimpan/mengekspos nilai secret. Rincian: `session.md` + master roadmap.
 
 **Goal:** Provide one command that reports integration readiness without reading or exposing secret values or making external side effects.
 

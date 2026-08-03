@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: 1011794 feat(runtime): lifecycle ownership table, bounded cron/sweeper joins, documented subprocess limit (LIF)
-Last updated: 2026-08-03 — Phase 24 COMPLETE (lifecycle reliability sweep)
+HEAD: 11430b6 feat(runtime): credential-free canary probe with boolean provider status (CAN)
+Last updated: 2026-08-03 — Phase 25 COMPLETE (credential-free canary)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 66 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF 1011794)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 67 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN 11430b6)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: 25 — Credential-Free Canary
+Status: COMPLETE
+Completed: 2026-08-03 (CAN 11430b6; frozen 094b696 OK)
+```
 
 ```text
 Phase: 24 — Runtime Lifecycle Reliability Sweep
@@ -218,25 +224,25 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: 24 — Runtime Lifecycle Reliability Sweep
-Status: COMPLETE — 2026-08-03 (LIF 1011794)
-Priority: honest lifecycle ownership for every boot/task-owned resource
+Phase: 25 — Credential-Free Canary
+Status: COMPLETE — 2026-08-03 (CAN 11430b6)
+Priority: honest provider status without touching credential values
 ```
 
 ### Outcome
 
-- `jarvis/runtime/lifecycle_audit.py` (baru): static ownership table `LIFECYCLE_OWNERSHIP` (16 entri: cron, telegram, monitor worker, awareness, voice pipeline monitor, wake, browser, sweeper, dispatch, fire-and-forget workers, boot, classifier) — owner/stop path/join policy/failure state; `audit_ownership()` metadata-only; `SUBPROCESS_LIMITATION` (subprocess tidak bisa di-hard-kill; terminate cooperative + state `terminate_requested` jujur).
-- Fix gap: `CronScheduler.stop()` kini join bounded (`interval+1`, `_interval` attr); `SetupQueue.close()` kini join bounded (`_sweep_interval+1`).
-- Audit hasil: telegram/monitor/awareness/state-monitor/wake/browser/dispatch SUDAH benar (join + lease release di finally — dikunci test kontrak); RuntimeSupervisor sudah idempotent + bounded (test existing).
-- TDD: RED 5 failed → GREEN 7 passed; regression lifecycle 74 passed; py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 15 passed; approval Takeda.
+- `jarvis/runtime/credential_free_probe.py` (baru): `probe_providers(no_voice=False)` → `{telegram, google, llm, voice, image, whatsapp}` dengan status hanya dari `{ready, absent, disabled, skipped, unknown}`; `probe_summary()` metadata-only; `_has_secret` membaca nilai → bool → dibuang (tidak pernah disimpan/di-log/dikembalikan).
+- `telegram`: toggle off → `disabled`; token+allowlist → `ready`/`absent`; `google`: client_id+secret → `ready`/`absent`; `llm`: stored/env → `ready`/`absent`; `voice`: `no_voice=True` → `skipped` (mode `--no-voice` dihormati); `image`/`whatsapp` → `unknown` (jujur).
+- Guardrail teruji: probe tidak pernah menulis ke secrets store; tidak pernah mengekspos nilai; deterministik tanpa kredensial.
+- TDD: RED 7 failed → GREEN 7 passed; regression 38 passed (probe + secrets/oauth + telegram control); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 7 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: 25 — Credential-Free Canary
+Phase: WA0 — WhatsApp Readiness
 Status: MENUNGGU KEPUTUSAN TAKEDA
-Guardrail: jangan mulai Phase 25 tanpa approval eksplisit Takeda.
+Guardrail: jangan mulai Phase WA0 tanpa approval eksplisit Takeda.
 ```
 
 ## Planned phase order
@@ -248,8 +254,8 @@ Guardrail: jangan mulai Phase 25 tanpa approval eksplisit Takeda.
 22 Content Studio scene-list UX ✅ (SCN a54c9af, 2026-08-03)
 23 export timing/preview ✅ (TIM 999c121, 2026-08-03)
 24 runtime lifecycle reliability ✅ (LIF 1011794, 2026-08-03)
-→ 25 credential-free canary (MENUNGGU keputusan Takeda)
-→ WA0 WhatsApp readiness
+25 credential-free canary ✅ (CAN 11430b6, 2026-08-03)
+→ WA0 WhatsApp readiness (MENUNGGU keputusan Takeda)
 → WA1 native countdown timer
 → WA2 call session/approval
 → WA3 real two-way audio proof
@@ -294,17 +300,17 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: 1011794 (LIF). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: 11430b6 (CAN). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Phase 24 COMPLETE (2026-08-03): runtime lifecycle reliability sweep —
-lifecycle_audit ownership table (16 entri) + SUBPROCESS_LIMITATION
-dokumentasi; cron.stop() & SetupQueue.close() kini join bounded; audit
-konfirmasi telegram/monitor/awareness/wake/browser/dispatch sudah benar.
-RED 5 → GREEN 7; regression lifecycle 74 passed.
+Phase 25 COMPLETE (2026-08-03): credential-free canary — probe_providers
+status boolean per provider (ready/absent/disabled/skipped/unknown) tanpa
+menyimpan/mengekspos nilai; mode --no-voice → voice skipped; guardrail
+tidak menulis ke secrets store dikunci test. RED 7 → GREEN 7; regression
+38 passed.
 
-Fase aktif: TIDAK ADA. Phase 25 (Credential-Free Canary) DILARANG dimulai
+Fase aktif: TIDAK ADA. Phase WA0 (WhatsApp Readiness) DILARANG dimulai
 sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu, presentasikan
 status + opsi, minta approval sebelum eksekusi.
 

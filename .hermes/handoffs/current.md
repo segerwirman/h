@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase 24 COMPLETE — 2026-08-03
+**Updated:** Phase 25 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `1011794` (LIF); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `11430b6` (CAN); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -28,7 +28,9 @@ Phase 23 export timing/preview                 COMPLETE
   → TIM 999c121 (duration policy, cumulative SRT, preview in-memory)
 Phase 24 lifecycle reliability                COMPLETE
   → LIF 1011794 (ownership table, bounded joins, subprocess limit doc)
-  → sisa: tidak ada; Phase 25 menunggu keputusan Takeda (dilarang)
+Phase 25 credential-free canary               COMPLETE
+  → CAN 11430b6 (probe status boolean, tanpa nilai secret)
+  → sisa: tidak ada; Phase WA0 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -50,6 +52,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## Phase 25 credential-free canary milestone (2026-08-03)
+
+**Phase 25 COMPLETE** — commit CAN `11430b6`. `jarvis/runtime/credential_free_probe.py`: `probe_providers(no_voice=)` status boolean per provider (telegram/google/llm/voice/image/whatsapp ∈ ready/absent/disabled/skipped/unknown); `probe_summary()` metadata-only; `_has_secret` nilai → bool → dibuang. Guardrail dikunci test: tidak menulis ke secrets store, tidak mengekspos nilai, deterministik tanpa kredensial; `--no-voice` → voice `skipped`. RED 7 → GREEN 7; regression 38 passed; frozen `094b696` OK.
 
 ## Phase 24 lifecycle reliability milestone (2026-08-03)
 
@@ -169,21 +175,23 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase 25 — Credential-Free Canary** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Phase WA0 — WhatsApp Readiness** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Probe sistem tanpa menyentuh kredensial — status provider jujur (sehat/absent) sejak boot.
+Readiness gate WhatsApp — tahu kapan aman menyambungkan, tanpa menyentuh kredensial nyata.
 
 ### Scope
 
-- `--no-voice` boot smoke + startup probe credential-free (daftar layanan provider dengan status sehat/absent tanpa menyentuh kredensial);
-- audit kecil apakah ada boot path yang menyentuh kredensial sebelum siap;
-- default `DISABLE_TELEGRAM=1`-like mode diuji.
+- dependency check (paket tersedia?);
+- credential absence check (tidak ada kredensial → `absent`, bukan crash);
+- `client_available()`/`service_available()` matching official API shape;
+- toggle config + allowlist policy placeholder;
+- tests offline: tanpa kredensial nyata, tanpa jaringan.
 
 ### Guardrails
 
-- Tidak ada penyimpanan/sentuhan kredensial baru; probe hanya status boolean.
+- Tidak ada kredensial nyata, jaringan, atau live client di test; hanya gate boolean.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -200,12 +208,12 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase 24 COMPLETE (2026-08-03): lifecycle reliability (LIF 1011794) —
-ownership table 16 entri, cron/sweeper bounded join, subprocess limit
-dokumentasi. Worktree bersih kecuali 2 artifact (.curator_state.json,
-full_run.txt) — JANGAN di-commit. Index kosong. Frozen 094b696 OK.
+Phase 25 COMPLETE (2026-08-03): credential-free canary (CAN 11430b6) —
+probe status boolean per provider tanpa nilai secret. Worktree bersih
+kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN di-commit.
+Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase 25 (Credential-Free Canary) DILARANG dimulai
+TIDAK ADA fase aktif. Phase WA0 (WhatsApp Readiness) DILARANG dimulai
 sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi posisi
 (read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
 lanjutan, minta approval sebelum eksekusi apa pun. Jangan

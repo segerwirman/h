@@ -2,7 +2,7 @@
 
 > **Repository:** `E:\jarvis agent\h`
 > **Language:** Indonesian
-> **Current implementation status:** Phase 24 Runtime Lifecycle Reliability Sweep COMPLETE (2026-08-03); Phase 25 next — menunggu keputusan Takeda
+> **Current implementation status:** Phase 25 Credential-Free Canary COMPLETE (2026-08-03); Phase WA0 next — menunggu keputusan Takeda
 
 ## Start here in every new session
 
@@ -61,6 +61,7 @@
 | Phase 22 | ✅ | Content Studio scene list production UX: `QListWidget` scene cards visible dengan order number, selection via klik, Move Up/Down deterministik (first-up/last-down reject) reuse `move_scene()`, selected + asset mapping ikut reorder, timeline auto-refresh, accessibility identity stabil untuk lane UIA. |
 | Phase 23 | ✅ | Content Studio export timing & preview hardening: bounded duration policy (1–600s/scene, total cap 3600s, bool/float/NaN ditolak), cumulative SRT standar, `shot_list_csv` membawa duration tervalidasi, `preview_export` in-memory (storyboard/captions/shot-list) tanpa file write; fixed export allowlist tetap authoritative. |
 | Phase 24 | ✅ | Runtime lifecycle reliability sweep: static ownership table `LIFECYCLE_OWNERSHIP` (16 entri: owner/stop/join/failure state) + `audit_ownership()`; fix `CronScheduler.stop()` dan `SetupQueue.close()` dengan bounded join; `SUBPROCESS_LIMITATION` didokumentasikan (cooperative terminate, state `terminate_requested` jujur); kontrak dispatch lease release di finally dikunci test. |
+| Phase 25 | ✅ | Credential-free canary: `probe_providers(no_voice=)` status boolean per provider (telegram/google/llm/voice/image/whatsapp ∈ ready/absent/disabled/skipped/unknown) tanpa menyimpan/mengekspos nilai secret; `_has_secret` nilai → bool → dibuang; mode `--no-voice` → voice `skipped`; probe tidak pernah menulis ke secrets store (dikunci test); `probe_summary()` metadata-only. |
 
 ## Capability evidence classification
 
@@ -136,8 +137,8 @@ python scripts/verify_frozen.py
 ```
 
 ## Next recommended phase
-**Phase 25 — Credential-Free Canary** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
+**Phase WA0 — WhatsApp Readiness** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
 
-Probe tanpa kredensial: `--no-voice` boot smoke + startup probe credential-free (daftar layanan provider dengan status sehat/absent tanpa menyentuh kredensial), default `DISABLE_TELEGRAM=1`-like mode; audit kecil apakah ada boot path yang menyentuh kredensial sebelum siap. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
+Readiness gate WhatsApp: dependency check + credential absence check + `client_available()`/`service_available()` (matching official API shape) + toggle config + allowlist policy placeholder; tests offline, tanpa kredensial nyata, tanpa jaringan. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
 
 For detailed current test evidence, changed files, and exact next implementation contract, read `.hermes/handoffs/current.md`.
