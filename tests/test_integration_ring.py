@@ -39,8 +39,17 @@ def test_ring_runs_all_core_steps_together(monkeypatch):
 
 def test_ring_is_deterministic_offline(monkeypatch):
     ring = _ring(monkeypatch)
-    first = ring.run_ring()
-    second = ring.run_ring()
+
+    def _stable(result):
+        # Determinisme = struktur + status; remaining_s int bisa ±1 di
+        # boundary detik (monotonic real) — bukan bagian kontrak.
+        steps = dict(result["steps"])
+        steps["countdown"] = dict(steps["countdown"])
+        steps["countdown"].pop("remaining_s", None)
+        return {"ok": result["ok"], "steps": steps}
+
+    first = _stable(ring.run_ring())
+    second = _stable(ring.run_ring())
     assert first == second          # tanpa kredensial/jaringan → identik
 
 
