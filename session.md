@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: 11430b6 feat(runtime): credential-free canary probe with boolean provider status (CAN)
-Last updated: 2026-08-03 — Phase 25 COMPLETE (credential-free canary)
+HEAD: 9ec2bb0 feat(integrations): WhatsApp readiness gate with offline boolean checks (WAR)
+Last updated: 2026-08-03 — Phase WA0 COMPLETE (WhatsApp readiness)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 67 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN 11430b6)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 68 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR 9ec2bb0)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: WA0 — WhatsApp Readiness
+Status: COMPLETE
+Completed: 2026-08-03 (WAR 9ec2bb0; frozen 094b696 OK)
+```
 
 ```text
 Phase: 25 — Credential-Free Canary
@@ -224,25 +230,25 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: 25 — Credential-Free Canary
-Status: COMPLETE — 2026-08-03 (CAN 11430b6)
-Priority: honest provider status without touching credential values
+Phase: WA0 — WhatsApp Readiness
+Status: COMPLETE — 2026-08-03 (WAR 9ec2bb0)
+Priority: know when it is safe to connect, without real credentials
 ```
 
 ### Outcome
 
-- `jarvis/runtime/credential_free_probe.py` (baru): `probe_providers(no_voice=False)` → `{telegram, google, llm, voice, image, whatsapp}` dengan status hanya dari `{ready, absent, disabled, skipped, unknown}`; `probe_summary()` metadata-only; `_has_secret` membaca nilai → bool → dibuang (tidak pernah disimpan/di-log/dikembalikan).
-- `telegram`: toggle off → `disabled`; token+allowlist → `ready`/`absent`; `google`: client_id+secret → `ready`/`absent`; `llm`: stored/env → `ready`/`absent`; `voice`: `no_voice=True` → `skipped` (mode `--no-voice` dihormati); `image`/`whatsapp` → `unknown` (jujur).
-- Guardrail teruji: probe tidak pernah menulis ke secrets store; tidak pernah mengekspos nilai; deterministik tanpa kredensial.
-- TDD: RED 7 failed → GREEN 7 passed; regression 38 passed (probe + secrets/oauth + telegram control); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 7 passed; approval Takeda.
+- `jarvis/integrations/whatsapp_readiness.py` (baru): gate boolean murni — `dependency_available()` (SDK `whatsapp`/`whatsapp_business_python` via `find_spec`), `credentials_ready()` (token + phone_id; absence → False, bukan crash), `toggle_enabled()` (`integrations.whatsapp.enabled`), `allowlist_configured()` (policy placeholder), `client_available()` (dependency AND credentials), `service_available()` (client AND toggle AND allowlist); `readiness()`/`readiness_summary()` metadata-only.
+- Integrasi canary: `probe_whatsapp()` kini memberi status nyata (`ready`/`absent`/`disabled`) — upgrade dari `unknown` Phase 25.
+- Guardrail teruji: offline penuh (tanpa kredensial nyata/jaringan/live client); tidak menulis ke secrets store; tidak mengekspos nilai; deterministik.
+- TDD: RED 8 failed → GREEN 8 passed; regression 15 passed (WA0 + probe); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 15 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: WA0 — WhatsApp Readiness
+Phase: WA1 — Native Countdown Timer
 Status: MENUNGGU KEPUTUSAN TAKEDA
-Guardrail: jangan mulai Phase WA0 tanpa approval eksplisit Takeda.
+Guardrail: jangan mulai Phase WA1 tanpa approval eksplisit Takeda.
 ```
 
 ## Planned phase order
@@ -255,8 +261,8 @@ Guardrail: jangan mulai Phase WA0 tanpa approval eksplisit Takeda.
 23 export timing/preview ✅ (TIM 999c121, 2026-08-03)
 24 runtime lifecycle reliability ✅ (LIF 1011794, 2026-08-03)
 25 credential-free canary ✅ (CAN 11430b6, 2026-08-03)
-→ WA0 WhatsApp readiness (MENUNGGU keputusan Takeda)
-→ WA1 native countdown timer
+WA0 WhatsApp readiness ✅ (WAR 9ec2bb0, 2026-08-03)
+→ WA1 native countdown timer (MENUNGGU keputusan Takeda)
 → WA2 call session/approval
 → WA3 real two-way audio proof
 → WA4 bounded autonomous call dialogue
@@ -300,17 +306,17 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: 11430b6 (CAN). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: 9ec2bb0 (WAR). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Phase 25 COMPLETE (2026-08-03): credential-free canary — probe_providers
-status boolean per provider (ready/absent/disabled/skipped/unknown) tanpa
-menyimpan/mengekspos nilai; mode --no-voice → voice skipped; guardrail
-tidak menulis ke secrets store dikunci test. RED 7 → GREEN 7; regression
-38 passed.
+Phase WA0 COMPLETE (2026-08-03): WhatsApp readiness gate — dependency
+(SDK belum ter-install → jujur False), credentials absence → False bukan
+crash, toggle + allowlist placeholder; client_available/service_available
+boolean; probe canary whatsapp kini status nyata. RED 8 → GREEN 8;
+regression 15 passed.
 
-Fase aktif: TIDAK ADA. Phase WA0 (WhatsApp Readiness) DILARANG dimulai
+Fase aktif: TIDAK ADA. Phase WA1 (Native Countdown Timer) DILARANG dimulai
 sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu, presentasikan
 status + opsi, minta approval sebelum eksekusi.
 

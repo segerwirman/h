@@ -2,7 +2,7 @@
 
 > **Repository:** `E:\jarvis agent\h`
 > **Language:** Indonesian
-> **Current implementation status:** Phase 25 Credential-Free Canary COMPLETE (2026-08-03); Phase WA0 next — menunggu keputusan Takeda
+> **Current implementation status:** Phase WA0 WhatsApp Readiness COMPLETE (2026-08-03); Phase WA1 next — menunggu keputusan Takeda
 
 ## Start here in every new session
 
@@ -62,6 +62,7 @@
 | Phase 23 | ✅ | Content Studio export timing & preview hardening: bounded duration policy (1–600s/scene, total cap 3600s, bool/float/NaN ditolak), cumulative SRT standar, `shot_list_csv` membawa duration tervalidasi, `preview_export` in-memory (storyboard/captions/shot-list) tanpa file write; fixed export allowlist tetap authoritative. |
 | Phase 24 | ✅ | Runtime lifecycle reliability sweep: static ownership table `LIFECYCLE_OWNERSHIP` (16 entri: owner/stop/join/failure state) + `audit_ownership()`; fix `CronScheduler.stop()` dan `SetupQueue.close()` dengan bounded join; `SUBPROCESS_LIMITATION` didokumentasikan (cooperative terminate, state `terminate_requested` jujur); kontrak dispatch lease release di finally dikunci test. |
 | Phase 25 | ✅ | Credential-free canary: `probe_providers(no_voice=)` status boolean per provider (telegram/google/llm/voice/image/whatsapp ∈ ready/absent/disabled/skipped/unknown) tanpa menyimpan/mengekspos nilai secret; `_has_secret` nilai → bool → dibuang; mode `--no-voice` → voice `skipped`; probe tidak pernah menulis ke secrets store (dikunci test); `probe_summary()` metadata-only. |
+| Phase WA0 | ✅ | WhatsApp readiness gate: `whatsapp_readiness.py` — dependency check (SDK via `find_spec`, jujur False di mesin ini), credential absence → `False` bukan crash, toggle config + allowlist policy placeholder, `client_available()`/`service_available()` boolean (official API shape), `readiness()`/`readiness_summary()` metadata-only; probe canary `whatsapp` kini status nyata (`ready`/`absent`/`disabled`); offline penuh, tanpa kredensial nyata/jaringan/live client. |
 
 ## Capability evidence classification
 
@@ -137,8 +138,8 @@ python scripts/verify_frozen.py
 ```
 
 ## Next recommended phase
-**Phase WA0 — WhatsApp Readiness** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
+**Phase WA1 — Native Countdown Timer** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
 
-Readiness gate WhatsApp: dependency check + credential absence check + `client_available()`/`service_available()` (matching official API shape) + toggle config + allowlist policy placeholder; tests offline, tanpa kredensial nyata, tanpa jaringan. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
+Countdown timer native (UI orb): durasi terbatas, cancel, selesai tepat waktu, sinyal ringan ke bus; tanpa remote/network/write; transisi status jelas (running → done/cancelled). Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
 
 For detailed current test evidence, changed files, and exact next implementation contract, read `.hermes/handoffs/current.md`.

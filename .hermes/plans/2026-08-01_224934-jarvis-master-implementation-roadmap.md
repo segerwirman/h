@@ -248,13 +248,17 @@ Guardrail: ...
 
 ## Phase WA0 — WhatsApp Call Capability & Hardware Readiness
 
+**Status:** ✅ COMPLETE (bagian readiness gate) — 2026-08-03 (WAR `9ec2bb0`).
+
 **Tujuan:** melaporkan kesiapan call secara aman sebelum autonomous call.
 
-**Checks:** Playwright/profile/login, call button, Gemini Live instance, distinct virtual cables, streams, live-proof state. Metadata-only; tidak membuat call.
+**Implementasi (readiness gate):** `jarvis/integrations/whatsapp_readiness.py` — `dependency_available()` (SDK via `find_spec`), `credentials_ready()` (token + phone_id; absence → False bukan crash), `toggle_enabled()`, `allowlist_configured()` (policy placeholder), `client_available()` (dependency AND credentials), `service_available()` (client AND toggle AND allowlist), `readiness()`/`readiness_summary()` metadata-only; probe canary `whatsapp` kini status nyata (`ready`/`absent`/`disabled`).
 
-**Acceptance:** user mendapat alasan fixed kenapa call belum ready, tanpa nomor/profile URL/QR/audio/raw exception.
+**Belum dikerjakan (call/hardware lane, fase call berikutnya):** Playwright/profile/login check, call button check, Gemini Live instance check, distinct virtual cables, streams, live-proof state. Metadata-only; tidak membuat call.
 
-**Fase berikutnya:** **WA1 — Native Countdown Timer**.
+**Acceptance (gate):** offline penuh; tanpa kredensial nyata, jaringan, live client; hanya gate boolean — TERPENUHI. RED 8 failed → GREEN 8 passed; regression 15 passed; frozen `094b696` OK.
+
+**Fase berikutnya:** **WA1 — Native Countdown Timer** — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
 
@@ -429,6 +433,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase WA0 — WhatsApp Readiness** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: readiness gate — dependency check + credential absence check + `client_available()`/`service_available()` (official API shape) + toggle config + allowlist policy placeholder; tests offline tanpa kredensial nyata/jaringan.
-Guardrail: tidak ada kredensial nyata/jaringan/live client di test, hanya gate boolean; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase WA1 — Native Countdown Timer** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: countdown timer native di UI orb — durasi terbatas (bounded finite integer), cancel, selesai tepat waktu, sinyal ringan ke bus; transisi status running → done/cancelled.
+Guardrail: tanpa remote/network/write, murni lokal hidden-by-default; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase 25 COMPLETE — 2026-08-03
+**Updated:** Phase WA0 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `11430b6` (CAN); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `9ec2bb0` (WAR); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -30,7 +30,9 @@ Phase 24 lifecycle reliability                COMPLETE
   → LIF 1011794 (ownership table, bounded joins, subprocess limit doc)
 Phase 25 credential-free canary               COMPLETE
   → CAN 11430b6 (probe status boolean, tanpa nilai secret)
-  → sisa: tidak ada; Phase WA0 menunggu keputusan Takeda (dilarang)
+Phase WA0 whatsapp readiness                 COMPLETE
+  → WAR 9ec2bb0 (readiness gate boolean, offline penuh)
+  → sisa: tidak ada; Phase WA1 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -52,6 +54,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## Phase WA0 whatsapp readiness milestone (2026-08-03)
+
+**Phase WA0 COMPLETE** — commit WAR `9ec2bb0`. `jarvis/integrations/whatsapp_readiness.py`: gate boolean — dependency (SDK via `find_spec`, jujur False di mesin ini), credentials (absence → False bukan crash), toggle + allowlist placeholder, `client_available()`/`service_available()` (official API shape), `readiness()`/`readiness_summary()` metadata-only. Probe canary `whatsapp` kini status nyata. Offline penuh; tidak menulis ke secrets store; tidak mengekspos nilai. RED 8 → GREEN 8; regression 15 passed; frozen `094b696` OK.
 
 ## Phase 25 credential-free canary milestone (2026-08-03)
 
@@ -175,23 +181,22 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase WA0 — WhatsApp Readiness** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Phase WA1 — Native Countdown Timer** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Readiness gate WhatsApp — tahu kapan aman menyambungkan, tanpa menyentuh kredensial nyata.
+Timer countdown native di UI orb — durasi terbatas, cancel, selesai tepat waktu, transisi status jelas.
 
 ### Scope
 
-- dependency check (paket tersedia?);
-- credential absence check (tidak ada kredensial → `absent`, bukan crash);
-- `client_available()`/`service_available()` matching official API shape;
-- toggle config + allowlist policy placeholder;
-- tests offline: tanpa kredensial nyata, tanpa jaringan.
+- durasi terbatas (bounded, finite integer);
+- cancel; selesai tepat waktu (bukan drif);
+- sinyal ringan ke bus (tanpa remote/network/write);
+- transisi status jelas: running → done/cancelled.
 
 ### Guardrails
 
-- Tidak ada kredensial nyata, jaringan, atau live client di test; hanya gate boolean.
+- Tanpa remote/network/write; murni lokal, hidden-by-default.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -208,12 +213,13 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase 25 COMPLETE (2026-08-03): credential-free canary (CAN 11430b6) —
-probe status boolean per provider tanpa nilai secret. Worktree bersih
-kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN di-commit.
-Index kosong. Frozen 094b696 OK.
+Phase WA0 COMPLETE (2026-08-03): whatsapp readiness (WAR 9ec2bb0) — gate
+boolean offline: dependency, credentials absence, toggle + allowlist,
+client/service available. Worktree bersih kecuali 2 artifact
+(.curator_state.json, full_run.txt) — JANGAN di-commit. Index kosong.
+Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase WA0 (WhatsApp Readiness) DILARANG dimulai
+TIDAK ADA fase aktif. Phase WA1 (Native Countdown Timer) DILARANG dimulai
 sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi posisi
 (read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
 lanjutan, minta approval sebelum eksekusi apa pun. Jangan
