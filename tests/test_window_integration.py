@@ -305,20 +305,22 @@ def test_sentiment_feed_reaches_orb(win):
     assert win.orb._sentiment_target == pytest.approx(0.6)
 
 
-def test_awareness_toggle_is_explicit_opt_in_and_lights_indicator(win):
-    # Clicking the icon is itself an explicit opt-in, so awareness starts even
-    # though awareness.enabled defaults to false (that flag only gates boot-time
-    # auto-start). The panel lamp must light while it is actively capturing.
+def test_awareness_toggle_is_explicit_opt_in_and_palette_only(win):
+    # Kontrak saat ini: icon awareness di-retired dari action panel
+    # (config action_panel.icons tidak menyertakannya); toggle masih
+    # eksplisit via command palette → window._toggle_awareness().
     from jarvis.core import screen_awareness
     screen_awareness._instance = None
+    # Button panel tidak ada — lamp indicator retired (tidak crash)
+    assert "awareness" not in win.action_panel._buttons
+    win.action_panel.set_indicator("awareness", True)   # no-op aman
+    # Toggle eksplisit tetap opt-in: mulai → running; klik kedua → pause
     win._toggle_awareness()
     aw = screen_awareness.get()
     try:
         assert aw.running is True
-        assert win.action_panel._buttons["awareness"]._active is True
-        win._toggle_awareness()                 # second click → pause, lamp off
+        win._toggle_awareness()                 # second click → pause
         assert aw.paused is True
-        assert win.action_panel._buttons["awareness"]._active is False
     finally:
         aw.stop()
 
