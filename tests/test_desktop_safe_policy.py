@@ -216,3 +216,31 @@ def test_dispatch_cleanup_revokes_desktop_safe_observations(monkeypatch):
     dispatch._clear_desktop_safe_session("terminal-session")
 
     assert cleared == ["terminal-session"]
+
+
+def test_lifecycle_bridge_is_editable_and_does_not_modify_frozen_legacy_ui():
+    from pathlib import Path
+
+    bridge = Path("jarvis/integrations/desktop_safe_lifecycle.py").read_text(encoding="utf-8")
+    frozen = Path("ui.py").read_text(encoding="utf-8")
+
+    assert "closeEvent" in bridge
+    assert "clear_all" in bridge
+    assert "DESKTOP_SAFE_TEARDOWN_HOOK" not in frozen
+
+
+def test_lifecycle_bridge_clears_all_refs_when_ui_closes(monkeypatch):
+    from jarvis.integrations import desktop_safe_lifecycle
+
+    cleared = []
+    authority = type("Authority", (), {"clear_all": lambda self: cleared.append(True)})()
+    monkeypatch.setattr(desktop_safe_lifecycle, "desktop_safe_session", lambda: authority)
+
+    class Window:
+        def closeEvent(self, event):
+            return "legacy-close"
+
+    desktop_safe_lifecycle.install(Window)
+
+    assert Window().closeEvent(object()) == "legacy-close"
+    assert cleared == [True]

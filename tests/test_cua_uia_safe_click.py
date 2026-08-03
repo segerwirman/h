@@ -519,8 +519,6 @@ def test_uia_checkbox_tristate_or_missing_toggle_pattern_is_not_actionable():
     assert _element_from_control(missing_pattern, 1) is None
 
 
-
-
 def test_uia_backend_rejects_replaced_checkbox_before_native_toggle():
     import pytest
 
@@ -550,6 +548,7 @@ def test_uia_backend_rejects_replaced_checkbox_before_native_toggle():
 
     assert original.iface_toggle.CurrentToggleState == 0
     assert replacement.iface_toggle.CurrentToggleState == 0
+
 
 def test_uia_backend_redacts_denylisted_window_without_elements(monkeypatch):
     from jarvis.automation.uia_capture import UIACaptureBackend

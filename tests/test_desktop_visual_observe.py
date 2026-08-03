@@ -192,3 +192,12 @@ def test_visual_tool_has_no_desktop_action_or_reference_api():
     forbidden = {"click", "toggle", "select_option", "set_value", "scroll", "key", "type", "drag",
                  "reference", "element_id", "screenshot", "save", "persist"}
     assert not forbidden & set(dir(DesktopVisualObserve))
+
+
+def test_visual_audit_sanitizes_tool_arguments_and_errors():
+    from jarvis.agent import registry
+
+    args = registry._audit_args("desktop_visual_observe", {"_session": "secret session", "raw": "pixels"})
+
+    assert args == {"action": "desktop_visual_observe"}
+    assert registry._audit_error("desktop_visual_observe", "raw OCR password") == "desktop_visual_failed"

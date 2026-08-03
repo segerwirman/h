@@ -123,3 +123,19 @@ def test_safe_scroll_rejects_non_scrollbar_before_executor():
 
     assert result.ok is False
     assert scrolls == []
+
+
+def test_safe_scroll_is_not_voice_or_remote_capability():
+    from jarvis.agent.tools.desktop_safe_scroll import DesktopSafeScroll
+    from jarvis.integrations import voice_native_tools
+
+    assert DesktopSafeScroll.name not in voice_native_tools.native_tool_names()
+    assert DesktopSafeScroll.name not in {item["name"] for item in voice_native_tools.declarations()}
+    assert not hasattr(DesktopSafeScroll, "type")
+    assert not hasattr(DesktopSafeScroll, "key")
+    assert not hasattr(DesktopSafeScroll, "drag")
+    assert not hasattr(DesktopSafeScroll, "click_at")
+    assert not hasattr(DesktopSafeScroll, "set_value")
+    assert not hasattr(DesktopSafeScroll, "vision_analyze")
+    assert DesktopSafeScroll.requires_confirmation is False
+    assert DesktopSafeScroll.read_only is False
