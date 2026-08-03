@@ -145,6 +145,16 @@ class ContentStudioSheet(QWidget):
             self._status.setText("Format ekspor tidak didukung.")
         return result
 
+    def preview_export(self, fmt: str, durations: object = None) -> dict:
+        """Local in-memory preview (storyboard/captions/shot-list) — tanpa file write."""
+        from jarvis.core.content_export import preview_export
+        result = preview_export(self.project(), fmt=fmt, durations=durations)
+        if result.get("ok"):
+            self._status.setText("Pratinjau lokal siap.")
+        else:
+            self._status.setText("Pratinjau tidak tersedia.")
+        return result
+
     def select_scene(self, index: int) -> bool:
         if not isinstance(index, int) or isinstance(index, bool) or not 0 <= index < len(self._scenes):
             self._status.setText("Pilih satu scene yang valid.")
