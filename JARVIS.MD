@@ -2,7 +2,7 @@
 
 > **Repository:** `E:\jarvis agent\h`
 > **Language:** Indonesian
-> **Current implementation status:** Phase WA5 Call Memory & Privacy COMPLETE (2026-08-03); Phase WA6 next — menunggu keputusan Takeda
+> **Current implementation status:** Phase WA6 Post-Call Calendar Proposal COMPLETE (2026-08-03); Phase WA7 next — menunggu keputusan Takeda
 
 ## Start here in every new session
 
@@ -68,6 +68,7 @@
 | Phase WA3 | ✅ | Two-way audio proof: `call_audio.py` — `CallAudioProof` start hanya untuk session `active` (approved lokal), stop via session cancel/end, inbound+outbound via injected capture/playback (fixture-only; STT/TTS/voice_listener FROZEN tidak disentuh), duration bounded 1–600s, deadline monotonic, `result()` metadata-only + `audio_exercised` jujur, bus `call.audio.started/done` ringan. |
 | Phase WA4 | ✅ | Bounded call dialogue: `call_dialogue.py` — turn alternation ketat local↔remote (double-turn ditolak), stop word → `interrupted`, secret/PII guard (marker + 12–19 digit → ditolak & tidak disimpan), `MAX_TURNS=20` → `completed`, terikat session active; `summary()` metadata-only tanpa transcript; bus `call.dialogue.turn/ended` ringan tanpa teks. |
 | Phase WA5 | ✅ | Call memory & privacy: `call_memory.py` — `CallMemoryStore` in-memory (tanpa file write), field allowlist ketat `{session_id, status, duration_s, turn_count}` (transcript/audio/path ditolak), opt-in config `integrations.call.memory_enabled`, PII/secret guard (marker + 12–19 digit), retention bounded `MAX_ENTRIES=50` evict tertua + `clear()`; memory hanya metadata — dikunci test. |
+| Phase WA6 | ✅ | Post-call calendar proposal: `calendar_proposal.py` — one-shot `draft → approved/rejected`, field allowlist ketat (title/start_ts/duration_min; kwarg asing ditolak), `has_conflict()` anti double-booking, `admit_start` masa depan, local approval one-shot; TANPA authority create otomatis (kontrak statis: tanpa import provider/network/write; write path `gcal_create_proposed` fase live). |
 
 ## Capability evidence classification
 
@@ -143,8 +144,8 @@ python scripts/verify_frozen.py
 ```
 
 ## Next recommended phase
-**Phase WA6 — Post-Call Calendar Proposal** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
+**Phase WA7 — Reservation Commitment Gate** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
 
-Proposal kalender pasca-call: hanya field allowlist (title/time/duration), tanpa konflik & tanpa double-booking, local approval sebelum create, metadata result saja; tidak ada authority create otomatis. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
+Gate komitmen reservasi: reservasi = komitmen → wajib gate ekstra (local approval + fixed disclosure labels + cancellation window), tanpa auto-commit; setiap gate failure → no-op + alasan fixed. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
 
 For detailed current test evidence, changed files, and exact next implementation contract, read `.hermes/handoffs/current.md`.

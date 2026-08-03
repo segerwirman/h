@@ -354,13 +354,19 @@ Guardrail: ...
 
 ## Phase WA6 — Post-Call Review & Calendar Proposal
 
+**Status:** ✅ COMPLETE (proposal inti) — 2026-08-03 (CAL2 `cc97138`).
+
 **Tujuan:** typed call outcome menjadi Calendar proposal, bukan automatic write.
 
-**Mappings:** hotel stay, flight departure/arrival, service appointment, callback. Exact local review mencakup timezone, status confirmed/tentative, terms, price, reference, reminder.
+**Implementasi (proposal inti):**
+- `jarvis/core/calendar_proposal.py`: `CalendarProposal` one-shot draft → approved/rejected; field allowlist ketat (title 1–120, start_ts masa depan, duration 5–1440 menit; kwarg asing ditolak); `has_conflict()` anti double-booking; local approval one-shot; `result()` metadata-only;
+- kontrak statis: tanpa import provider/network/write — tidak ada authority create otomatis (write path `gcal_create_proposed` fase live).
 
-**Acceptance:** second local approval wajib; ambiguous date/time clarifies; reuse existing `gcal_create_proposed` sebagai satu-satunya write path.
+**Belum dikerjakan (review lanjutan):** mappings typed outcome (hotel stay, flight departure/arrival, service appointment, callback), timezone review, status confirmed/tentative, terms/price/reference/reminder; second local approval flow dan write path `gcal_create_proposed` (fase live).
 
-**Fase berikutnya:** **WA7 — Reservation Commitment Gate**.
+**Acceptance (proposal inti):** field allowlist + conflict check + local approval + metadata result — TERPENUHI. RED 8 failed → GREEN 8 passed; regression 51 passed; frozen `094b696` OK.
+
+**Fase berikutnya:** **WA7 — Reservation Commitment Gate** — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
 
@@ -456,6 +462,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase WA6 — Post-Call Calendar Proposal** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: proposal kalender pasca-call — hanya field allowlist (title/time/duration), tanpa konflik & tanpa double-booking, local approval sebelum create, metadata result saja.
-Guardrail: tidak ada create kalender otomatis, proposal menunggu approval lokal; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase WA7 — Reservation Commitment Gate** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: reservasi = komitmen → wajib gate ekstra (local approval + fixed disclosure labels + cancellation window), tanpa auto-commit; setiap gate failure → no-op + alasan fixed.
+Guardrail: tidak ada auto-commit, gate failure selalu no-op dengan alasan fixed; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

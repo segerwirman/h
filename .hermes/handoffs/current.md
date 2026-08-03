@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase WA5 COMPLETE — 2026-08-03
+**Updated:** Phase WA6 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `b29dcba` (MEM); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `cc97138` (CAL2); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -42,7 +42,9 @@ Phase WA4 call dialogue                     COMPLETE
   → DIA 3e20ad1 (turn alternation + stop word + secret guard)
 Phase WA5 call memory/privacy              COMPLETE
   → MEM b29dcba (opt-in metadata-only, bounded retention)
-  → sisa: tidak ada; Phase WA6 menunggu keputusan Takeda (dilarang)
+Phase WA6 calendar proposal                COMPLETE
+  → CAL2 cc97138 (allowlist + conflict check + local approval)
+  → sisa: tidak ada; Phase WA7 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -64,6 +66,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## Phase WA6 calendar proposal milestone (2026-08-03)
+
+**Phase WA6 COMPLETE** — commit CAL2 `cc97138`. `jarvis/core/calendar_proposal.py`: `CalendarProposal` one-shot draft → approved/rejected; field allowlist ketat (title 1–120, start_ts masa depan, duration 5–1440 menit; kwarg asing ditolak); `has_conflict()` anti double-booking; local approval one-shot; `result()` metadata-only; kontrak statis: tanpa import provider/network/write — tidak ada authority create otomatis (write path `gcal_create_proposed` fase live). RED 8 → GREEN 8; regression 51 passed; frozen `094b696` OK.
 
 ## Phase WA5 call memory milestone (2026-08-03)
 
@@ -211,22 +217,20 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase WA6 — Post-Call Calendar Proposal** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Phase WA7 — Reservation Commitment Gate** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Proposal kalender pasca-call tanpa authority create otomatis.
+Reservasi sebagai komitmen — gate ekstra sebelum apa pun terjadi.
 
 ### Scope
 
-- proposal hanya field allowlist (title/time/duration);
-- tanpa konflik & tanpa double-booking;
-- local approval sebelum create;
-- metadata result saja; tidak ada authority create otomatis.
+- reservasi = komitmen → wajib gate ekstra (local approval + fixed disclosure labels + cancellation window);
+- tanpa auto-commit; setiap gate failure → no-op + alasan fixed.
 
 ### Guardrails
 
-- Tidak ada create kalender otomatis; proposal menunggu approval lokal.
+- Tidak ada auto-commit; gate failure selalu no-op dengan alasan fixed.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -243,12 +247,12 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase WA5 COMPLETE (2026-08-03): call memory (MEM b29dcba) — opt-in,
-metadata-only, allowlist ketat, bounded retention, tanpa transcript/audio.
+Phase WA6 COMPLETE (2026-08-03): calendar proposal (CAL2 cc97138) —
+allowlist ketat + conflict check + local approval, tanpa auto-create.
 Worktree bersih kecuali 2 artifact (.curator_state.json, full_run.txt) —
 JANGAN di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase WA6 (Post-Call Calendar Proposal) DILARANG
+TIDAK ADA fase aktif. Phase WA7 (Reservation Commitment Gate) DILARANG
 dimulai sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi posisi
 (read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
 lanjutan, minta approval sebelum eksekusi apa pun. Jangan

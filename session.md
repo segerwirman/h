@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: b29dcba feat(core): opt-in metadata-only call memory with allowlist and bounded retention (MEM)
-Last updated: 2026-08-03 — Phase WA5 COMPLETE (call memory & privacy)
+HEAD: cc97138 feat(core): post-call calendar proposal with conflict check and local approval (CAL2)
+Last updated: 2026-08-03 — Phase WA6 COMPLETE (post-call calendar proposal)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 73 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM b29dcba)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 74 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 cc97138)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: WA6 — Post-Call Calendar Proposal
+Status: COMPLETE
+Completed: 2026-08-03 (CAL2 cc97138; frozen 094b696 OK)
+```
 
 ```text
 Phase: WA5 — Call Memory & Privacy
@@ -260,24 +266,24 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: WA5 — Call Memory & Privacy
-Status: COMPLETE — 2026-08-03 (MEM b29dcba)
-Priority: metadata-only call memory, opt-in, bounded
+Phase: WA6 — Post-Call Calendar Proposal
+Status: COMPLETE — 2026-08-03 (CAL2 cc97138)
+Priority: conflict-free proposal, local approval, no auto-create
 ```
 
 ### Outcome
 
-- `jarvis/core/call_memory.py` (baru): `CallMemoryStore` — in-memory ring buffer (tanpa file write); **field allowlist ketat** `{session_id, status, duration_s, turn_count}` (transcript/audio/path/notes → ditolak); **opt-in config** `integrations.call.memory_enabled` (default False → record ditolak); **PII/secret guard** (marker + 12–19 digit → ditolak); **retention bounded** `MAX_ENTRIES=50` evict tertua; `clear()`; `list_summaries()` metadata-only.
-- Guardrail WA5 dikunci test: tidak pernah menyimpan transcript/audio; memory hanya metadata; in-memory (tanpa disk write).
-- TDD: RED 7 failed → GREEN 7 passed; regression 32 passed (memory + dialogue + audio + session); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 15 passed; approval Takeda.
+- `jarvis/core/calendar_proposal.py` (baru): `CalendarProposal` one-shot — `idle → draft → approved/rejected`; `create(title, start_ts, duration_min)` **field allowlist ketat** (kwarg asing `notes`/`attendees` ditolak); `admit_title` 1–120 (no control chars), `admit_duration` 5–1440 menit, `admit_start` masa depan (clock injectable); **conflict check** `has_conflict(existing)` mencegah double-booking; **local approval** `approve()` draft → approved (one-shot; "siap create" — create BUKAN otoritas modul ini); `reject()` → rejected.
+- `result()` metadata-only (title/start_ts/duration_min/status); **kontrak statis dikunci test**: module tidak mengimpor provider/network/write (`google`/`gcal`/`create_event`/`requests`/`open(`/`subprocess` tidak ada di source) — tidak ada authority create otomatis (write path `gcal_create_proposed` di fase live).
+- TDD: RED 8 failed → GREEN 8 passed; regression 51 passed (proposal + memory + dialogue + audio + session + countdown); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 15 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: WA6 — Post-Call Calendar Proposal
+Phase: WA7 — Reservation Commitment Gate
 Status: MENUNGGU KEPUTUSAN TAKEDA
-Guardrail: jangan mulai Phase WA6 tanpa approval eksplisit Takeda.
+Guardrail: jangan mulai Phase WA7 tanpa approval eksplisit Takeda.
 ```
 
 ## Planned phase order
@@ -296,8 +302,8 @@ WA2 call session/approval ✅ (CAL bbd6437, 2026-08-03)
 WA3 real two-way audio proof ✅ (AUD 6bed7a2, 2026-08-03)
 WA4 bounded autonomous call dialogue ✅ (DIA 3e20ad1, 2026-08-03)
 WA5 call memory/privacy ✅ (MEM b29dcba, 2026-08-03)
-→ WA6 post-call Calendar proposal (MENUNGGU keputusan Takeda)
-→ WA7 reservation commitment gate
+WA6 post-call Calendar proposal ✅ (CAL2 cc97138, 2026-08-03)
+→ WA7 reservation commitment gate (MENUNGGU keputusan Takeda)
 → WA8 customer-service case manager
 → WA9 controlled WhatsApp rollout
 → 26 cross-integration live ring
@@ -335,16 +341,16 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: b29dcba (MEM). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: cc97138 (CAL2). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Phase WA5 COMPLETE (2026-08-03): call memory & privacy — store in-memory
-metadata-only (allowlist 4 field), opt-in config, PII/secret guard,
-retention bounded 50 + evict + clear, tanpa transcript/audio/disk. RED 7
-→ GREEN 7; regression 32 passed.
+Phase WA6 COMPLETE (2026-08-03): post-call calendar proposal — allowlist
+title/start/duration, conflict check anti double-booking, local approval
+one-shot, tanpa authority create otomatis (kontrak statis dikunci).
+RED 8 → GREEN 8; regression 51 passed.
 
-Fase aktif: TIDAK ADA. Phase WA6 (Post-Call Calendar Proposal) DILARANG
+Fase aktif: TIDAK ADA. Phase WA7 (Reservation Commitment Gate) DILARANG
 dimulai sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu,
 presentasikan status + opsi, minta approval sebelum eksekusi.
 
