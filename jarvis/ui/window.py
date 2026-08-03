@@ -528,6 +528,10 @@ class MainWindow(QMainWindow):
         self.orb = TaskHaloOrb(self.stage)
         self.orb.set_status_word("IDLE")
         self.orb.set_reduced_motion(bool(config.get("ui.reduced_motion", False)))
+        # countdown native (Phase WA1) — hidden-by-default, lokal
+        self._countdown = None
+        self._countdown_ticker: QTimer | None = None
+        self._countdown_driver = None
 
         # overlays
         self.sys_stats = SysStatsOverlay(central)
@@ -1778,6 +1782,49 @@ class MainWindow(QMainWindow):
             return True
         self.write_log("SYS: proposal voice tidak dapat dijalankan.")
         return True
+
+    # ── countdown native (Phase WA1) ─────────────────────────────────────────
+    def start_countdown(self, duration_s: int) -> bool:
+        """Mulai countdown native; progres di orb; sinyal ringan via bus.
+
+        Durasi terbatas (1..3600s). Tanpa remote/network/write; murni lokal.
+        """
+        from jarvis.core.countdown_timer import CountdownTimer, admit_duration
+        from jarvis.ui.countdown_driver import CountdownDriver
+
+        if not admit_duration(duration_s).get("ok"):
+            return False
+        if self._countdown_ticker is None:
+            self._countdown_ticker = QTimer(self)
+            self._countdown_ticker.setInterval(200)
+            self._countdown_ticker.timeout.connect(self._on_countdown_tick)
+        timer = CountdownTimer()
+        if not timer.start(duration_s):
+            return False
+        self._countdown = timer
+        self._countdown_driver = CountdownDriver(
+            timer=timer,
+            orb=self.orb,
+            set_progress=self.orb.set_progress,
+            ticker_start=self._countdown_ticker.start,
+            ticker_stop=self._countdown_ticker.stop,
+        )
+        self._countdown_driver.attach()
+        self.write_log(f"Timer {duration_s} dtk berjalan (lokal).")
+        return True
+
+    def cancel_countdown(self) -> bool:
+        """Batalkan countdown yang berjalan (idempotent)."""
+        if self._countdown is None:
+            return False
+        cancelled = self._countdown.cancel()
+        if cancelled:
+            self.write_log("Timer dibatalkan.")
+        return cancelled
+
+    def _on_countdown_tick(self) -> None:
+        if self._countdown_driver is not None:
+            self._countdown_driver.tick()
 
     def _on_confirm(self, _d: dict) -> None:
         if self._approve_voice_proposal():
