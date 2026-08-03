@@ -3,6 +3,13 @@ from __future__ import annotations
 import asyncio
 
 
+def test_native_voice_schema_exposes_only_parameterless_voice_briefing():
+    from jarvis.integrations import voice_native_tools
+    declaration = next(item for item in voice_native_tools.declarations() if item["name"] == "voice_briefing")
+    assert declaration["parameters"] == {"type": "OBJECT", "properties": {}}
+    assert "read-only" in declaration["description"].lower()
+
+
 def test_voice_briefing_tool_returns_only_bounded_spoken_text(monkeypatch):
     from jarvis.agent.tools import voice_briefing
     monkeypatch.setattr(voice_briefing, "_safe_briefing", lambda: {
