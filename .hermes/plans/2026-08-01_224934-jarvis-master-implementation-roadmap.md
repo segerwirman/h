@@ -177,13 +177,19 @@ Guardrail: ...
 
 ## Phase 22 — Content Studio Scene List Production UX
 
+**Status:** ✅ COMPLETE — 2026-08-03 (commit SCN `a54c9af`).
+
 **Tujuan:** membuat scene order terlihat dan dapat diubah user secara deterministik.
 
-**Implementasi:** scene cards, selection, order number, Move Up/Down, selected mapping, timeline/asset sync, stable accessibility identity. Reuse `move_scene()`; jangan duplicate policy.
+**Implementasi:**
+- scene list `QListWidget` visible dari `_scenes` lokal: `1. S0`, `2. S1`, ...; klik item → `select_scene()`; selection highlight + order number;
+- tombol ▲ Naik / ▼ Turun deterministik → `move_selected_up/down()` → reuse `move_scene()` (policy `admit_reorder`); first-up/last-down reject (policy + button disabled);
+- selected index mengikuti scene yang dipindah; **asset mapping `_asset["scene_index"]` ikut reorder** (gap nyata di-fix: f→t, pergeseran rentang);
+- refresh timeline + list otomatis; accessibility identity stabil: `jarvis-scene-list`, `jarvis-scene-move-up/down` (lane Phase 21).
 
-**Acceptance:** local-only, hidden-by-default, first-up/last-down reject, no generic drag/network/export write.
+**Acceptance:** local-only, hidden-by-default, first-up/last-down reject, tanpa generic drag/network/export write — TERPENUHI. TDD RED 6 failed → GREEN 6 passed; regression content 41 passed; frozen `094b696` OK.
 
-**Fase berikutnya:** **23 — Export Timing & Preview Hardening**.
+**Fase berikutnya:** **23 — Export Timing & Preview Hardening** — MENUNGGU KEPUTUSAN TAKEDA; duration policy, cumulative SRT timing, in-memory preview.
 
 ---
 
@@ -410,6 +416,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase 22 — Content Studio Scene List Production UX** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: scene cards visible di Content Studio; selection + order number; deterministik Move Up/Down untuk selected scene; reuse `move_scene()` (jangan duplicate policy); timeline/asset sync; stable accessibility identity untuk lane Phase 21.
-Guardrail: local-only, hidden-by-default, first-up/last-down reject, tanpa generic drag/network/export write; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase 23 — Content Studio Export Timing & Preview Hardening** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: bounded per-scene duration policy (finite integer, range terkendali, total project capped); caption timestamp generation (cumulative SRT) berdasarkan durasi tervalidasi; local in-memory preview (storyboard/captions/shot-list); fixed export allowlist tetap authoritative.
+Guardrail: strings/in-memory only (tanpa render video, cloud share, destination path, automatic write); untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

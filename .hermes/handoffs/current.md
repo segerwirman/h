@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase 21 COMPLETE — 2026-08-03
+**Updated:** Phase 22 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `aaec855` (FIX2); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `a54c9af` (SCN); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -22,7 +22,9 @@ Phase 20.3 segmentation — 59 commit                 COMPLETE
 Phase 21 fixture acceptance                       COMPLETE
   → PLAN 0d30794, FIX a109f69, FIX2 aaec855
   → Phase 19/20 `fixture-accepted` (title + reorder verified)
-  → sisa: tidak ada; Phase 22 menunggu keputusan Takeda (dilarang)
+Phase 22 scene list UX                          COMPLETE
+  → SCN a54c9af (list visible, Move Up/Down, asset mapping)
+  → sisa: tidak ada; Phase 23 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -38,6 +40,12 @@ Detail lengkap + resume prompt: lihat `session.md`.
 **Phase 21 COMPLETE** — `fixture-accepted` untuk Phase 19/20. Commit: PLAN `0d30794`, FIX `a109f69`, FIX2 `aaec855`. Fixture PyQt disposable membuktikan production path: title (ValuePattern + committed-value proof) dan reorder (satu drag fisik + recapture + visual-order proof) — `{'accepted': True, 'title': {'verified': True}, 'reorder': {'verified': True}}`.
 
 Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_runtime_id` (set_content_title fail-closed di semua aplikasi), G2 listitem non-dropdown dibuang (reorder tanpa target), G4 RuntimeId item list tidak stabil pasca-reorder → verifikasi visual order + fail-closed, F1/F2 aktivasi window via klik title bar + drag di thread. 136 regression passed; frozen `094b696` OK. `live-proven` tetap tidak established.
+
+## Phase 22 scene list UX milestone (2026-08-03)
+
+**Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
+
+⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
 
 ## Phase 20.2 — Continuity & Audit Metadata Cleanup
 
@@ -149,23 +157,22 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase 22 — Content Studio Scene List Production UX** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Phase 23 — Content Studio Export Timing & Preview Hardening** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Scene order terlihat dan dapat diubah user secara deterministik di Content Studio, memakai `move_scene()` yang sudah ada (tanpa duplicate policy) dan identity lane yang sudah terbukti `fixture-accepted` (Phase 21).
+Export lebih berguna tanpa menambah rendering, publishing, atau file-write authority.
 
 ### Scope
 
-- scene cards visible dari `_scenes` lokal; selection + order number;
-- deterministik Move Up/Down untuk selected scene (first-up/last-down reject);
-- reuse `move_scene()` — jangan duplicate reorder logic;
-- refresh timeline + asset metadata mapping setelah reorder; selected mengikuti;
-- stable accessibility role/name/automation identity untuk lane Phase 21.
+- bounded per-scene duration policy (finite integer, range terkendali, total project capped);
+- caption timestamp generation (cumulative SRT) berdasarkan durasi tervalidasi;
+- local in-memory preview untuk storyboard/captions/shot-list;
+- fixed export allowlist tetap authoritative.
 
 ### Guardrails
 
-- Local-only, hidden-by-default; tidak ada network, export write, generic drag, atau remote ingress.
+- Strings/in-memory only; tidak ada render video, cloud share, destination path, atau automatic write.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -182,15 +189,15 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase 21 COMPLETE (2026-08-03): Phase 19/20 `fixture-accepted` via fixture
-PyQt disposable; 4 gap production diremediasi (G1/G2/G4 + F1/F2). Worktree
-bersih kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN
-di-commit. Index kosong. Frozen 094b696 OK.
+Phase 22 COMPLETE (2026-08-03): Content Studio scene list UX (SCN a54c9af) —
+list visible, Move Up/Down deterministik, selected & asset mapping ikut
+reorder. Worktree bersih kecuali 2 artifact (.curator_state.json,
+full_run.txt) — JANGAN di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase 22 (Content Studio Scene List Production UX)
-DILARANG dimulai sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi
-posisi (read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
-lanjutan, minta approval sebelum eksekusi apa pun. Jangan
+TIDAK ADA fase aktif. Phase 23 (Content Studio Export Timing & Preview
+Hardening) DILARANG dimulai sampai Takeda menyetujui eksplisit. Tugas sesi:
+verifikasi posisi (read-only), audit worktree/HEAD/frozen, presentasikan
+status + opsi lanjutan, minta approval sebelum eksekusi apa pun. Jangan
 git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
 provider/credential/live integration/authority/frozen.
 ```

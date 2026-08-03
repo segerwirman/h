@@ -269,6 +269,7 @@ git diff --check
 
 **Priority:** P1 usability
 **Dependency:** Phase 21.
+**Status:** ✅ COMPLETE — 2026-08-03 (SCN `a54c9af`): scene list visible + selection + order number + Move Up/Down deterministik (first-up/last-down reject) reuse `move_scene()`; selected & asset mapping ikut reorder; accessibility identity stabil. Rincian: `session.md` + master roadmap.
 
 **Goal:** Make scene order visible and usable in Content Studio without requiring an agent to manufacture semantic references manually.
 

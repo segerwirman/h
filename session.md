@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: aaec855 fix(desktop): populate UIA identity for text fields and plain list cards; verify reorder by visual order (FIX2)
-Last updated: 2026-08-03 — Phase 21 COMPLETE (fixture-accepted)
+HEAD: a54c9af feat(ui): Content Studio scene list with deterministic move controls and asset mapping (SCN)
+Last updated: 2026-08-03 — Phase 22 COMPLETE (scene list UX)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 63 commit (59 segmentation + DOC2 5b37a16 + PLAN 0d30794 + FIX a109f69 + FIX2 aaec855)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 64 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN a54c9af)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: 22 — Content Studio Scene List Production UX
+Status: COMPLETE
+Completed: 2026-08-03 (SCN a54c9af; frozen 094b696 OK)
+```
 
 ```text
 Phase: 21 — Desktop-Safe Production-Path Fixture Acceptance
@@ -200,24 +206,24 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: 21 — Desktop-Safe Production-Path Fixture Acceptance
-Status: COMPLETE — 2026-08-03 (PLAN 0d30794, FIX a109f69, FIX2 aaec855)
-Priority: production-path proof before user-facing UX expansion
+Phase: 22 — Content Studio Scene List Production UX
+Status: COMPLETE — 2026-08-03 (SCN a54c9af)
+Priority: user-facing scene order control after production-path proof
 ```
 
 ### Outcome
 
-- Fixture PyQt disposable (QLineEdit judul + QListWidget 3 scene cards) membuktikan Phase 19 & 20 melalui production UIA backend: `{'accepted': True, 'title': {'executed': True, 'verified': True}, 'reorder': {'executed': True, 'verified': True}}` → **`fixture-accepted`** (bukan `live-proven`).
-- Acceptance run menemukan & meremediasi 4 gap production (TDD RED→GREEN): G1 `_uia_runtime_id` untuk text_field (set_content_title fail-closed di semua aplikasi); G2 plain listitem → role `card` + identitas + parent; G4 RuntimeId item list tidak stabil pasca-reorder → verifikasi visual order + fail-closed; F1/F2 aktivasi window (klik title bar) + drag di thread (event loop Qt live).
-- Evidence: 136 regression passed, py_compile + ruff + diff check PASS, frozen `094b696` OK, staged-only canary per commit, approval Takeda per commit.
+- Scene list `QListWidget` visible dari `_scenes` lokal (`1. S0`, `2. S1`, ...); klik = selection; ▲ Naik / ▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject + button disabled); selected mengikuti scene yang dipindah; **asset mapping `_asset["scene_index"]` ikut reorder**; refresh timeline otomatis; accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`).
+- TDD: RED 6 failed → GREEN 6 passed; regression content suite 41 passed; py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 16 passed; approval Takeda.
+- ⚠️ Temuan audit (pre-existing, di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: 22 — Content Studio Scene List Production UX
+Phase: 23 — Content Studio Export Timing & Preview Hardening
 Status: MENUNGGU KEPUTUSAN TAKEDA
-Guardrail: jangan mulai Phase 22 tanpa approval eksplisit Takeda.
+Guardrail: jangan mulai Phase 23 tanpa approval eksplisit Takeda.
 ```
 
 ## Planned phase order
@@ -226,8 +232,8 @@ Guardrail: jangan mulai Phase 22 tanpa approval eksplisit Takeda.
 20.2 continuity cleanup ✅
 20.3 Git segmentation/recovery commits ✅ (59 commit, 2026-08-03)
 21 desktop-safe production-path fixture ✅ (fixture-accepted, 2026-08-03)
-→ 22 Content Studio scene-list UX (MENUNGGU keputusan Takeda)
-→ 23 export timing/preview
+22 Content Studio scene-list UX ✅ (SCN a54c9af, 2026-08-03)
+→ 23 export timing/preview (MENUNGGU keputusan Takeda)
 → 24 runtime lifecycle reliability
 → 25 credential-free canary
 → WA0 WhatsApp readiness
@@ -275,24 +281,22 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: aaec855 (FIX2). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: a54c9af (SCN). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Phase 21 COMPLETE (2026-08-03): production-path fixture acceptance —
-Phase 19 (title) + Phase 20 (reorder) terbukti `fixture-accepted` di fixture
-PyQt disposable via production UIA backend; {'accepted': True, 'title':
-{'verified': True}, 'reorder': {'verified': True}}. Acceptance run menemukan
-& meremediasi 4 gap production (TDD RED→GREEN): G1 text_field tanpa
-_uia_runtime_id (set_content_title fail-closed di semua aplikasi), G2
-listitem non-dropdown dibuang (reorder tanpa target), G4 RuntimeId item
-list tidak stabil pasca-reorder → verifikasi visual order + fail-closed,
-F1/F2 aktivasi window via klik title bar + drag di thread. 136 regression
-passed; frozen 094b696 OK. `live-proven` tetap tidak established.
+Phase 22 COMPLETE (2026-08-03): Content Studio scene list production UX —
+QListWidget scene cards visible (order number), selection via klik, Move
+Up/Down deterministik reuse move_scene() (first-up/last-down reject),
+selected & asset mapping ikut reorder, accessibility identity stabil
+(jarvis-scene-list, jarvis-scene-move-up/down). RED 6 → GREEN 6; regression
+content 41 passed. Catatan: test_window_integration awareness toggle gagal
+pre-existing (stale sejak U1, tidak terkait Content Studio) — remediasi
+terpisah.
 
-Fase aktif: TIDAK ADA. Phase 22 (Content Studio Scene List Production UX)
-DILARANG dimulai sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu,
-presentasikan status + opsi, minta approval sebelum eksekusi.
+Fase aktif: TIDAK ADA. Phase 23 (Content Studio Export Timing & Preview
+Hardening) DILARANG dimulai sampai Takeda menyetujui eksplisit. Verifikasi
+posisi dulu, presentasikan status + opsi, minta approval sebelum eksekusi.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,
