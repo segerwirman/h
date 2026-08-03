@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: d989dd3 feat(core): multi-timer manager with pause/resume and optional announce (TIM3)
-Last updated: 2026-08-03 — WA1-lanjutan COMPLETE (timer lanjutan)
+HEAD: 2443a40 feat(core): dialogue advanced rules with confirmation and escalation simulator (DLG)
+Last updated: 2026-08-03 — WA4-lanjutan COMPLETE (dialogue lanjutan)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 86 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON + CST + CAP + AWK + TIM3 d989dd3)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 87 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON + CST + CAP + AWK + TIM3 + DLG 2443a40)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: WA4-lanjutan — Dialogue Lanjutan
+Status: COMPLETE (sisa WA4)
+Completed: 2026-08-03 (DLG 2443a40; frozen 094b696 OK)
+```
 
 ```text
 Phase: WA1-lanjutan — Timer Lanjutan
@@ -338,22 +344,22 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: WA1-lanjutan — Timer Lanjutan
-Status: COMPLETE — 2026-08-03 (TIM3 d989dd3)
-Priority: multi-timer, pause/resume, due announce
+Phase: WA4-lanjutan — Dialogue Lanjutan
+Status: COMPLETE — 2026-08-03 (DLG 2443a40)
+Priority: one-question rule, confirm values, escalation, simulator
 ```
 
 ### Outcome
 
-- `jarvis/core/timer_manager.py` (baru): `TimerManager` — **multi-timer** (`add(label, duration_s)`; `MAX_TIMERS=8`; duplicate label ditolak; rentang 1s–7 hari; 0/bool/negatif/lebih ditolak); **pause/resume anti-drift** (pause membekukan remaining; resume menggeser deadline); `status_list()` metadata-only; `remove()`; done lazy (deadline monotonic); **`due()`** label baru selesai + **announce callback opsional** (TTS) sekali per label — manager tidak pernah memanggil TTS sendiri.
-- **Flake permanen diperbaiki**: `test_ring_is_deterministic_offline` — remaining_s int ±1 di boundary detik; determinisme kini struktur + status (bukan detik); stabil 5×.
-- TDD: RED 8 failed → GREEN 8 passed; regression 97 passed (timer manager + ring + countdown + wiring + capability + sheet + states + continuation + facades + bridge + window); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 26 passed (3×); approval Takeda.
+- `jarvis/core/dialogue_rules.py` (baru; CallDialogue WA4 tidak disentuh): **one-question-at-a-time** (>1 `?` → `dialogue_multiple_questions`); **confirm dates/prices/reference** (pernyataan harga/date/reference wajib konfirmasi eksplisit; pertanyaan tidak); **escalation payment** (`transfer/bayar/cvv/otp/pin/password/rekening/bank` → `dialogue_escalation_payment`); **objective drift** (tanpa overlap token ≥4 huruf dengan objective → `dialogue_escalation_drift`).
+- **Simulator 3 skenario** (memakai CallDialogue nyata): `successful_inquiry` → `proceed` (pertanyaan → jawaban → konfirmasi); `safe_refusal` → `escalated` (payment); `escalation_drift` → `escalated` (drift). Reason codes closed set; kontrak statis.
+- TDD: RED 8 failed → GREEN 8 passed; regression 44 passed (rules + dialogue + states + timer + capability + ring); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 16 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: WA4-lanjutan — Dialogue Lanjutan (rekomendasi #6)
+Phase: WA5-lanjutan — Durable Semantic Memory & Recall (rekomendasi #7)
 Status: MENUNGGU KEPUTUSAN TAKEDA
 Guardrail: jangan mulai fase baru tanpa approval eksplisit Takeda.
 ```
@@ -387,7 +393,8 @@ WA2-lanjutan call states ✅ (CST 3cd527d, 2026-08-03)
 27-lanjutan facade capability ✅ (CAP 7e72d79, 2026-08-03)
 remediasi awareness ✅ (AWK 1f8b6b8, 2026-08-03)
 WA1-lanjutan timer lanjutan ✅ (TIM3 d989dd3, 2026-08-03)
-→ WA4-lanjutan dialogue lanjutan (MENUNGGU keputusan Takeda)
+WA4-lanjutan dialogue lanjutan ✅ (DLG 2443a40, 2026-08-03)
+→ WA5-lanjutan durable memory/recall (MENUNGGU keputusan Takeda)
 ```
 
 ## Mandatory completion protocol
@@ -419,17 +426,17 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: d989dd3 (TIM3). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: 2443a40 (DLG). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-WA1-lanjutan COMPLETE (2026-08-03): multi-timer manager — bounded 8,
-label unik, rentang 1s–7 hari, pause/resume anti-drift, due + announce
-opsional; flake ring determinisme diperbaiki. RED 8 → GREEN 8; regression
-97 passed.
+WA4-lanjutan COMPLETE (2026-08-03): dialogue lanjutan — one-question rule,
+confirm prices/date/reference, escalation payment/drift, simulator
+successful-inquiry/safe-refusal/escalation proof. RED 8 → GREEN 8;
+regression 44 passed.
 
-Fase aktif: TIDAK ADA. WA4-lanjutan (Dialogue Lanjutan) DILARANG dimulai
-tanpa approval eksplisit Takeda.
+Fase aktif: TIDAK ADA. WA5-lanjutan (Durable Semantic Memory & Recall)
+DILARANG dimulai tanpa approval eksplisit Takeda.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,

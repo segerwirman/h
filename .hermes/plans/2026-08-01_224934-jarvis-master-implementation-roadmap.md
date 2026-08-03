@@ -327,7 +327,7 @@ Guardrail: ...
 
 **Acceptance:** turn policy + stop word + no PII + objective guard + summary metadata-only — TERPENUHI. RED 8 failed → GREEN 8 passed; regression 36 passed; frozen `094b696` OK.
 
-**Belum dikerjakan (dialogue lanjutan):** one-question-at-a-time rule, confirm dates/prices/reference, escalation on payment/objective drift, simulator successful-inquiry/safe-refusal/escalation proof; live call acceptance terpisah.
+**Belum dikerjakan (dialogue lanjutan):** — one-question-at-a-time rule, confirm dates/prices/reference, escalation on payment/objective drift, simulator successful-inquiry/safe-refusal/escalation proof: ✅ COMPLETE (DLG `2443a40`, 2026-08-03); sisa: live call acceptance terpisah (live lane).
 
 **Fase berikutnya:** **WA5 — Call Memory & Privacy** — MENUNGGU KEPUTUSAN TAKEDA.
 
@@ -497,6 +497,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**WA4-lanjutan — Dialogue Lanjutan** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: one-question-at-a-time rule, confirm dates/prices/reference, escalation on payment/objective drift, simulator successful-inquiry/safe-refusal/escalation proof.
+**WA5-lanjutan — Durable Semantic Memory & Recall** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: facts non-secret yang disetujui → durable memory (opt-in), recall by query, retention bounded + clear; tanpa transcript/audio.
 Guardrail: tidak ada eksekusi tanpa approval eksplisit Takeda; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

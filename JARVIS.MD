@@ -81,6 +81,7 @@
 | 27-lanjutan | ✅ | Facade capability & reject rules: `facade_capability.py` — `FacadeCapability` enum 8 capability (CONTENT_TITLE/REORDER, FOCUS_MODE, BROWSER_MEDIA, TIMER, CALL_START/STATUS/HANGUP); `CapabilityPolicy` deny-first: permanent rejects (`coordinate/x/y/selector/key/path/url/screenshot/raw_dispatch/login/payment` → `facade_permanent_reject`), field allowlist per capability (`facade_policy_field_rejected`), per-capability confirmation (CONTENT_REORDER/CALL_HANGUP wajib); reason codes closed set. |
 | Remediasi | ✅ | Awareness pre-existing test: `test_window_integration.py` — test di-align ke kontrak saat ini (icon awareness retired dari config action_panel.icons; toggle via palette tetap diuji); `KeyError: 'awareness'` hilang; TANPA perubahan production. |
 | WA1-lanjutan | ✅ | Timer lanjutan: `timer_manager.py` — multi-timer bounded 8 (label unik; duplicate ditolak; rentang 1s–7 hari), pause/resume anti-drift (deadline digeser), status_list metadata-only, done lazy, `due()` + announce callback opsional (sekali per label — tanpa auto-TTS); kontrak statis tanpa provider/network/file. |
+| WA4-lanjutan | ✅ | Dialogue lanjutan: `dialogue_rules.py` — one-question-at-a-time (`dialogue_multiple_questions`), confirm dates/prices/reference (pernyataan wajib konfirmasi; pertanyaan tidak), escalation payment (`dialogue_escalation_payment`) & objective drift (`dialogue_escalation_drift`); simulator 3 skenario (successful-inquiry/safe-refusal/escalation) memakai CallDialogue nyata; reason codes closed set. |
 
 ## Capability evidence classification
 
