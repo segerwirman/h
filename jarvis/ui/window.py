@@ -420,7 +420,8 @@ class MainWindow(QMainWindow):
     _reconfig_sig = pyqtSignal()
     _vision_sig = pyqtSignal(bool)        # thread-safe show/hide vision panel
 
-    def __init__(self, services: dict | None = None):
+    def __init__(self, services: dict | None = None,
+                 facades: object | None = None):
         super().__init__()
         services = services or {}
         self.router = IntentRouter()
@@ -532,6 +533,12 @@ class MainWindow(QMainWindow):
         self._countdown = None
         self._countdown_ticker: QTimer | None = None
         self._countdown_driver = None
+        # facade lokal (Phase 27/29) — UI memakai facade, tidak bypass
+        if facades is not None:
+            self._facades = facades
+        else:
+            from jarvis.core.local_facades import default_facades
+            self._facades = default_facades()
 
         # overlays
         self.sys_stats = SysStatsOverlay(central)
@@ -1785,22 +1792,22 @@ class MainWindow(QMainWindow):
 
     # ── countdown native (Phase WA1) ─────────────────────────────────────────
     def start_countdown(self, duration_s: int) -> bool:
-        """Mulai countdown native; progres di orb; sinyal ringan via bus.
+        """Mulai countdown native via FACADE lokal (Phase 29); orb progress.
 
-        Durasi terbatas (1..3600s). Tanpa remote/network/write; murni lokal.
+        UI tidak pernah bypass facade — durasi terbatas (1..3600s), murni
+        lokal, tanpa remote/network/write.
         """
-        from jarvis.core.countdown_timer import CountdownTimer, admit_duration
         from jarvis.ui.countdown_driver import CountdownDriver
 
-        if not admit_duration(duration_s).get("ok"):
+        outcome = self._facades.invoke("start_countdown",
+                                       duration_s=duration_s)
+        if not outcome.get("ok"):
             return False
+        timer = outcome["artifacts"]["timer"]
         if self._countdown_ticker is None:
             self._countdown_ticker = QTimer(self)
             self._countdown_ticker.setInterval(200)
             self._countdown_ticker.timeout.connect(self._on_countdown_tick)
-        timer = CountdownTimer()
-        if not timer.start(duration_s):
-            return False
         self._countdown = timer
         self._countdown_driver = CountdownDriver(
             timer=timer,

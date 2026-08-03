@@ -87,6 +87,31 @@ def test_facade_result_is_metadata_only():
         assert forbidden not in text, forbidden
 
 
+def test_start_countdown_facade_composes_timer(monkeypatch):
+    import jarvis.core.countdown_timer as ct
+    import jarvis.core.local_facades as lf
+
+    state = {"now": 1_000.0}
+    monkeypatch.setattr(ct, "_now", lambda: state["now"])
+    reg = lf.default_facades()
+    result = reg.invoke("start_countdown", duration_s=10)
+    assert result["ok"] is True
+    steps = result["steps"]
+    assert steps["start_timer"]["ok"] is True
+    assert steps["start_timer"]["status"] == "running"
+    # Artifact lokal (timer) tersedia untuk UI — bukan untuk remote
+    assert "artifacts" in result
+    assert result["artifacts"]["timer"].remaining_s() == 10
+
+
+def test_start_countdown_facade_rejects_invalid_duration():
+    import jarvis.core.local_facades as lf
+
+    reg = lf.default_facades()
+    assert reg.invoke("start_countdown", duration_s=0)["ok"] is False
+    assert reg.invoke("start_countdown", duration_s=99999)["ok"] is False
+
+
 def test_no_new_authority_via_static_contract():
     from pathlib import Path
 

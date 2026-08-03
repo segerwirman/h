@@ -41,7 +41,10 @@ class LocalFacadeRegistry:
             step_results[step_name] = outcome
             if not outcome.get("ok", True):
                 return {"ok": False, "facade": name, "steps": step_results}
-        return {"ok": True, "facade": name, "steps": step_results}
+        # artifacts = objek lokal (mis. timer/case/proposal) untuk UI.
+        # LOKAL ONLY — remote view/bridge tidak pernah menyertakan ini.
+        return {"ok": True, "facade": name, "steps": step_results,
+                "artifacts": ctx}
 
 
 # ── langkah default (komposisi modul inti existing) ──────────────────────────
@@ -79,6 +82,17 @@ def _step_commitment_gate(ctx: dict, cancel_within_days: int,
     return {"ok": outcome["ok"], "reason": outcome["reason"]}
 
 
+def _step_start_timer(ctx: dict, duration_s: int, **kwargs: object) -> dict:
+    from jarvis.core.countdown_timer import CountdownTimer
+
+    timer = CountdownTimer()
+    if not timer.start(duration_s):
+        return {"ok": False, "reason": "facade_step_rejected"}
+    ctx["timer"] = timer
+    return {"ok": True, "status": timer.status(),
+            "remaining_s": timer.remaining_s()}
+
+
 def default_facades() -> LocalFacadeRegistry:
     """Facade bawaan — komposisi murni modul inti, tanpa authority baru."""
     registry = LocalFacadeRegistry()
@@ -89,6 +103,9 @@ def default_facades() -> LocalFacadeRegistry:
     registry.register("book_reservation", (
         ("create_proposal", _step_create_proposal),
         ("commitment_gate", _step_commitment_gate),
+    ))
+    registry.register("start_countdown", (
+        ("start_timer", _step_start_timer),
     ))
     return registry
 
