@@ -82,6 +82,7 @@
 | Remediasi | ✅ | Awareness pre-existing test: `test_window_integration.py` — test di-align ke kontrak saat ini (icon awareness retired dari config action_panel.icons; toggle via palette tetap diuji); `KeyError: 'awareness'` hilang; TANPA perubahan production. |
 | WA1-lanjutan | ✅ | Timer lanjutan: `timer_manager.py` — multi-timer bounded 8 (label unik; duplicate ditolak; rentang 1s–7 hari), pause/resume anti-drift (deadline digeser), status_list metadata-only, done lazy, `due()` + announce callback opsional (sekali per label — tanpa auto-TTS); kontrak statis tanpa provider/network/file. |
 | WA4-lanjutan | ✅ | Dialogue lanjutan: `dialogue_rules.py` — one-question-at-a-time (`dialogue_multiple_questions`), confirm dates/prices/reference (pernyataan wajib konfirmasi; pertanyaan tidak), escalation payment (`dialogue_escalation_payment`) & objective drift (`dialogue_escalation_drift`); simulator 3 skenario (successful-inquiry/safe-refusal/escalation) memakai CallDialogue nyata; reason codes closed set. |
+| WA5-lanjutan | ✅ | Durable memory & recall: `durable_memory.py` — opt-in (default disabled), proposal → approval/reject lokal one-shot, secret filter di propose (password/token/otp/cvv/transfer/rekening → ditolak), recall by query (tanpa query → semua), bounded `MAX_FACTS=50` ring buffer, clear(); in-memory tanpa file write (kontrak statis dikunci). |
 
 ## Capability evidence classification
 

@@ -339,7 +339,7 @@ Guardrail: ...
 
 **Tujuan:** JARVIS mengingat hasil call tanpa menyimpan raw audio/full transcript default.
 
-**Retention:** volatile turn buffer → bounded call record → optional approved durable semantic memory (recall/durable memory belum dikerjakan).
+**Retention:** volatile turn buffer → bounded call record → optional approved durable semantic memory (✅ COMPLETE — DUR `778f89f`, 2026-08-03: opt-in, approval lokal one-shot, secret filter, recall by query, bounded 50 ring buffer, clear; in-memory tanpa file write).
 
 **Stored (implementasi):** safe summary metadata-only (session_id, status, duration_s, turn_count) — allowlist ketat.
 **Not stored (dikunci test):** PCM, full transcript, full phone, OTP/PIN/password/card/CVV/passport/account secrets; tanpa file write (in-memory).
@@ -497,6 +497,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**WA5-lanjutan — Durable Semantic Memory & Recall** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: facts non-secret yang disetujui → durable memory (opt-in), recall by query, retention bounded + clear; tanpa transcript/audio.
+**WA6-lanjutan — Calendar Review Lanjutan** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: mappings typed outcome (hotel stay, flight departure/arrival, service appointment, callback), timezone, status confirmed/tentative, terms/price/reference/reminder, second local approval; write path `gcal_create_proposed` tetap fase live.
 Guardrail: tidak ada eksekusi tanpa approval eksplisit Takeda; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

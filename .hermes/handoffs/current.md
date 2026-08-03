@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** WA4-lanjutan COMPLETE — 2026-08-03 (lanjutan roadmap)
+**Updated:** WA5-lanjutan COMPLETE — 2026-08-03 (lanjutan roadmap)
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `2443a40` (DLG); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `778f89f` (DUR); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -76,7 +76,10 @@ WA1-lanjutan timer lanjutan                COMPLETE
   → sisa WA1 tuntas
 WA4-lanjutan dialogue lanjutan             COMPLETE
   → DLG 2443a40 (one-question + confirm + escalation simulator)
-  → sisa WA4 tuntas; berikutnya WA5-lanjutan (menunggu Takeda)
+  → sisa WA4 tuntas
+WA5-lanjutan durable memory                COMPLETE
+  → DUR 778f89f (opt-in memory + recall)
+  → sisa WA5 tuntas; berikutnya WA6-lanjutan (menunggu Takeda)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -98,6 +101,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## WA5-lanjutan milestone (2026-08-03)
+
+**WA5-lanjutan COMPLETE** — commit DUR `778f89f`. `durable_memory.py`: opt-in (default disabled), proposal → approval/reject lokal one-shot, secret filter di propose (password/token/otp/cvv/transfer/rekening → ditolak), recall by query, bounded `MAX_FACTS=50` ring buffer, clear(); in-memory tanpa file write. RED 7 → GREEN 7; regression 57 passed; frozen `094b696` OK.
 
 ## WA4-lanjutan milestone (2026-08-03)
 
@@ -301,17 +308,17 @@ JARVIS.MD
 
 ## Next phase
 
-**WA5-lanjutan — Durable Semantic Memory & Recall** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**WA6-lanjutan — Calendar Review Lanjutan** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Simpan facts yang disetujui (non-secret) ke memori durable opt-in.
+Lengkapi review proposal kalender dengan mappings typed outcome.
 
 ### Scope
 
-- facts non-secret yang disetujui → durable memory (opt-in);
-- recall by query; retention bounded + clear;
-- tanpa transcript/audio.
+- mappings typed outcome (hotel stay, flight departure/arrival, service appointment, callback);
+- timezone; status confirmed/tentative; terms/price/reference/reminder;
+- second local approval; write path `gcal_create_proposed` tetap fase live.
 
 ### Guardrails
 
@@ -332,15 +339,15 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-WA4-lanjutan COMPLETE (2026-08-03): dialogue lanjutan (DLG 2443a40) —
-one-question + confirm + escalation simulator, sisa WA4 tuntas. Worktree
-bersih kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN
-di-commit. Index kosong. Frozen 094b696 OK.
+WA5-lanjutan COMPLETE (2026-08-03): durable memory (DUR 778f89f) —
+opt-in + approval + secret filter + recall bounded, sisa WA5 tuntas.
+Worktree bersih kecuali 2 artifact (.curator_state.json, full_run.txt) —
+JANGAN di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif — WA5-lanjutan (Durable Semantic Memory & Recall)
-DILARANG dimulai tanpa approval eksplisit Takeda. Tugas sesi: verifikasi
-posisi (read-only), audit worktree/HEAD/frozen, presentasikan status +
-opsi lanjutan, minta approval sebelum eksekusi apa pun. Jangan
+TIDAK ADA fase aktif — WA6-lanjutan (Calendar Review Lanjutan) DILARANG
+dimulai tanpa approval eksplisit Takeda. Tugas sesi: verifikasi posisi
+(read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
+lanjutan, minta approval sebelum eksekusi apa pun. Jangan
 git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
 provider/credential/live integration/authority/frozen.
 ```
