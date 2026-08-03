@@ -2,7 +2,7 @@
 
 > **Repository:** `E:\jarvis agent\h`
 > **Language:** Indonesian
-> **Current implementation status:** Phase 20.2 continuity/audit metadata cleanup complete; Phase 20.3 next
+> **Current implementation status:** Phase 20.3 Git Worktree Segmentation & Recovery Commits COMPLETE (2026-08-03, 59 commit); Phase 21 next — menunggu keputusan Takeda
 
 ## Start here in every new session
 
@@ -56,6 +56,7 @@
 | Phase 20 | ✅ | Semantic bounded reorder for Content Studio scene list only: policy admit_reorder + sheet move_scene + desktop drag semantic same-surface RuntimeId proof; schema 3 props only, confirmation mandatory, no filesystem/upload/coordinate/path/secret leak. |
 | Phase 20.1 | ✅ | All 48 source tool modules and 99 runtime tools map to explicit groups; nine desktop-safe tools share exclusive `desktop` resource with generic computer control; optional safe Google/briefing modules are pre-mapped without enabling providers or broadening authority. |
 | Phase 20.2 | ✅ | Durable continuity metadata is synchronized; stale next-phase markers are removed/superseded; source/config/wiring/test/fixture/live evidence is classified without treating source or unit tests as live proof. |
+| Phase 20.3 | ✅ | Broadly dirty post-initial-commit worktree converted into 59 dependency-ordered, reviewable, reversible recovery commits (remediasi A46–A53, GWS A54–A57, telegram A58+TEL, monitoring A59–A70+MR, voice V1–V5, closure MR/MSG/TEL/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR, docs DOC `29f94cd`); worktree bersih kecuali 2 artifact yang diklasifikasi; frozen `094b696` dijaga; select-option kini native (CAP1). |
 
 ## Capability evidence classification
 
@@ -131,8 +132,8 @@ python scripts/verify_frozen.py
 ```
 
 ## Next recommended phase
-**Phase 20.3 — Git Worktree Segmentation & Recovery Commits.**
+**Phase 21 — Desktop-Safe Production-Path Fixture Acceptance Harness** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dimulai tanpa approval eksplisit).
 
-Start with a read-only commit-readiness audit, generated-artifact classification, dependency graph, and exact allowlist for only the first recovery slice. Never use broad staging or destructive Git operations; review the cached diff and run targeted validation before asking Takeda to approve an exact commit. Do not mix provider/credential/live integration/authority/frozen changes or begin Phase 21.
+Prove Phase 19/20 pada disposable PyQt/UIA fixture memakai production UIA backend, local confirmation, satu action, dan recapture; hasil dilabeli `fixture-accepted`, bukan `live-proven`. Sampai disetujui: verifikasi posisi read-only, presentasikan status + opsi, minta approval sebelum eksekusi apa pun. Jangan ubah provider/credential/live integration/authority/frozen.
 
 For detailed current test evidence, changed files, and exact next implementation contract, read `.hermes/handoffs/current.md`.

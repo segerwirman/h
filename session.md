@@ -7,11 +7,12 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: bcf20cd feat(desktop): add bounded canary/soak runners and manual UIA acceptance fixtures (SCR)
-Last updated: 2026-08-03 — Phase 20.3 IN PROGRESS (segmentation)
+HEAD: 29f94cd docs(continuity): sync session handoff and roadmaps to full-day segmentation milestone (DOC)
+Last updated: 2026-08-03 — Phase 20.3 COMPLETE (segmentation, 59 commit)
 ```
-Git staging/commit: index kosong; 58 commit sesi ini (A46–A53 remediasi 13 + GWS 4 + telegram 2 + monitoring 12 + voice 5 + MR/MSG/TEL/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR 13)
+Git staging/commit: index kosong; 59 commit sesi ini (remediasi A46–A53, GWS A54–A57, telegram A58+TEL, monitoring A59–A70+MR, voice V1–V5, closure MR/MSG/TEL/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR, DOC 29f94cd)
 Frozen: OK — 10 files, baseline 094b696
+Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
 
 ## Read order
@@ -28,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: 20.3 — Git Worktree Segmentation & Recovery Commits
+Status: COMPLETE
+Completed: 2026-08-03 (59 commit; worktree bersih; frozen 094b696 OK)
+```
 
 ```text
 Phase: 20.2 — Continuity & Audit Metadata Cleanup
@@ -188,55 +195,31 @@ Independent documentation review: PASS.
 
 ```text
 Phase: 20.3 — Git Worktree Segmentation & Recovery Commits
-Status: IN PROGRESS (audit remediasi A46–A53 selesai; sisa vertical belum)
+Status: COMPLETE — 2026-08-03 (ditutup commit DOC 29f94cd)
 Priority: operational recovery checkpoints before capability expansion
 ```
 
-### Goal
+### Outcome
 
-Convert the broadly dirty post-initial-commit worktree into small, dependency-ordered, reviewable, reversible recovery commits without resetting, discarding, or silently mixing user work.
+- 59 commit sesi ini: remediasi audit A46–A53, GWS safe-read A54–A57, telegram A58+TEL, monitoring A59–A70+MR, voice V1–V5, closure MR/MSG/TEL/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR, docs continuity DOC 29f94cd.
+- Semua slice: TDD RED→GREEN, isolated staged-only canary (conftest anti-editable wajib untuk `jarvis.monitoring.*`), compile/Ruff, cached check, production scan, frozen `094b696`, independent exact-hash review, approval Takeda.
+- Worktree bersih: hanya `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact) — diklasifikasi, JANGAN di-commit. Index kosong.
+- Acceptance Phase 20.3 terpenuhi: source/test/docs tidak tersisa untracked tanpa alasan; setiap commit dapat direvert sendiri.
 
-### Exact scope
-
-Start with a read-only commit-readiness audit, then propose the exact path allowlist and validation matrix for only the first dependency slice:
-
-```text
-1. Baseline branch/HEAD/status/staged/frozen and classify generated artifacts.
-2. Build dependency graph and commit map from actual files/tests/docs.
-3. Begin with capability context/registry/policy/toolgroups only if the audit confirms the exact slice is self-contained.
-4. For each proposed commit: explicit allowlist, staged diff review, targeted tests, frozen verification, independent review, Takeda approval, then commit.
-```
-
-### Phase 20.3 guardrails
-
-- First action is read-only; do not stage while discovering scope.
-- Never use `git add -A`, broad wildcard staging, reset, checkout, restore, clean, stash, or discard.
-- Do not amend or rewrite the initial commit/history.
-- Stage only an explicit reviewed allowlist for one dependency-complete slice.
-- Review `git diff --cached --name-status` and the full cached diff before tests/approval.
-- Do not commit until Takeda approves that exact staged scope.
-- Do not mix provider enablement, credential changes, live integrations, capability expansion, or frozen edits into recovery commits.
-- Preserve frozen baseline `094b696`; stop on any mismatch.
-- Do not begin Phase 21 or later capability work during Phase 20.3.
-
-### Phase 20.3 validation
+### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-- read-only worktree and generated-artifact audit;
-- exact staged path + dependency review per candidate commit;
-- targeted tests for each staged slice;
-- changed-Python compile where applicable;
-- git diff --check and cached diff review;
-- python scripts/verify_frozen.py;
-- independent review before requesting Takeda commit approval.
+Phase: 21 — Desktop-Safe Production-Path Fixture Acceptance
+Status: MENUNGGU KEPUTUSAN TAKEDA
+Guardrail: jangan mulai Phase 21 tanpa approval eksplisit Takeda.
 ```
 
 ## Planned phase order
 
 ```text
 20.2 continuity cleanup ✅
-→ 20.3 Git segmentation/recovery commits (NEXT)
-→ 21 desktop-safe production-path fixture
+20.3 Git segmentation/recovery commits ✅ (59 commit, 2026-08-03)
+→ 21 desktop-safe production-path fixture (MENUNGGU keputusan Takeda)
 → 22 Content Studio scene-list UX
 → 23 export timing/preview
 → 24 runtime lifecycle reliability
@@ -286,35 +269,27 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: 3788f59 (A53). Index kosong. Frozen 094b696 OK. Dirty ±124 entri.
-Fase aktif: Phase 20.3 — Git Worktree Segmentation & Recovery Commits
-(IN PROGRESS).
+HEAD: 29f94cd (DOC). Index kosong. Frozen 094b696 OK. Worktree bersih
+kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
+noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Sesi sebelumnya: audit mendalam menemukan regression produksi (A42 men-nest
-4 method SafeDesktopSession, DRIVER.click_rect rusak sejak A20, title/reorder
-no-op dilaporkan verified, visual capture fail-open, proposal double-execution,
-staging key race, renderer echo nilai sensitif, media postcondition berlawanan,
-setup queue forgeable). Seluruhnya diremediasi sebagai A46–A53 (14 commit):
-shape+bindings desktop pulih, 27 regression tests dipulihkan additive, title
-committed-value verification, reorder parent/order proof, visual fail-closed,
-proposal CAS+capacity+final-state prune, staging key atomic+TTL autonomous,
-renderer redaction (UNC fixed), media postconditions, setup status enum,
-setup queue runtime-owned (producer+window), import off UI thread. Semua lewat
-TDD, isolated staged-only canary, cross-boundary suite, independent exact-hash
-review, approval Takeda. Desktop production path kini benar-benar
-runtime-wired; tidak ada live-proven. Select-option Tool tetap ditahan (A27).
+Phase 20.3 COMPLETE (2026-08-03): 59 commit sesi ini — remediasi audit
+A46–A53, GWS safe-read A54–A57, telegram A58+TEL, monitoring A59–A70+MR,
+voice V1–V5, closure MR/MSG/TEL/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR,
+docs continuity DOC 29f94cd. Semua slice TDD RED→GREEN, isolated
+staged-only canary (conftest anti-editable wajib untuk jarvis.monitoring.*),
+compile/Ruff, cached check, production scan, frozen 094b696, independent
+exact-hash review, approval Takeda. 2 blocker nyata di-fix (A62 credential
+substring, TEL remote fallthrough). Select-option kini native (CAP1).
+Desktop production path runtime-wired; tidak ada live-proven.
 
-Sisa ±124 entri: desktop remainder (session click method recovery selesai via
-A46; observe text_field/card branches, voice scroll test, select-option Tool
-module, registry._audit_args), GWS safe-read (gmail_safe/gcal/briefing),
-monitoring 17A–17M, voice native, Telegram adapters remainder (proposal ingress
-hunk), provider UX/settings, Studio mount, docs continuity.
+Fase aktif: TIDAK ADA. Phase 21 (desktop-safe production-path fixture
+acceptance) DILARANG dimulai sampai Takeda menyetujui eksplisit. Verifikasi
+posisi dulu, presentasikan status + opsi, minta approval sebelum eksekusi.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,
 cached check, production scan, frozen) → independent review exact hash →
 approval Takeda → commit. Jangan git add -A/reset/checkout/restore/clean/
 stash/discard/amend. Jangan ubah provider/credential/live/authority/frozen.
-Jangan mulai Phase 21. Lanjutkan vertical berikutnya (rekomendasi: GWS
-safe-read, lalu monitoring, lalu voice) setelah dependency audit.
 ```

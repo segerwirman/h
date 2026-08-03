@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase 20.3 segmentation full-day — 2026-08-03
+**Updated:** Phase 20.3 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `bcf20cd`; index kosong; frozen `094b696` OK; sisa worktree hanya docs continuity + artifact (curator_state, full_run.txt).
+**Git:** branch `main`, HEAD `29f94cd` (DOC); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -15,15 +15,18 @@ Phase 19 bounded Content Studio title setter         COMPLETE
 Phase 20 bounded Content Studio scene reorder        COMPLETE
 Phase 20.1 tool catalog/resource stabilization       COMPLETE
 Phase 20.2 continuity/audit metadata cleanup         COMPLETE
-Phase 20.3 segmentation — 58 commit                 IN PROGRESS
+Phase 20.3 segmentation — 59 commit                 COMPLETE
   → GWS A54–A57, telegram A58+TEL, monitoring A59–A70+MR,
-    voice V1–V5, MSG, UX1/UX2, REG, CAP1/CAP2, WIN, COV, SCR
-  → sisa: docs continuity (commit terakhir), lalu Phase 21 (dilarang)
+    voice V1–V5, MR/MSG/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR,
+    docs continuity DOC 29f94cd
+  → sisa: tidak ada; Phase 21 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
 
-58 commit sesi ini (A46–A53 remediasi 13 + GWS 4 + telegram 2 + monitoring 12 + voice 5 + closure 13): semua slice dependency-ordered, TDD RED→GREEN, isolated staged-only canary (conftest anti-editable wajib untuk `jarvis.monitoring.*` karena editable install jarvis-mk50), compile/Ruff, cached check, production scan, frozen `094b696`, independent exact-hash review, approval Takeda. 2 blocker nyata di-fix (A62 credential substring, TEL remote fallthrough). Select-option kini native (CAP1) — A27 terbuka. `morning_briefing` + `gws_read` aktif (A68/TEL).
+59 commit sesi ini (A46–A53 remediasi + GWS 4 + telegram 2 + monitoring 13 + voice 5 + closure 12 + DOC 1): semua slice dependency-ordered, TDD RED→GREEN, isolated staged-only canary (conftest anti-editable wajib untuk `jarvis.monitoring.*` karena editable install jarvis-mk50), compile/Ruff, cached check, production scan, frozen `094b696`, independent exact-hash review, approval Takeda. 2 blocker nyata di-fix (A62 credential substring, TEL remote fallthrough). Select-option kini native (CAP1) — A27 terbuka. `morning_briefing` + `gws_read` aktif (A68/TEL).
+
+**Phase 20.3 COMPLETE** — ditutup commit DOC `29f94cd` (13 file docs continuity masuk Git). Verifikasi 2026-08-03: HEAD `29f94cd`, branch main, index kosong, frozen OK, worktree bersih kecuali 2 artifact (`.curator_state.json` timestamp noise, `full_run.txt`) — keduanya diklasifikasi dan TIDAK di-commit. Phase 21 BELUM disetujui (dilarang tanpa approval eksplisit).
 
 Detail lengkap + resume prompt: lihat `session.md`.
 
@@ -137,27 +140,25 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase 20.3 — Git Worktree Segmentation & Recovery Commits**
+**Phase 21 — Desktop-Safe Production-Path Fixture Acceptance Harness** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Turn the broadly dirty post-initial-commit worktree into small dependency-ordered, reviewable, reversible recovery commits without losing or silently mixing user work.
+Prove Phase 19 (title setter) dan Phase 20 (scene reorder) terhadap fixture PyQt disposable memakai production UIA backend, local confirmation authority, satu action, dan recapture — tanpa menyentuh aplikasi user.
 
-### Scope
+### Scope (dari master roadmap + stabilization roadmap)
 
-1. Begin with a read-only commit-readiness audit: branch, HEAD, status, staged state, frozen verifier, tracked/untracked/generated-artifact classification.
-2. Build the actual dependency graph and candidate commit map.
-3. Propose the exact path allowlist and validation matrix for only the first dependency-complete slice.
-4. For every candidate commit: stage only its approved allowlist, inspect cached name/status and full diff, run targeted tests/diff/frozen checks, obtain independent review, then request Takeda approval before committing.
+- fixture PyQt dengan stable automation IDs;
+- title field live observe → local confirmation → ValuePattern → recapture/value proof;
+- tiga scene cards → distinct RuntimeIds + same parent → satu reorder → semantic-order proof;
+- reject stale surface, parent mismatch, changed RuntimeId, no-op, lease conflict;
+- fixture cleanup; hasil dilabeli `fixture-accepted`, bukan `live-proven`.
 
 ### Guardrails
 
-- Do not stage anything during discovery.
-- Never use `git add -A`, broad wildcard staging, reset, checkout, restore, clean, stash, discard, amend, or history rewrite.
-- Do not commit without Takeda approving the exact staged scope.
-- Do not mix provider enablement, credential changes, live integration work, authority expansion, or frozen edits into recovery commits.
-- Preserve frozen baseline `094b696`; stop on mismatch.
-- Do not begin Phase 21 or another capability phase.
+- Disposable fixture only; tidak ada filesystem/drop zone/user app/network/retry.
+- Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
+- Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
 ## New-session prompt
 
@@ -172,21 +173,14 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase 20.2 COMPLETE: continuity docs dan roadmap relevan sudah disinkronkan;
-marker/next-phase stale sudah dibersihkan; capability dibedakan sebagai
-source-present, configured, runtime-wired, focused-tested, fixture-accepted,
-atau live-proven. Source/unit/fake/fixture tidak dianggap live proof. Phase 20.1
-baseline tetap 48/48 source modules, 99 runtime tools, 352 regressions, frozen
-094b696 OK. Phase 20.2 hanya mengubah dokumentasi; tidak ada staging/commit,
-runtime/config/provider/frozen/index change.
+Phase 20.3 COMPLETE (2026-08-03, 59 commit, ditutup DOC 29f94cd). Worktree
+bersih kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN
+di-commit. Index kosong. Frozen 094b696 OK.
 
-Kerjakan hanya Active Phase 20.3 — Git Worktree Segmentation & Recovery Commits.
-Mulai dengan audit commit-readiness read-only: branch/HEAD/status/staged/frozen,
-generated artifacts, dependency graph, dan exact allowlist untuk slice pertama.
-Jangan gunakan git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan
-stage saat discovery. Untuk setiap commit: stage allowlist eksplisit, review
-cached diff, jalankan targeted tests + diff/frozen, minta independent review,
-lalu minta persetujuan Takeda atas exact staged scope sebelum commit. Jangan
-ubah provider/credential/live integration/authority/frozen dan jangan mulai
-Phase 21.
+TIDAK ADA fase aktif. Phase 21 (desktop-safe production-path fixture
+acceptance) DILARANG dimulai sampai Takeda menyetujui eksplisit. Tugas sesi:
+verifikasi posisi (read-only), audit worktree/HEAD/frozen, presentasikan
+status + opsi lanjutan, minta approval sebelum eksekusi apa pun. Jangan
+git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
+provider/credential/live integration/authority/frozen.
 ```

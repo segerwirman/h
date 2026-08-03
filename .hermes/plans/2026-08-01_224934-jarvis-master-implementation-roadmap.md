@@ -133,27 +133,19 @@ Guardrail: ...
 
 ## Phase 20.3 — Git Worktree Segmentation & Recovery Commits
 
-**Status:** NEXT — not started.
+**Status:** ✅ COMPLETE — 2026-08-03 (59 commit; ditutup commit DOC `29f94cd`).
 
 **Tujuan:** mengubah worktree besar dari initial commit menjadi checkpoint Git kecil dan reversible, tanpa reset/discard.
 
-**Urutan commit:**
-1. capability context/registry/policy/toolgroups;
-2. Telegram gateway + secure remote setup/read;
-3. remote proposal + verified media;
-4. monitoring 17A–17M;
-5. Content Studio A–D;
-6. desktop-safe foundation + Phase 19/20;
-7. GWS safe-read + briefing + provider UX;
-8. voice native bridge + mediated voice;
-9. privacy helper + awareness cleanup;
-10. continuity snapshot.
+**Urutan commit rencana (A–J):** ⚠️ SUPERSEDED — eksekusi aktual mengikuti urutan dependency nyata: remediasi audit A46–A53 → GWS safe-read A54–A57 → telegram A58+TEL → monitoring A59–A70+MR → voice V1–V5 → closure MR/MSG/TEL/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR → docs continuity DOC `29f94cd`. Rincian per-commit ada di `session.md`.
 
-**Guardrail Git:** explicit `git add <allowlist>`, bukan `git add -A`; staged diff review; targeted test; independent review; commit hanya setelah Takeda menyetujui exact staged scope.
+**Eksekusi aktual:** 59 commit, seluruhnya TDD RED→GREEN, isolated staged-only canary (conftest anti-editable wajib untuk `jarvis.monitoring.*` karena editable install jarvis-mk50), compile/Ruff, cached check, production scan, frozen `094b696`, independent exact-hash review, approval Takeda. 2 blocker nyata di-fix: A62 credential substring query, TEL remote fallthrough `yt_latest`. Select-option Tool kini native (CAP1, A27 terbuka). Desktop production path benar-benar `runtime-wired`; tidak ada `live-proven`.
 
-**Acceptance:** source/test/docs tidak tersisa untracked tanpa alasan; setiap commit dapat direvert sendiri.
+**Guardrail Git:** explicit `git add <allowlist>`, bukan `git add -A`; staged diff review; targeted test; independent review; commit hanya setelah Takeda menyetujui exact staged scope. (Dipatuhi sepanjang fase.)
 
-**Fase berikutnya:** **21 — Desktop-Safe Production-Path Fixture Acceptance**; prove Phase 19/20 pada disposable PyQt/UIA fixture. Hasilnya `fixture-accepted`, bukan external/user-surface `live-proven`.
+**Acceptance:** TERPENUHI — source/test/docs tidak tersisa untracked tanpa alasan; setiap commit dapat direvert sendiri; sisa worktree hanya 2 artifact (`.curator_state.json` timestamp noise + `full_run.txt`) yang diklasifikasi dan TIDAK di-commit.
+
+**Fase berikutnya:** **21 — Desktop-Safe Production-Path Fixture Acceptance** — MENUNGGU KEPUTUSAN TAKEDA (DILARANG dieksekusi tanpa approval eksplisit). Prove Phase 19/20 pada disposable PyQt/UIA fixture. Hasilnya `fixture-accepted`, bukan external/user-surface `live-proven`.
 
 ---
 
@@ -411,6 +403,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase 20.3 — Git Worktree Segmentation & Recovery Commits.**
-Scope: mulai dengan audit read-only branch/HEAD/status/staged/generated artifacts/frozen dan dependency graph; kemudian usulkan exact allowlist untuk satu recovery commit pada satu waktu.
-Guardrail: jangan stage saat discovery; jangan gunakan `git add -A`, reset/checkout/restore/clean/stash/discard/amend; review cached diff + targeted tests + frozen + independent review; commit hanya setelah Takeda menyetujui exact staged scope. Jangan mengubah provider/credential/live integration/authority/frozen atau mulai Phase 21.
+**Phase 21 — Desktop-Safe Production-Path Fixture Acceptance Harness** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: fixture PyQt disposable dengan stable automation IDs; production UIA backend untuk Phase 19 title setter dan Phase 20 scene reorder; local confirmation authority; satu action; recapture + value/semantic-order proof; reject stale surface/parent mismatch/changed RuntimeId/no-op/lease conflict; fixture cleanup. Hasil dilabeli `fixture-accepted`, bukan `live-proven`.
+Guardrail: disposable fixture only (tanpa filesystem/drop zone/user app/network/retry); untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

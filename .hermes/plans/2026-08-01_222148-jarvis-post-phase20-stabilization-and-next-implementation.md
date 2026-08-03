@@ -148,13 +148,15 @@ git diff --check
 
 **Priority:** P0 operational safety
 **Dependency:** Phase 20.1–20.2 green.
-**Status:** NEXT — not started.
+**Status:** ✅ COMPLETE — 2026-08-03 (59 commit; ditutup commit DOC `29f94cd`).
 
 **Goal:** Convert the 182-path dirty worktree into small, reviewable recovery commits without resetting or losing user work.
 
 **Important:** This phase changes Git index/history, not product behavior. Each commit requires an exact allowlist, targeted tests, staged diff review, and Takeda approval.
 
 ### Commit sequence
+
+> ⚠️ Rencana A–J di bawah SUPERSEDED oleh eksekusi aktual (dependency-ordered nyata): remediasi audit A46–A53 → GWS safe-read A54–A57 → telegram A58+TEL → monitoring A59–A70+MR → voice V1–V5 → closure MR/MSG/TEL/UX1/UX2/REG/CAP1/CAP2/WIN/COV/SCR → docs continuity DOC `29f94cd`. Detail per-commit ada di `session.md`.
 
 #### Commit A — Capability context and registry foundation
 
@@ -217,7 +219,7 @@ git diff --check
 6. Commit with a small message, e.g. `feat(agent): enforce scoped capability context`.
 7. Verify remaining dirty paths are expected before starting the next commit.
 
-**Acceptance criteria:** no untracked product source remains unintentionally; every commit is independently understandable and reversible; frozen baseline unchanged.
+**Acceptance criteria:** TERPENUHI — no untracked product source remains unintentionally; every commit is independently understandable and reversible; frozen baseline unchanged (`094b696`).
 
 ---
 
