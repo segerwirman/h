@@ -94,6 +94,12 @@ class ProviderSettingsSheet(QWidget):
         self._roles_lbl.setWordWrap(True)
         lay.addWidget(self._roles_lbl)
 
+        self._advanced_toggle = QPushButton("TAMPILKAN ROUTING LANJUTAN")
+        self._style_button(self._advanced_toggle)
+        self._advanced_toggle.clicked.connect(self._toggle_advanced_routing)
+        lay.addWidget(self._advanced_toggle)
+        self._advanced_visible = False
+
         lane_title = QLabel("ROUTING — JALUR RINGAN (TELEGRAM T1)")
         lane_title.setFont(theme.mono_font(8))
         lane_title.setStyleSheet(self._dim_css())
@@ -141,6 +147,16 @@ class ProviderSettingsSheet(QWidget):
         self._heavy_status.setWordWrap(True)
         self._heavy_status.setStyleSheet(self._dim_css())
         lay.addWidget(self._heavy_status)
+
+        # Settings S1 keeps daily setup focused. Expert routing controls remain
+        # constructed for compatibility but are hidden until S2 disclosure.
+        self._advanced_widgets = (
+            lane_title, self._light_provider, self._save_lane, self._light_model,
+            self._lane_status, heavy_title, self._heavy_provider, self._save_heavy,
+            self._heavy_model, self._heavy_status, self._roles_lbl,
+        )
+        for widget in self._advanced_widgets:
+            widget.hide()
 
         self._storage_lbl = QLabel("")
         self._storage_lbl.setFont(theme.mono_font(8))
@@ -230,6 +246,15 @@ class ProviderSettingsSheet(QWidget):
                  "error": theme.PAL.alert}.get(state, theme.PAL.text_dim)
         self._status.setStyleSheet(f"color: {color}; background: transparent;")
         self._status.setText(text)
+
+    def _toggle_advanced_routing(self) -> None:
+        """Reveal existing local routing controls only after explicit local interaction."""
+        self._advanced_visible = not self._advanced_visible
+        for widget in self._advanced_widgets:
+            widget.setVisible(self._advanced_visible)
+        self._advanced_toggle.setText(
+            "SEMBUNYIKAN ROUTING LANJUTAN" if self._advanced_visible
+            else "TAMPILKAN ROUTING LANJUTAN")
 
     def _style_button(self, b: QPushButton) -> None:
         b.setFont(theme.header_font(10))
@@ -706,16 +731,20 @@ class ProviderSettingsSheet(QWidget):
                     "error",
                 )
             else:
-                detail = str(getattr(result, "detail", "") or
-                             "tes agent gagal")
-                self._set_connection_status(f"● Gagal — {detail}", "error")
+                self._set_connection_status(
+                    "● Tes model belum berhasil. Periksa konfigurasi lalu coba lagi.",
+                    "error",
+                )
             return
         if state.get("state") == "models_failed":
             self._set_detected_models(())
             manual = bool(state.get("manual"))
             self._show_manual_fallback(manual)
-            detail = str(state.get("error") or "koneksi gagal")
-            self._set_connection_status(f"● Gagal — {detail[:120]}", "error")
+            if manual:
+                message = "● Gagal — format katalog tidak dikenali. Masukkan model manual."
+            else:
+                message = "● Koneksi provider belum tersedia. Periksa konfigurasi lalu coba lagi."
+            self._set_connection_status(message, "error")
             return
         models = tuple(state.get("models", ()))
         self._set_detected_models(models)

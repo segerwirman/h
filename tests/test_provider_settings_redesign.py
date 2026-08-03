@@ -96,6 +96,76 @@ def test_delete_memanggil_provider_secure_delete(monkeypatch):
     assert "dihapus" in sheet._status.text()
 
 
+def test_simple_provider_flow_hides_advanced_routing_by_default(monkeypatch):
+    sheet, _ = _sheet(monkeypatch)
+
+    assert sheet._combo.isHidden() is False
+    assert sheet._base_url.isHidden() is False
+    assert sheet._api_key.isHidden() is False
+    assert sheet._detect_models_button.isHidden() is False
+    assert sheet._active_btn.isHidden() is False
+    for widget in (sheet._light_provider, sheet._light_model, sheet._save_lane,
+                   sheet._heavy_provider, sheet._heavy_model, sheet._save_heavy,
+                   sheet._roles_lbl):
+        assert widget.isHidden() is True
+
+
+def test_advanced_routing_disclosure_is_closed_then_opens_only_on_local_toggle(monkeypatch):
+    sheet, _ = _sheet(monkeypatch)
+
+    assert sheet._advanced_toggle.text() == "TAMPILKAN ROUTING LANJUTAN"
+    assert sheet._advanced_visible is False
+    assert all(widget.isHidden() for widget in sheet._advanced_widgets)
+
+    sheet._toggle_advanced_routing()
+    assert sheet._advanced_visible is True
+    assert sheet._advanced_toggle.text() == "SEMBUNYIKAN ROUTING LANJUTAN"
+    assert all(widget.isHidden() is False for widget in sheet._advanced_widgets)
+
+    sheet._toggle_advanced_routing()
+    assert sheet._advanced_visible is False
+    assert all(widget.isHidden() for widget in sheet._advanced_widgets)
+
+
+def test_advanced_disclosure_does_not_write_provider_routing(monkeypatch):
+    sheet, _ = _sheet(monkeypatch)
+    from jarvis.core import settings_service
+
+    writes = []
+    monkeypatch.setattr(settings_service, "set_value", lambda *args: writes.append(args) or (True, ""))
+    sheet._toggle_advanced_routing()
+    sheet._toggle_advanced_routing()
+    assert writes == []
+
+
+def test_connection_error_is_classified_without_draft_or_raw_error_text(monkeypatch):
+    sheet, _ = _sheet(monkeypatch)
+    secret = "draft-secret-do-not-display"
+    sheet._api_key.setText(secret)
+
+    sheet._apply_model_catalog({"provider": "openai", "state": "models_failed",
+                                "error": f"HTTP 401 token={secret}", "manual": False})
+
+    assert secret not in sheet._status.text()
+    assert "Koneksi provider belum tersedia" in sheet._status.text()
+    assert sheet._detected_models.isEnabled() is False
+    assert sheet._model.isHidden() is True
+
+
+def test_oauth_and_agent_probe_failures_do_not_echo_raw_error(monkeypatch):
+    sheet, _ = _sheet(monkeypatch)
+    secret = "access_token=not-for-ui"
+
+    sheet._apply_oauth_update({"provider": "openai", "state": "failed", "error": secret})
+    assert secret not in sheet._status.text()
+    assert "belum lengkap" in sheet._status.text()
+
+    result = type("Probe", (), {"ready": False, "chat_ok": False, "detail": secret})()
+    sheet._apply_model_catalog({"provider": "openai", "state": "agent_probe", "result": result})
+    assert secret not in sheet._status.text()
+    assert "Tes model belum berhasil" in sheet._status.text()
+
+
 def test_theme_styles_only_read_theme_tokens(monkeypatch):
     sheet, _ = _sheet(monkeypatch)
     css = sheet.styleSheet() + sheet._detected_models.styleSheet()
