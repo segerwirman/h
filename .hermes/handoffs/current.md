@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase WA1 COMPLETE — 2026-08-03
+**Updated:** Phase WA2 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `3e53f91` (TIM2); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `bbd6437` (CAL); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -34,7 +34,9 @@ Phase WA0 whatsapp readiness                 COMPLETE
   → WAR 9ec2bb0 (readiness gate boolean, offline penuh)
 Phase WA1 countdown timer                    COMPLETE
   → TIM2 3e53f91 (native timer + orb progress + bus signals)
-  → sisa: tidak ada; Phase WA2 menunggu keputusan Takeda (dilarang)
+Phase WA2 call session/approval             COMPLETE
+  → CAL bbd6437 (state machine + enum proposal + local approval)
+  → sisa: tidak ada; Phase WA3 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -56,6 +58,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## Phase WA2 call session milestone (2026-08-03)
+
+**Phase WA2 COMPLETE** — commit CAL `bbd6437`. `jarvis/core/call_session.py`: `CallSession` one-shot — idle → awaiting → active → done / cancelled / expired (TTL monotonic 30–3600s); remote proposal ENUM-only tanpa eksekusi; `approve()` lokal one-shot; end/cancel idempotent; `result()` metadata-only (tanpa transcript/audio/path/raw); bus `call.*` ringan. RED 8 → GREEN 8; regression 33 passed; frozen `094b696` OK.
 
 ## Phase WA1 countdown timer milestone (2026-08-03)
 
@@ -187,22 +193,21 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase WA2 — Call Session & Approval** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Phase WA3 — Real Two-Way Audio Proof** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Bounded call session state machine dengan local approval flow.
+Bukti audio dua arah nyata (fixture/live terpisah) tanpa authority baru.
 
 ### Scope
 
-- bounded session (start/done/cancel);
-- local approval flow;
-- remote proposal hanya enum (bukan eksekusi);
-- TTL + one-shot; metadata result saja.
+- inbound + outbound audio path teruji (capture loopback + playback);
+- sinyal start/stop call via session WA2;
+- bounded duration; tanpa remote control/authority baru.
 
 ### Guardrails
 
-- Tidak ada authority baru; proposal remote tidak pernah mengeksekusi.
+- Tidak ada remote control baru; audio proof hanya fixture/live terpisah.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -219,13 +224,13 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase WA1 COMPLETE (2026-08-03): countdown timer (TIM2 3e53f91) — native
-timer bounded + orb progress + bus signals, murni lokal. Worktree bersih
-kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN di-commit.
-Index kosong. Frozen 094b696 OK.
+Phase WA2 COMPLETE (2026-08-03): call session (CAL bbd6437) — state
+machine bounded + enum-only remote proposal + local approval, metadata
+result saja. Worktree bersih kecuali 2 artifact (.curator_state.json,
+full_run.txt) — JANGAN di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase WA2 (Call Session & Approval) DILARANG dimulai
-sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi posisi
+TIDAK ADA fase aktif. Phase WA3 (Real Two-Way Audio Proof) DILARANG
+dimulai sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi posisi
 (read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
 lanjutan, minta approval sebelum eksekusi apa pun. Jangan
 git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah

@@ -279,18 +279,21 @@ Guardrail: ...
 **Fase berikutnya:** **WA2 — Call Session & Local Approval Authority** — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
-
 ## Phase WA2 — WhatsApp Call Session Model & Local Approval Sheet
+
+**Status:** ✅ COMPLETE (state machine inti) — 2026-08-03 (CAL `bbd6437`).
 
 **Tujuan:** setiap call terikat satu contact, objective, constraints, allowed disclosures, TTL, dan local approval.
 
 **Objective awal:** general inquiry, hotel availability, flight schedule, appointment, customer support information, reversible hold request.
 
-**State:** DRAFT → AWAITING_APPROVAL → APPROVED → DIALING → CONNECTED → AWAITING_DECISION/COMPLETED/FAILED/CANCELLED/EXPIRED.
+**State (implementasi):** idle → awaiting → active → done / cancelled / expired (TTL monotonic 30–3600s); remote proposal ENUM-only (`RemoteCallProposal` ACCEPT/DECLINE/END/EXTEND) tanpa eksekusi; `approve()` lokal one-shot; end/cancel idempotent; `result()` metadata-only (tanpa transcript/audio/path/raw — dikunci test); bus `call.*` ringan hanya session_id.
 
-**Acceptance:** tidak ada call tanpa approved session; payment/account recovery/sensitive secrets ditolak.
+**Belum dikerjakan (call lanjutan):** DIALING → CONNECTED → AWAITING_DECISION/FAILED states, constraints & allowed disclosures field, approval sheet UI.
 
-**Fase berikutnya:** **WA3 — Two-Way Audio Live Acceptance**.
+**Acceptance:** tidak ada call tanpa approved session; payment/account recovery/sensitive secrets ditolak; actor/session/TTL/one-shot/metadata result — TERPENUHI (state machine inti). RED 8 failed → GREEN 8 passed; regression 33 passed; frozen `094b696` OK.
+
+**Fase berikutnya:** **WA3 — Two-Way Audio Live Acceptance** — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
 
@@ -437,6 +440,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase WA2 — Call Session & Approval** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: bounded call session state machine (start/done/cancel), local approval flow, remote proposal hanya enum (bukan eksekusi), TTL + one-shot; metadata result saja.
-Guardrail: tidak ada authority baru, proposal remote tidak pernah mengeksekusi; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase WA3 — Real Two-Way Audio Proof** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: inbound + outbound audio path teruji (capture loopback + playback), sinyal start/stop call via session WA2, bounded duration.
+Guardrail: tidak ada remote control/authority baru, audio proof hanya fixture/live terpisah; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
