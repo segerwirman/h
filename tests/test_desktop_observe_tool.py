@@ -1,4 +1,4 @@
-"""Direct inactive desktop observe/click facade regressions."""
+"""desktop_observe issues bounded semantic refs for one desktop-local session."""
 from __future__ import annotations
 
 import asyncio
@@ -21,11 +21,13 @@ def _tree() -> ScreenElementTree:
     ))
     return tree
 
+
 def _context(session_id: str = "desktop-a") -> ExecutionContext:
     return ExecutionContext.create(
         source="agent", actor_id="local", session_id=session_id, surface="desktop",
         toolsets=["desktop_safe"],
     )
+
 
 def _local_session():
     from jarvis.agent.tools.desktop_safe_click import SafeDesktopSession
@@ -40,6 +42,7 @@ def _local_session():
         click_rect=lambda _rect: None,
     )
 
+
 def test_desktop_observe_is_read_only_and_schema_has_no_screenshot_ocr_or_target_query():
     from jarvis.agent.tools.desktop_observe import DesktopObserve
 
@@ -48,6 +51,7 @@ def test_desktop_observe_is_read_only_and_schema_has_no_screenshot_ocr_or_target
     assert tool.json_schema()["properties"] == {}
     assert "screenshot" not in tool.description.lower()
     assert "ocr" not in tool.description.lower()
+
 
 def test_desktop_observe_returns_bounded_safe_semantic_refs_only():
     from jarvis.agent.tools.desktop_observe import DesktopObserve
@@ -62,6 +66,7 @@ def test_desktop_observe_returns_bounded_safe_semantic_refs_only():
     assert refs[0] == {"element_id": "uia-next", "role": "button", "scope": "page_main"}
     assert "Next" not in str(result.content)
     assert "password" not in str(result.content).lower()
+
 
 def test_safe_click_only_accepts_observation_issued_by_same_desktop_session():
     from jarvis.agent.tools.desktop_observe import DesktopObserve
@@ -83,6 +88,7 @@ def test_safe_click_only_accepts_observation_issued_by_same_desktop_session():
     assert other.ok is False
     assert "sesi" in (other.error or "")
 
+
 def test_desktop_observe_and_safe_click_stay_out_of_voice_schema():
     from jarvis.agent.tools.desktop_observe import DesktopObserve
     from jarvis.agent.tools.desktop_safe_click import DesktopSafeClick
@@ -91,6 +97,7 @@ def test_desktop_observe_and_safe_click_stay_out_of_voice_schema():
     names = {item["name"] for item in voice_native_tools.declarations()}
     assert DesktopObserve.name not in names
     assert DesktopSafeClick.name not in names
+
 
 def test_desktop_observe_has_no_capture_image_vision_or_coordinate_api():
     from jarvis.agent.tools.desktop_observe import DesktopObserve

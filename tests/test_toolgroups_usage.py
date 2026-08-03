@@ -34,6 +34,66 @@ def test_semua_tool_nyata_terpetakan_tanpa_fallback():
     assert "other" not in ids
 
 
+def test_tool_baru_masuk_grup_eksplisit_yang_tepat():
+    groups = {g["id"]: set(g["tools"]) for g in toolgroups.all_groups()}
+
+    assert groups["desktop_safe"] == {
+        "desktop_observe",
+        "desktop_safe_click",
+        "desktop_safe_reorder_scene",
+        "desktop_safe_scroll",
+        "desktop_safe_select_option",
+        "desktop_safe_set_content_title",
+        "desktop_safe_set_value",
+        "desktop_safe_toggle",
+        "desktop_visual_observe",
+    }
+    assert groups["content_studio"] == {"content_studio_prompt"}
+    assert groups["native_system"] == {
+        "reminder_create",
+        "system_reflex",
+        "weather_lookup",
+    }
+    assert groups["native_messaging"] == {
+        "message_send",
+        "telegram_send_message",
+    }
+    assert groups["voice_briefing"] == {"voice_briefing"}
+    assert groups["web_monitoring"] == {"web_monitor"}
+    assert groups["youtube_voice"] == {"youtube_search"}
+
+
+def test_modul_optional_tetap_terpetakan_saat_provider_diaktifkan():
+    mapped_modules = {
+        module
+        for group in toolgroups.TOOL_GROUPS
+        for module in group.modules
+    }
+
+    assert {
+        "briefing_tool",
+        "calendar_safe",
+        "gcal_safe_agenda",
+        "gmail_safe",
+    } <= mapped_modules
+
+
+def test_semua_tool_desktop_safe_memiliki_resource_desktop():
+    groups = {g["id"]: set(g["tools"]) for g in toolgroups.all_groups()}
+
+    assert groups["desktop_safe"]
+    assert {
+        toolgroups.resources_for_tool(name)
+        for name in groups["desktop_safe"]
+    } == {frozenset({"desktop"})}
+    assert toolgroups.resources_for_tool("computer_click") == frozenset(
+        {"desktop"}
+    )
+    assert toolgroups.resources_for_tool(
+        "content_studio_prompt"
+    ) == frozenset()
+
+
 def test_modul_tak_terpetakan_masuk_fallback(monkeypatch):
     monkeypatch.setattr(registry, "_tools", {"echo": EchoTool()})
     groups = {g["id"]: g for g in toolgroups.all_groups()}

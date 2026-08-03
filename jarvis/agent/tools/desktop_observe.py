@@ -1,4 +1,4 @@
-"""Read-only semantic observation for inactive desktop-local click/toggle chaining."""
+"""Read-only UIA semantic observation for desktop-local safe-click chaining."""
 from __future__ import annotations
 
 import asyncio
@@ -59,8 +59,9 @@ class DesktopObserve(Tool):
             return ToolResult.fail(f"observasi desktop gagal: {type(exc).__name__}")
 
 
-def _safe_descriptor(authority: SafeDesktopSession, observation_id: str, element, scope: str) -> dict | None:
-    """Expose only stable IDs supported by the recovered click/toggle authority."""
+def _safe_descriptor(authority: SafeDesktopSession, observation_id: str,
+                     element, scope: str) -> dict | None:
+    """Expose only action IDs plus bounded, non-text value domains."""
     try:
         ref = authority.gate.reference(observation_id, element.element_id)
     except Exception:
@@ -93,6 +94,34 @@ def _safe_descriptor(authority: SafeDesktopSession, observation_id: str, element
         if not decision.allowed or decision.requires_confirmation:
             return None
         return {"element_id": element.element_id, "role": element.role, "scope": scope}
+    if element.role == "text_field":
+        try:
+            decision = authority.gate.evaluate(ref, action="set_content_title")
+        except Exception:
+            return None
+        if not decision.allowed or decision.requires_confirmation or not ref.native_identity:
+            return None
+        return {
+            "element_id": element.element_id,
+            "role": "text_field",
+            "scope": scope,
+            "actions": ["set_content_title"],
+            "intent": "content_studio_title",
+        }
+    if element.role == "card":
+        try:
+            decision = authority.gate.evaluate(ref, action="reorder_scene")
+        except Exception:
+            return None
+        if not decision.allowed or decision.requires_confirmation or not ref.native_identity:
+            return None
+        return {
+            "element_id": element.element_id,
+            "role": "card",
+            "scope": scope,
+            "actions": ["reorder_scene"],
+            "intent": "content_studio_scene_reorder",
+        }
     if element.role != "slider":
         return None
     if not ref.label or not ref.native_identity:

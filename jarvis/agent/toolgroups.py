@@ -12,9 +12,9 @@ menyusun schema run baru — tool grup mati TIDAK masuk schema LLM.
 Kontrak "Changes apply to new sessions": snapshot per run, tidak berubah
 di tengah run.
 
-Pemetaan dari 18 modul nyata di jarvis/agent/tools/ — BUKAN salinan buta
-21 grup Hermes (Jarvis punya ``food``, Hermes tidak; penamaan/subtitle
-mengikuti referensi img 4 bila padan).
+Pemetaan eksplisit modul nyata di jarvis/agent/tools/ — BUKAN salinan buta
+grup Hermes. Modul baru wajib masuk grup bernama; fallback ``other`` hanya
+guard diagnostik untuk mendeteksi drift registry.
 """
 from __future__ import annotations
 
@@ -39,10 +39,11 @@ _DESKTOP_SAFE_MODULES = (
     "desktop_visual_observe",
     "desktop_safe_click",
     "desktop_safe_scroll",
-    "desktop_safe_set_content_title",
-    "desktop_safe_reorder_scene",
+    "desktop_safe_select_option",
     "desktop_safe_set_value",
     "desktop_safe_toggle",
+    "desktop_safe_set_content_title",
+    "desktop_safe_reorder_scene",
 )
 
 
@@ -103,11 +104,20 @@ TOOL_GROUPS: tuple[ToolGroup, ...] = (
               "allowlisted messaging and voice calls", ("whatsapp_web",)),
     ToolGroup("content_studio", "Content Studio",
               "bounded local project prompt intake", ("content_studio",)),
+    ToolGroup("native_system", "Native System",
+              "weather, reminders, and bounded system reflexes",
+              ("native_voice_system",)),
+    ToolGroup("native_messaging", "Native Messaging",
+              "bounded messaging delivery", ("native_messaging",)),
+    ToolGroup("voice_briefing", "Voice Briefing",
+              "bounded local briefing readout", ("voice_briefing",)),
     ToolGroup("safe_briefing", "Safe Briefing",
               "bounded local Calendar, Gmail, and monitor summary",
               ("briefing_tool",)),
     ToolGroup("web_monitoring", "Web Monitoring",
               "validated public source monitoring", ("web_monitor",)),
+    ToolGroup("youtube_voice", "YouTube Voice",
+              "bounded YouTube search for voice", ("youtube_voice",)),
     ToolGroup("capability_diagnostics", "Capability Diagnostics",
               "runtime tools, provider readiness, blocked integrations",
               ("capability_status",)),
@@ -218,6 +228,9 @@ MODULE_RESOURCES: dict[str, frozenset[str]] = {
     # ia lewat lease DESKTOP yang sama (tools/computer.py:15), dan §8
     # memerintahkan tool ambigu dimasukkan ke eksklusif.
     "computer": frozenset({"desktop"}),
+    # Semantic desktop observation/mutation shares the same exclusive lease as
+    # generic computer control.  This prevents two tasks from acting on a
+    # changing desktop surface concurrently.
     **{module: frozenset({"desktop"}) for module in _DESKTOP_SAFE_MODULES},
     # Satu context Playwright persisten dipakai bersama seluruh browser_*
     # (13 tool). Dua agent yang menavigasi context yang sama akan saling
