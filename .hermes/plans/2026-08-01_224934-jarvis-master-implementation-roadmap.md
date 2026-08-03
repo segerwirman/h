@@ -463,7 +463,7 @@ Guardrail: ...
 
 **Acceptance:** remote hanya propose; approval lokal; tanpa invoke remote — TERPENUHI. RED 8 failed → GREEN 8 passed; regression 104 passed; frozen `094b696` OK.
 
-**Belum dikerjakan (actor binding lanjutan):** paired remote actor identity binding; larangan eksplisit remote menerima UIA refs/transcript/audio/path.
+**Belum dikerjakan (actor binding lanjutan):** — paired remote actor identity binding; larangan eksplisit remote menerima UIA refs/transcript/audio/path: ✅ COMPLETE (ABD `a922097`, 2026-08-03); sisa: tidak ada.
 
 **Fase berikutnya:** **29 — Next Exact Trusted UI Surface** — MENUNGGU KEPUTUSAN TAKEDA.
 
@@ -497,6 +497,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**28-lanjutan — Actor Binding** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: paired remote actor identity binding; larangan eksplisit remote menerima UIA refs/transcript/audio/path.
+**Live lane** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval live + hardware).
+Scope: WA3 audio live acceptance (two-cable bridge), WA0 call hardware checks, WA9 kill switch + rollout rings, WA6 write path `gcal_create_proposed`.
 Guardrail: tidak ada eksekusi tanpa approval eksplisit Takeda; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

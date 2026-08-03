@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** WA6-lanjutan COMPLETE — 2026-08-03 (lanjutan roadmap)
+**Updated:** 28-lanjutan COMPLETE — 2026-08-03 (lanjutan roadmap)
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `ff99300` (CAL3); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `a922097` (ABD); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -82,7 +82,10 @@ WA5-lanjutan durable memory                COMPLETE
   → sisa WA5 tuntas
 WA6-lanjutan calendar review               COMPLETE
   → CAL3 ff99300 (typed outcomes + second approval)
-  → sisa WA6 tuntas; berikutnya 28-lanjutan (menunggu Takeda)
+  → sisa WA6 tuntas
+28-lanjutan actor binding                  COMPLETE
+  → ABD a922097 (actor identity + payload guard)
+  → SEMUA fase offline TUNTAS; live lane menunggu Takeda
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -104,6 +107,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## 28-lanjutan milestone (2026-08-03)
+
+**28-lanjutan COMPLETE** — commit ABD `a922097`. `actor_binding.py`: register actor (bounded, non-secret, duplicate ditolak); bind_proposal one-shot (actor terdaftar wajib); bound_actor/actor_owns; known_actors metadata-only; check_payload larangan eksplisit (uia_ref/transcript/audio/path/screenshot/coordinate/raw_html/cookie/header/ocr → `actor_payload_forbidden`). RED 6 → GREEN 6; regression 41 passed; frozen `094b696` OK.
 
 ## WA6-lanjutan milestone (2026-08-03)
 
@@ -315,16 +322,18 @@ JARVIS.MD
 
 ## Next phase
 
-**28-lanjutan — Actor Binding** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Live lane** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval live + hardware)
 
 ### Goal
 
-Ikat identitas paired remote actor ke proposal.
+Melengkapi acceptance live yang butuh hardware/kredensial.
 
 ### Scope
 
-- paired remote actor identity binding;
-- larangan eksplisit remote menerima UIA refs/transcript/audio/path.
+- WA3 audio live acceptance (two-cable bridge / virtual cables);
+- WA0 call hardware checks (Playwright/profile/login, call button, virtual cables);
+- WA9 kill switch + visible hangup + rollout rings bertingkat;
+- WA6 write path `gcal_create_proposed` (create kalender nyata).
 
 ### Guardrails
 
@@ -345,15 +354,16 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-WA6-lanjutan COMPLETE (2026-08-03): calendar review (CAL3 ff99300) —
-typed outcomes + timezone + second approval, sisa WA6 tuntas. Worktree
-bersih kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN
-di-commit. Index kosong. Frozen 094b696 OK.
+28-lanjutan COMPLETE (2026-08-03): actor binding (ABD a922097) —
+identity + bind + payload guard, sisa 28 tuntas. SEMUA fase offline
+TUNTAS. Worktree bersih kecuali 2 artifact (.curator_state.json,
+full_run.txt) — JANGAN di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif — 28-lanjutan (Actor Binding) DILARANG dimulai tanpa
-approval eksplisit Takeda. Tugas sesi: verifikasi posisi (read-only),
-audit worktree/HEAD/frozen, presentasikan status + opsi lanjutan, minta
-approval sebelum eksekusi apa pun. Jangan
+TIDAK ADA fase aktif — Live lane (audio acceptance / rollout live /
+write path kalender) DILARANG dimulai tanpa approval live + hardware.
+Tugas sesi: verifikasi posisi (read-only), audit worktree/HEAD/frozen,
+presentasikan status + opsi lanjutan, minta approval sebelum eksekusi
+apa pun. Jangan
 git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
 provider/credential/live integration/authority/frozen.
 ```

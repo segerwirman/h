@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: ff99300 feat(core): calendar review with typed outcomes, timezone, and second local approval (CAL3)
-Last updated: 2026-08-03 — WA6-lanjutan COMPLETE (calendar review lanjutan)
+HEAD: a922097 feat(core): remote actor identity binding with explicit payload restrictions (ABD)
+Last updated: 2026-08-03 — 28-lanjutan COMPLETE (actor binding)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 89 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON + CST + CAP + AWK + TIM3 + DLG + DUR + CAL3 ff99300)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 90 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON + CST + CAP + AWK + TIM3 + DLG + DUR + CAL3 + ABD a922097)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: 28-lanjutan — Actor Binding
+Status: COMPLETE (sisa 28)
+Completed: 2026-08-03 (ABD a922097; frozen 094b696 OK)
+```
 
 ```text
 Phase: WA6-lanjutan — Calendar Review Lanjutan
@@ -356,22 +362,22 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: WA6-lanjutan — Calendar Review Lanjutan
-Status: COMPLETE — 2026-08-03 (CAL3 ff99300)
-Priority: typed outcomes, timezone, second approval
+Phase: 28-lanjutan — Actor Binding
+Status: COMPLETE — 2026-08-03 (ABD a922097)
+Priority: actor identity, bind proposal, payload guard
 ```
 
 ### Outcome
 
-- `jarvis/core/calendar_review.py` (baru; CalendarProposal WA6 tidak disentuh): **`OutcomeType` enum + `map_outcome()`** (HOTEL_STAY/FLIGHT_DEPARTURE/FLIGHT_ARRIVAL/SERVICE_APPOINTMENT/CALLBACK; tak dikenal → None); **timezone known-set** (Jakarta/Makassar/Jayapura/Singapore/Tokyo/UTC; asing ditolak); **`CalendarReview`** — proposal bounded (title ≤120, duration 1–600, terms ≤200, price 0–1e9, reference ≤40 non-secret, reminder 1–10080, start_ts masa depan); **second local approval** (`first_approve` → awaiting_second → `second_approve` → approved; one-shot; mark_tentative; reject); `review()` metadata-only.
-- **Write path provider TETAP fase live** — kontrak statis dikunci: tanpa kata provider/google/gcal/create_event/requests/network (open(/subprocess/socket dilarang).
-- TDD: RED 7 failed → GREEN 7 passed (fix: docstring menyebut google/gcal → dilanggar kontrak statis → dibersihkan); regression 58 passed (review + proposal + durable + dialogue + ring + timer + continuation + capability); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 15 passed; approval Takeda.
+- `jarvis/core/actor_binding.py` (baru): **`ActorBinding`** — register actor (bounded ≤64/≤40, non-secret; duplicate ditolak); `bind_proposal` **one-shot** (actor harus terdaftar); `bound_actor`/`actor_owns` (verifikasi approval side); `known_actors()` metadata-only.
+- **`check_payload()` — larangan eksplisit remote**: `uia_ref/uia_reference/transcript/audio/path/screenshot/coordinate/raw_html/cookie/header/ocr` → `actor_payload_forbidden` (10 jenis diuji); metadata aman tetap OK. Kontrak statis tanpa provider/network/file.
+- TDD: RED 6 failed → GREEN 6 passed; regression 41 passed (actor + bridge + capability + review + durable + ring); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 14 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: 28-lanjutan — Actor Binding (rekomendasi #9)
+Phase: Live lane (WA3 audio acceptance / WA9 rollout live / WA6 write path) — butuh approval live + hardware
 Status: MENUNGGU KEPUTUSAN TAKEDA
 Guardrail: jangan mulai fase baru tanpa approval eksplisit Takeda.
 ```
@@ -408,7 +414,8 @@ WA1-lanjutan timer lanjutan ✅ (TIM3 d989dd3, 2026-08-03)
 WA4-lanjutan dialogue lanjutan ✅ (DLG 2443a40, 2026-08-03)
 WA5-lanjutan durable memory/recall ✅ (DUR 778f89f, 2026-08-03)
 WA6-lanjutan calendar review lanjutan ✅ (CAL3 ff99300, 2026-08-03)
-→ 28-lanjutan actor binding (MENUNGGU keputusan Takeda)
+28-lanjutan actor binding ✅ (ABD a922097, 2026-08-03)
+→ live lane (MENUNGGU keputusan Takeda — butuh hardware/approval live)
 ```
 
 ## Mandatory completion protocol
@@ -440,17 +447,17 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: ff99300 (CAL3). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: a922097 (ABD). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-WA6-lanjutan COMPLETE (2026-08-03): calendar review — typed outcomes 5,
-timezone known-set, terms/price/reference/reminder bounded, second local
-approval, review metadata-only; write path tetap fase live. RED 7 →
-GREEN 7; regression 58 passed.
+28-lanjutan COMPLETE (2026-08-03): actor binding — register + bind
+one-shot + actor_owns + payload guard (10 jenis terlarang). RED 6 →
+GREEN 6; regression 41 passed.
 
-Fase aktif: TIDAK ADA. 28-lanjutan (Actor Binding) DILARANG dimulai tanpa
-approval eksplisit Takeda.
+Fase aktif: TIDAK ADA. Live lane (WA3 audio acceptance / WA9 rollout
+live / WA6 write path) DILARANG dimulai tanpa approval live + hardware.
+SEMUA fase offline TUNTAS.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,
