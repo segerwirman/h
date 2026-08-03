@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** Phase WA7 COMPLETE — 2026-08-03
+**Updated:** Phase WA8 COMPLETE — 2026-08-03
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `584b235` (RES); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `25b3789` (CSE); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -46,7 +46,9 @@ Phase WA6 calendar proposal                COMPLETE
   → CAL2 cc97138 (allowlist + conflict check + local approval)
 Phase WA7 reservation gate                 COMPLETE
   → RES 584b235 (commitment gate, fixed reasons, no-op failures)
-  → sisa: tidak ada; Phase WA8 menunggu keputusan Takeda (dilarang)
+Phase WA8 service case manager             COMPLETE
+  → CSE 25b3789 (typed cases + disclosure policy + escalation)
+  → sisa: tidak ada; Phase WA9 menunggu keputusan Takeda (dilarang)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -68,6 +70,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## Phase WA8 service case milestone (2026-08-03)
+
+**Phase WA8 COMPLETE** — commit CSE `25b3789`. `jarvis/core/service_case.py`: `ServiceCase` one-shot open → escalated/closed; typed fixed set `{service_hours, appointment, order_status}` (free-form/warranty ditolak); non-secret reference; field allowlist; disclosure policy per type (payment_details tidak pernah); stop/escalation rules (secret/payment → escalated + reason fixed + stop). RED 8 → GREEN 8; regression 66 passed; frozen `094b696` OK.
 
 ## Phase WA7 reservation gate milestone (2026-08-03)
 
@@ -223,21 +229,22 @@ JARVIS.MD
 
 ## Next phase
 
-**Phase WA8 — Customer-Service Case Manager** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**Phase WA9 — Controlled WhatsApp Rollout** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Typed case manager untuk pertanyaan customer-service yang umum.
+Rollout WhatsApp terkontrol, deny-by-default, tanpa live integration.
 
 ### Scope
 
-- typed cases: service hours, appointment, order-status inquiry dengan non-secret reference;
-- setiap case punya field allowlist, disclosure policy, stop/escalation rules;
-- tidak ada free-form mission yang memperluas authority.
+- toggle config + allowlist policy;
+- rate limiting + daily caps;
+- opt-out/revoke; deny-by-default;
+- tanpa live integration di fase ini.
 
 ### Guardrails
 
-- Tidak ada free-form mission; case hanya typed + bounded.
+- Tidak ada live integration; deny-by-default.
 - Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
 - Provider/credential/live integration/authority/frozen tidak boleh berubah.
 
@@ -254,12 +261,12 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-Phase WA7 COMPLETE (2026-08-03): reservation gate (RES 584b235) —
-commitment gate + fixed reasons + no-op failures, tanpa auto-commit.
+Phase WA8 COMPLETE (2026-08-03): service case (CSE 25b3789) — typed
+cases + disclosure policy + escalation rules, tanpa free-form mission.
 Worktree bersih kecuali 2 artifact (.curator_state.json, full_run.txt) —
 JANGAN di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif. Phase WA8 (Customer-Service Case Manager) DILARANG
+TIDAK ADA fase aktif. Phase WA9 (Controlled WhatsApp Rollout) DILARANG
 dimulai sampai Takeda menyetujui eksplisit. Tugas sesi: verifikasi posisi
 (read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
 lanjutan, minta approval sebelum eksekusi apa pun. Jangan

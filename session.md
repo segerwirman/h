@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: 584b235 feat(core): reservation commitment gate with fixed reasons and no-op failures (RES)
-Last updated: 2026-08-03 — Phase WA7 COMPLETE (reservation commitment gate)
+HEAD: 25b3789 feat(core): typed customer-service case manager with disclosure policy and escalation rules (CSE)
+Last updated: 2026-08-03 — Phase WA8 COMPLETE (customer-service case manager)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 75 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES 584b235)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 76 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE 25b3789)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: WA8 — Customer-Service Case Manager
+Status: COMPLETE
+Completed: 2026-08-03 (CSE 25b3789; frozen 094b696 OK)
+```
 
 ```text
 Phase: WA7 — Reservation Commitment Gate
@@ -272,24 +278,24 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: WA7 — Reservation Commitment Gate
-Status: COMPLETE — 2026-08-03 (RES 584b235)
-Priority: commitment gate with fixed reasons, no auto-commit
+Phase: WA8 — Customer-Service Case Manager
+Status: COMPLETE — 2026-08-03 (CSE 25b3789)
+Priority: typed cases, disclosure policy, escalation rules
 ```
 
 ### Outcome
 
-- `jarvis/core/reservation_gate.py` (baru): `ReservationCommitmentGate` — gate murni (pure, tanpa side effect): **local approval** (`approved=False` → `reservation_approval_missing`); **fixed disclosure labels** (`commitment/cancellation_policy/no_refund/subject_to_availability`; asing → `reservation_unknown_label`; kosong → `reservation_disclosure_missing`); **cancellation window** int 1–365 (0/366/bool → `reservation_cancellation_window_missing`).
-- **No-op dikunci test**: gate failure tidak mengubah state/tidak mencatat commitment (snapshot identik); commitment hanya tercatat setelah green light sebagai metadata `status: "ready"` — **tanpa auto-commit** (tidak mengeksekusi apa pun); reason codes = closed set fixed.
-- TDD: RED 7 failed → GREEN 7 passed; regression 58 passed (gate + proposal + memory + dialogue + audio + session + countdown); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 15 passed; approval Takeda.
+- `jarvis/core/service_case.py` (baru): `ServiceCase` one-shot — `open → escalated/closed`; **typed fixed set** `{service_hours, appointment, order_status}` (free-form/warranty ditolak); **non-secret reference** (order_status wajib; secret marker/12–19 digit ditolak); **field allowlist** (set_note 1–300 + secret guard); **disclosure policy per type** (`service_hours→hours`, `appointment→appointment_availability`, `order_status→order_status_update`; payment_details tidak pernah); **stop/escalation rules** (secret/payment/OTP/CVV/transfer → escalated + reason fixed `service_case_secret_touch` + stop: disclose ditolak setelah escalate).
+- `close()` one-shot; `result()` metadata-only (case_type/reference/status/reason — tanpa payment/password/raw/path).
+- TDD: RED 8 failed → GREEN 8 passed; regression 66 passed (case + gate + proposal + memory + dialogue + audio + session + countdown); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 15 passed; approval Takeda.
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: WA8 — Customer-Service Case Manager
+Phase: WA9 — Controlled WhatsApp Rollout
 Status: MENUNGGU KEPUTUSAN TAKEDA
-Guardrail: jangan mulai Phase WA8 tanpa approval eksplisit Takeda.
+Guardrail: jangan mulai Phase WA9 tanpa approval eksplisit Takeda.
 ```
 
 ## Planned phase order
@@ -310,8 +316,8 @@ WA4 bounded autonomous call dialogue ✅ (DIA 3e20ad1, 2026-08-03)
 WA5 call memory/privacy ✅ (MEM b29dcba, 2026-08-03)
 WA6 post-call Calendar proposal ✅ (CAL2 cc97138, 2026-08-03)
 WA7 reservation commitment gate ✅ (RES 584b235, 2026-08-03)
-→ WA8 customer-service case manager (MENUNGGU keputusan Takeda)
-→ WA9 controlled WhatsApp rollout
+WA8 customer-service case manager ✅ (CSE 25b3789, 2026-08-03)
+→ WA9 controlled WhatsApp rollout (MENUNGGU keputusan Takeda)
 → 26 cross-integration live ring
 → 27 named local facade
 → 28 mediated remote facade
@@ -347,16 +353,16 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: 584b235 (RES). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: 25b3789 (CSE). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-Phase WA7 COMPLETE (2026-08-03): reservation commitment gate — local
-approval + fixed disclosure labels + cancellation window; failure = no-op
-dengan reason fixed; tanpa auto-commit (green light metadata only).
-RED 7 → GREEN 7; regression 58 passed.
+Phase WA8 COMPLETE (2026-08-03): customer-service case manager — typed
+cases fixed set, non-secret reference, disclosure policy per type,
+escalation rules pada secret/payment (stop + reason fixed), tanpa
+free-form mission. RED 8 → GREEN 8; regression 66 passed.
 
-Fase aktif: TIDAK ADA. Phase WA8 (Customer-Service Case Manager) DILARANG
+Fase aktif: TIDAK ADA. Phase WA9 (Controlled WhatsApp Rollout) DILARANG
 dimulai sampai Takeda menyetujui eksplisit. Verifikasi posisi dulu,
 presentasikan status + opsi, minta approval sebelum eksekusi.
 

@@ -390,11 +390,16 @@ Guardrail: ...
 
 ## Phase WA8 — Customer-Service Case Manager
 
+**Status:** ✅ COMPLETE — 2026-08-03 (CSE `25b3789`).
+
 **Tujuan:** memperluas typed cases: service hours, appointment, order-status inquiry dengan non-secret reference, warranty, complaint ticket, callback.
 
-**Acceptance:** setiap case punya field allowlist, disclosure policy, stop/escalation rules; tidak ada free-form mission yang memperluas authority.
+**Implementasi:**
+- `jarvis/core/service_case.py`: `ServiceCase` one-shot — typed fixed set `{service_hours, appointment, order_status}` (warranty/complaint/callback belum didukung — ditolak); non-secret reference (order_status wajib; secret marker/12–19 digit ditolak); field allowlist (set_note 1–300 + secret guard); disclosure policy per type (`service_hours→hours`, `appointment→appointment_availability`, `order_status→order_status_update`; payment_details tidak pernah); stop/escalation rules (secret/payment/OTP/CVV/transfer → escalated + reason fixed `service_case_secret_touch` + stop: disclose ditolak setelah escalate).
 
-**Fase berikutnya:** **WA9 — Controlled Live Rollout**.
+**Acceptance:** setiap case punya field allowlist, disclosure policy, stop/escalation rules; tidak ada free-form mission yang memperluas authority — TERPENUHI. RED 8 failed → GREEN 8 passed; regression 66 passed; frozen `094b696` OK.
+
+**Fase berikutnya:** **WA9 — WhatsApp Call Agent Controlled Live Rollout** — MENUNGGU KEPUTUSAN TAKEDA.
 
 ---
 
@@ -466,6 +471,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Phase WA8 — Customer-Service Case Manager** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: typed cases (service hours, appointment, order-status inquiry dengan non-secret reference); setiap case punya field allowlist, disclosure policy, stop/escalation rules.
-Guardrail: tidak ada free-form mission yang memperluas authority, case hanya typed + bounded; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
+**Phase WA9 — WhatsApp Call Agent Controlled Live Rollout** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: toggle config + allowlist policy, rate limiting + daily caps, opt-out/revoke, deny-by-default; tanpa live integration di fase ini.
+Guardrail: tidak ada live integration, deny-by-default; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
