@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** 27-lanjutan COMPLETE — 2026-08-03 (lanjutan roadmap)
+**Updated:** Remediasi awareness COMPLETE — 2026-08-03 (lanjutan roadmap)
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `7e72d79` (CAP); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `1f8b6b8` (AWK); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -67,7 +67,10 @@ WA2-lanjutan call states                   COMPLETE
   → sisa WA2 tuntas
 27-lanjutan facade capability             COMPLETE
   → CAP 7e72d79 (capability enum + permanent rejects)
-  → sisa 27 tuntas; berikutnya remediasi awareness (menunggu Takeda)
+  → sisa 27 tuntas
+Remediasi awareness test                   COMPLETE
+  → AWK 1f8b6b8 (test merah terakhir hilang)
+  → berikutnya WA1-lanjutan timer (menunggu Takeda)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -89,6 +92,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## Remediasi awareness milestone (2026-08-03)
+
+**Remediasi COMPLETE** — commit AWK `1f8b6b8`. Test lama mengasumsikan icon awareness di action panel — config `action_panel.icons` mengecualikannya (retired). Test di-update ke kontrak saat ini: `"awareness" not in _buttons` (dikunci), set_indicator no-op aman, `_toggle_awareness()` running → paused. TANPA perubahan production. Window integration 25 passed; regression 78 passed; frozen `094b696` OK.
 
 ## 27-lanjutan milestone (2026-08-03)
 
@@ -280,16 +287,17 @@ JARVIS.MD
 
 ## Next phase
 
-**Remediasi — awareness toggle pre-existing test** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
+**WA1-lanjutan — Timer Lanjutan** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval eksplisit)
 
 ### Goal
 
-Membersihkan satu-satunya test merah pre-existing.
+Melengkapi countdown timer dengan multi-timer + pause/resume.
 
 ### Scope
 
-- `test_window_integration.py::test_awareness_toggle_is_explicit_opt_in_and_lights_indicator` — `KeyError: 'awareness'`;
-- update test ke kontrak UI saat ini (awareness icon retired) atau hapus dengan alasan terdokumentasi.
+- multi-timer bersamaan (bounded count, label unik);
+- pause/resume + status list;
+- TTS announcement opsional; duplicate label clarify; rentang 7 hari.
 
 ### Guardrails
 
@@ -310,15 +318,15 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-27-lanjutan COMPLETE (2026-08-03): facade capability (CAP 7e72d79) —
-enum 8 capability + permanent rejects + per-capability policy, sisa 27
-tuntas. Worktree bersih kecuali 2 artifact (.curator_state.json,
+Remediasi awareness COMPLETE (2026-08-03): test merah terakhir hilang
+(AWK 1f8b6b8) — kontrak panel retired di-align, tanpa perubahan
+production. Worktree bersih kecuali 2 artifact (.curator_state.json,
 full_run.txt) — JANGAN di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif — Remediasi awareness pre-existing test DILARANG
-dimulai tanpa approval eksplisit Takeda. Tugas sesi: verifikasi posisi
-(read-only), audit worktree/HEAD/frozen, presentasikan status + opsi
-lanjutan, minta approval sebelum eksekusi apa pun. Jangan
+TIDAK ADA fase aktif — WA1-lanjutan (Timer Lanjutan) DILARANG dimulai
+tanpa approval eksplisit Takeda. Tugas sesi: verifikasi posisi (read-only),
+audit worktree/HEAD/frozen, presentasikan status + opsi lanjutan, minta
+approval sebelum eksekusi apa pun. Jangan
 git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
 provider/credential/live integration/authority/frozen.
 ```

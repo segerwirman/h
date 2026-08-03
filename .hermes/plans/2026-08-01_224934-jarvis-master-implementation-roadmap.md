@@ -497,6 +497,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Remediasi — awareness toggle pre-existing test** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
-Scope: `test_window_integration.py::test_awareness_toggle_is_explicit_opt_in_and_lights_indicator` — `KeyError: 'awareness'` sejak UI U1; update test ke kontrak saat ini (awareness icon retired) atau hapus dengan alasan terdokumentasi.
+**WA1-lanjutan — Timer Lanjutan** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval eksplisit).
+Scope: multi-timer bersamaan (bounded count, label unik), pause/resume + status list, TTS announcement opsional, duplicate label clarify, rentang 7 hari.
 Guardrail: tidak ada eksekusi tanpa approval eksplisit Takeda; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
