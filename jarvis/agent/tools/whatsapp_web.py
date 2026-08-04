@@ -5,13 +5,51 @@ import asyncio
 
 from pydantic import BaseModel, Field
 
+from jarvis.core import config, log
 from jarvis.agent.base import Tool, ToolResult
+
+_logger = log.get("agent.tools.whatsapp")
+
+# Fase 16 — mode gerbang konfirmasi panggilan.
+CALL_CONFIRM_MODES = ("always", "allowlisted_only", "never")
 
 
 def available() -> bool:
     from jarvis.integrations.whatsapp_web import available as web_available
 
     return web_available()
+
+
+def _call_confirmation_mode() -> str:
+    """Mode gerbang panggilan; nilai tak dikenal jatuh ke ``always``.
+
+    Gagal tertutup disengaja: salah ketik di config tidak boleh diam-diam
+    menghapus konfirmasi untuk aksi eksternal.
+    """
+    try:
+        value = config.get("whatsapp_web.call_confirmation", "always")
+    except Exception:                                        # noqa: BLE001
+        return "always"
+    value = str(value or "").strip().casefold()
+    return value if value in CALL_CONFIRM_MODES else "always"
+
+
+def _is_allowlisted(contact: str) -> bool:
+    """Apakah kontak ini sudah lolos allowlist manual?
+
+    Memakai resolver YANG SAMA dengan yang mengeksekusi panggilan. Gerbang yang
+    mencocokkan lebih ketat daripada eksekusi hanya akan bertanya untuk kontak
+    yang toh tetap ditelepon.
+    """
+    name = " ".join(str(contact or "").split())
+    if not name:
+        return False
+    try:
+        from jarvis.integrations.whatsapp_web import resolve_contact
+
+        return bool(resolve_contact(name).allowed)
+    except Exception:                                        # noqa: BLE001
+        return False
 
 
 def _start_bridge() -> dict:
@@ -196,20 +234,53 @@ class WhatsAppSendMessage(Tool):
 class WhatsAppCall(Tool):
     name = "whatsapp_call"
     description = (
-        "Mulai panggilan suara WhatsApp Web ke kontak allowlist. Selalu minta "
-        "konfirmasi. Bila virtual-audio bridge siap, Jarvis berbicara langsung."
+        "Mulai panggilan suara WhatsApp Web ke kontak allowlist. Kontak yang "
+        "sudah di-allowlist langsung ditelepon; selain itu minta konfirmasi. "
+        "Bila virtual-audio bridge siap, Jarvis berbicara langsung."
     )
     params_schema = _ContactParams
     requires_confirmation = True
+    wants_context = True
     timeout_s = 75
+
+    def needs_confirmation(self, **kwargs) -> bool:
+        """Fase 16 — gerbang per-panggilan, bukan penghapusan gerbang.
+
+        ``requires_confirmation`` tetap ``True``: mode ``always`` mengembalikan
+        perilaku lama utuh, dan setiap jalur yang tidak mengenal mode ini tetap
+        bertanya. Kontak allowlist sudah melewati satu gerbang manual ketika
+        dimasukkan ke ``data/whatsapp_contacts.json`` — bertanya lagi setiap
+        kali adalah gerbang kedua pada risiko yang sama.
+        """
+        mode = _call_confirmation_mode()
+        if mode == "never":
+            return False
+        if mode == "allowlisted_only":
+            return not _is_allowlisted(kwargs.get("contact", ""))
+        return True
 
     def confirmation_text(self, **kwargs) -> str:
         return (
             f"Telepon {kwargs.get('contact', '?')} melalui WhatsApp sekarang?"
         )
 
-    async def run(self, contact: str, **_) -> ToolResult:
+    async def run(self, contact: str, _adapter=None, **_) -> ToolResult:
         from jarvis.integrations.whatsapp_web import WhatsAppWebService
+
+        # Menghapus dialog boleh; menghapus kesempatan user MENYADARI bahwa
+        # panggilan sedang berjalan tidak. Diumumkan sebelum dial, sehingga
+        # tombol putus (whatsapp_hangup) masih satu langkah.
+        skipped = not self.needs_confirmation(contact=contact)
+        announcement = f"📞 Menelepon {contact} via WhatsApp" + (
+            " (kontak allowlist — tanpa konfirmasi)" if skipped else "")
+        if skipped:
+            _logger.info("whatsapp.call.auto_approved",
+                         mode=_call_confirmation_mode())
+        if _adapter is not None:
+            try:
+                await _adapter.progress(announcement)
+            except Exception:                                # noqa: BLE001
+                pass
 
         try:
             result = await asyncio.to_thread(

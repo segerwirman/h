@@ -132,3 +132,61 @@ def test_approve_local_unknown_or_expired_request_reports_fixed_status(monkeypat
         assert queue.approve_local(request.id) == "not_pending"  # one-shot
     finally:
         queue.close()
+
+
+def test_constructing_a_queue_does_not_leak_a_thread():
+    """Temuan S-14 — sweeper tidak boleh lahir sebelum ada yang perlu disapu.
+
+    `SetupQueue.__init__` dulu langsung menjalankan thread sweeper. Suite
+    membangun 21 queue dan hanya menutup sebagian, jadi belasan thread hidup
+    sampai proses berakhir, masing-masing bangun tiap <=0,5 detik. Itu yang
+    muncul sebagai `Windows fatal exception: access violation` di akhir suite
+    (S-13) dan sebagai test timing yang gagal acak.
+    """
+    import threading
+
+    from jarvis.agent import remote_setup
+
+    def _sweepers() -> int:
+        return sum(1 for t in threading.enumerate()
+                   if t.name == "remote-setup-sweeper")
+
+    before = _sweepers()
+    queues = [remote_setup.SetupQueue() for _ in range(5)]
+    try:
+        assert _sweepers() == before, (
+            "queue yang belum dipakai tidak boleh punya thread")
+    finally:
+        for queue in queues:
+            queue.close()
+
+
+def test_sweeper_starts_on_demand_and_stops_when_empty():
+    """Kadaluarsa otonom tetap jalan; threadnya saja yang tidak abadi."""
+    import threading
+    import time
+
+    from jarvis.agent import remote_setup
+
+    def _sweepers() -> int:
+        return sum(1 for t in threading.enumerate()
+                   if t.name == "remote-setup-sweeper")
+
+    before = _sweepers()
+    queue = remote_setup.SetupQueue(ttl_s=0.2)
+    try:
+        queue.stage(provider="google_oauth_client", requester="takeda",
+                    filename="client_secret.json",
+                    payload=_valid_oauth_installed())
+        assert _sweepers() == before + 1
+
+        deadline = time.monotonic() + 5.0
+        while queue._items and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert queue._items == {}          # kadaluarsa tanpa campur tangan
+
+        while _sweepers() > before and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert _sweepers() == before, "sweeper harus berhenti saat antrean kosong"
+    finally:
+        queue.close()

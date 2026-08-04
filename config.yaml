@@ -390,7 +390,17 @@ whatsapp_web:
   headless: false
   user_data_dir: ""              # empty → LOCALAPPDATA/JARVIS/WhatsAppWebProfile
   contacts_file: "data/whatsapp_contacts.json"
-  allow_direct_numbers: false    # nomor harus ada dalam contacts_file
+  allow_direct_numbers: false
+  # Fase 16 — gerbang konfirmasi panggilan keluar.
+  #   always           : tanya setiap kali (perilaku sebelum Fase 16)
+  #   allowlisted_only : kontak yang sudah lolos allowlist langsung ditelepon,
+  #                      selain itu tetap ditanya  ← default
+  #   never            : tidak pernah bertanya (allowlist TETAP berlaku — yang
+  #                      hilang hanya dialognya, bukan pembatasan kontaknya)
+  # Nilai tak dikenal jatuh ke `always`. Melonggarkan ini TIDAK melonggarkan
+  # `allow_direct_numbers` di atas: keduanya sekaligus berarti satu salah
+  # dengar STT bisa menelepon nomor acak.
+  call_confirmation: allowlisted_only    # nomor harus ada dalam contacts_file
   contact_fuzzy_threshold: 0.68  # toleransi nama hasil STT; tetap hanya allowlist
   navigation_timeout_s: 45
   action_timeout_s: 20

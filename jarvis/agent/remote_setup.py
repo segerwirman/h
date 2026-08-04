@@ -141,24 +141,45 @@ class SetupQueue:
         self._stop = threading.Event()
         interval = max(0.05, min(1.0, self._ttl_s / 2))
         self._sweep_interval = interval   # Phase 24: dipakai close() join
-        self._sweeper = threading.Thread(
-            target=self._sweep_loop, name="remote-setup-sweeper", daemon=True,
-            kwargs={"interval": interval},
-        )
-        self._sweeper.start()
+        # S-14: sweeper TIDAK dijalankan di sini. Antrean yang belum pernah
+        # dipakai tidak punya apa pun untuk disapu, tetapi threadnya dulu hidup
+        # sampai proses berakhir. Suite membangun 21 queue dan menutup
+        # sebagian, sehingga belasan thread bangun tiap <=0,5 detik hingga
+        # akhir — muncul sebagai crash access violation di ujung suite (S-13)
+        # dan sebagai test timing yang gagal acak.
+        self._sweeper: threading.Thread | None = None
 
     def close(self) -> None:
         """Stop the autonomous sweeper dan join thread (bounded, Phase 24)."""
         self._stop.set()
-        sweeper = self._sweeper
+        with self._lock:
+            sweeper = self._sweeper
         if (sweeper is not None and sweeper.is_alive()
                 and sweeper is not threading.current_thread()):
             sweeper.join(timeout=self._sweep_interval + 1.0)
+
+    def _ensure_sweeper(self) -> None:
+        """Nyalakan sweeper saat ada yang perlu kedaluwarsa. Dipanggil dengan
+        ``self._lock`` sudah dipegang."""
+        if self._stop.is_set():
+            return
+        if self._sweeper is not None and self._sweeper.is_alive():
+            return
+        self._sweeper = threading.Thread(
+            target=self._sweep_loop, name="remote-setup-sweeper", daemon=True,
+            kwargs={"interval": self._sweep_interval},
+        )
+        self._sweeper.start()
 
     def _sweep_loop(self, *, interval: float) -> None:
         while not self._stop.wait(interval):
             with self._lock:
                 self._prune()
+                if not self._items:
+                    # Tidak ada lagi yang bisa kedaluwarsa. Berhenti; ``stage``
+                    # berikutnya menyalakannya lagi.
+                    self._sweeper = None
+                    return
 
     def stage(self, *, provider: str, requester: str, filename: str,
               payload: bytes) -> SetupRequest:
@@ -181,6 +202,7 @@ class SetupQueue:
         with self._lock:
             self._prune()
             self._items[request.id] = _Staged(request=request, cipher=cipher)
+            self._ensure_sweeper()
         _logger.info("remote_setup.staged", provider=request.provider,
                      requester=request.requester, hash=request.hash_suffix)
         return request

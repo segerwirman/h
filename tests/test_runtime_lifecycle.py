@@ -6,6 +6,7 @@ belum men-join thread-nya.
 """
 from __future__ import annotations
 
+import json
 import time
 
 _CANONICAL_COMPONENTS = (
@@ -67,9 +68,19 @@ def test_cron_stop_joins_scheduler_thread():
 def test_setup_queue_close_joins_sweeper_thread():
     from jarvis.agent.remote_setup import SetupQueue
 
-    queue = SetupQueue(ttl_s=0.2)   # interval sweeper = 0.1s
+    queue = SetupQueue(ttl_s=30)    # TTL panjang: sweeper tidak berhenti sendiri
+    # S-14 — sweeper kini lahir saat ada yang perlu kedaluwarsa, bukan saat
+    # konstruksi. Yang dijaga test ini tetap sama: close() mem-JOIN, bukan
+    # sekadar men-set event.
+    queue.stage(provider="google_oauth_client", requester="takeda",
+                filename="client_secret.json",
+                payload=json.dumps({"installed": {
+                    "client_id": "abc.apps.googleusercontent.com",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "client_secret": "SECRET-VALUE-DO-NOT-LEAK",
+                }}).encode("utf-8"))
     sweeper = queue._sweeper
-    assert sweeper.is_alive()
+    assert sweeper is not None and sweeper.is_alive()
     queue.close()
     # RED: close() hanya set event tanpa join -> sweeper masih menunggu interval
     assert not sweeper.is_alive()

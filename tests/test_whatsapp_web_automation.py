@@ -85,7 +85,12 @@ def test_direct_number_is_default_deny(contact_file, monkeypatch):
         whatsapp_web.resolve_contact("628111111111")
 
 
-def test_tools_require_confirmation_for_external_actions():
+def test_tools_require_confirmation_for_external_actions(contact_file,
+                                                        monkeypatch):
+    """Fase 16 membuat gerbang panggilan bergantung mode, jadi mode dipilih
+    eksplisit di sini. Tanpa itu test ini lulus hanya karena "Ibu" kebetulan
+    tidak ada di allowlist nyata — lulus tanpa menguji apa pun."""
+    from jarvis.agent.tools import whatsapp_web as tool_mod
     from jarvis.agent.tools.whatsapp_web import (
         WhatsAppAnswer,
         WhatsAppCall,
@@ -93,12 +98,29 @@ def test_tools_require_confirmation_for_external_actions():
         WhatsAppSendMessage,
     )
 
+    real = tool_mod.config
+    monkeypatch.setattr(tool_mod, "config", type("_S", (), {
+        "get": staticmethod(
+            lambda path, default=None:
+            "always" if path == "whatsapp_web.call_confirmation"
+            else real.get(path, default)),
+    })())
+
     assert WhatsAppCall().needs_confirmation(contact="Ibu")
     assert WhatsAppAnswer().needs_confirmation()
     assert WhatsAppSendMessage().needs_confirmation(
         contact="Ibu", message="Halo"
     )
     assert WhatsAppHangup().needs_confirmation() is False
+
+
+def test_allowlisted_contact_skips_confirmation_by_default(contact_file):
+    """Perilaku default Fase 16, diuji terhadap allowlist yang eksplisit."""
+    from jarvis.agent.tools.whatsapp_web import WhatsAppCall
+
+    assert WhatsAppCall().needs_confirmation(contact="Ibu") is False
+    assert WhatsAppCall().needs_confirmation(
+        contact="Belum Diizinkan") is True
 
 
 def test_whatsapp_tool_shortlist_is_bounded(monkeypatch):

@@ -3,9 +3,9 @@
 **Dibuat:** 2026-08-04 · **Diperbarui:** 2026-08-05 (audit ulang menyeluruh — Siklus 2 ditambahkan)
 **Baseline:** HEAD `39cae8c` · FROZEN `094b696` (10 file, integritas OK)
 **Status dokumen:** Fase 0-12 SELESAI (12 = opsi (b), tanpa perubahan frozen). T1 dimitigasi — sisa tindakan di sisi endpoint.
-**SIKLUS 2 (2026-08-05): Fase 13-15 SELESAI. Fase 16-19 belum dikerjakan.** Lihat
+**SIKLUS 2 (2026-08-05): Fase 13-16 SELESAI. Fase 17-19 belum dikerjakan.** Lihat
 bagian [Siklus 2](#siklus-2--audit-ulang-2026-08-05) di akhir dokumen.
-**Suite:** `pytest tests/ -q` → **2190 lulus, 0 gagal** (lihat S-13 untuk crash native intermiten) · `ruff` bersih ·
+**Suite:** `pytest tests/ -q` → **2207 lulus, 0 gagal** · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
 FROZEN OK (10 file, baseline `094b696`).
 
 ---
@@ -879,7 +879,64 @@ dan nilainya menunjuk provider yang terdaftar.
 
 ---
 
-### S-13 — Crash native intermiten di suite penuh — TERBUKA
+### S-15 — Laporan ucapan terpotong di tengah kata — TERBUKA
+
+`test_typed_t2_speaks_ack_then_concrete_report` gagal satu kali dalam enam run
+suite penuh. Teks yang diucapkan terpotong pada 44 karakter:
+
+```
+'Video "Deddy Corbuzier Episode 123" sudah dip'
+```
+
+Potongan **di tengah kata** — jadi ini truncation karakter, bukan batas kalimat
+atau timing. `speech_limit()` seharusnya 900 dengan lantai 120
+([interaction.py:30](jarvis/agent/interaction.py#L30)), sehingga 44 tidak
+mungkin datang dari config yang sah.
+
+Lima run berkas itu sendirian: bersih. Pasangan dengan
+`test_phase3_model_routing` (yang memanggil `config.reload()`) dan dengan
+`test_phase3_conversation_delivery`: bersih. Pencemarnya belum ditemukan.
+
+**Belum diperbaiki dan belum dimengerti.** Dicatat apa adanya. Bila kambuh,
+bisect biner atas berkas yang berjalan lebih dulu adalah cara yang sudah
+terbukti untuk kelas ini (lihat T7).
+
+---
+
+### S-14 — Thread sweeper bocor — penyebab S-13 — SELESAI ✅
+
+`SetupQueue.__init__` menjalankan thread sweeper **saat konstruksi**. Suite
+membangun **21** queue dan hanya menutup 3, sehingga ~18 thread hidup sampai
+proses berakhir, masing-masing bangun tiap ≤0,5 detik.
+
+Ditemukan dengan menangkap traceback crash-nya, bukan dengan menebak:
+
+```
+Windows fatal exception: access violation
+Thread 0x00008c74 ... jarvisgent
+emote_setup.py", line 159 in _sweep_loop
+Thread 0x00006d00 ... jarvisgent
+emote_setup.py", line 159 in _sweep_loop
+Thread 0x00000bc4 ... jarvisgent
+emote_setup.py", line 159 in _sweep_loop
+   … belasan lagi, semuanya sama
+```
+
+Diperbaiki: sweeper lahir pada `stage()` pertama dan **berhenti sendiri saat
+antrean kosong**; `stage()` berikutnya menyalakannya lagi. Queue yang tidak
+pernah dipakai kini berbiaya nol thread — dan itulah persis setiap test yang
+membocorkannya. Kedaluwarsa otonom tetap berjalan, dikunci test lama yang tidak
+berubah.
+
+Setelah perbaikan: **6 run suite penuh berturut-turut, nol crash**.
+
+Ini juga kandidat kuat penyebab kegagalan timing acak (kelas T8): belasan
+thread yang bangun terus-menerus membuat scheduler Windows melewatkan tenggat
+yang longgar sekalipun.
+
+---
+
+### S-13 — Crash native intermiten di suite penuh — SELESAI ✅ (lihat S-14)
 
 Dua kali dalam belasan run suite penuh selama Fase 14:
 
@@ -896,11 +953,14 @@ ada di pustaka native yang dipakai suite: Playwright/Chromium, sounddevice,
 torch/onnx, mediapipe — kemungkinan besar pada shutdown interpreter dengan
 thread native masih hidup.
 
-**Tidak diklaim selesai dan tidak diklaim tidak berbahaya.** Dicatat karena
-mengubur kegagalan yang tidak dimengerti persis sama dengan penyakit S-1.
-Langkah berikutnya bila kambuh: jalankan dengan `faulthandler` aktif dan
-`-p no:cacheprovider`, lalu persempit dengan menonaktifkan modul native satu
-per satu.
+**Terjawab saat Fase 16.** Dugaan awal (pustaka native: Playwright, sounddevice,
+torch) **salah**. Menangkap traceback lengkapnya menunjukkan belasan thread
+Python yang bocor dari `SetupQueue` — bukan pustaka native sama sekali. Lihat
+**S-14**.
+
+Pelajarannya: menebak penyebab dari "ini crash tingkat C, jadi pasti pustaka
+native" akan menyesatkan penyelidikan sepenuhnya. Yang menyelesaikannya adalah
+menjalankan suite berulang sampai crash tertangkap beserta jejaknya.
 
 ---
 
@@ -1035,7 +1095,7 @@ diverifikasi.
 | 13 | Kejujuran hasil panggilan (+ 13.0 backfill vektor memori) | S-1, S-9, S-10, S-11 | — | ✅ **SELESAI** 2026-08-05 |
 | 14 | Kontrak bukti untuk aksi eksternal | S-1, S-12 | 13 | ✅ **SELESAI** 2026-08-05 |
 | 15 | Konfirmasi bisa dijawab dengan suara | S-2 | 13 | ✅ **SELESAI** 2026-08-05 |
-| 16 | Eksekusi panggilan tanpa gerbang ganda | S-2 | 14, 15 | ⬜ |
+| 16 | Eksekusi panggilan tanpa gerbang ganda | S-2 | 14, 15 | ✅ **SELESAI** 2026-08-05 |
 | 17 | Batas iterasi: jujur, bisa diatur, bisa dilanjut | S-5 | 14 | ⬜ |
 | 18 | Sumber pencarian terbuka di browser | S-3 | — | ⬜ |
 | 19 | Barge-in adaptif tahan noise | S-4 | — | ⬜ |
@@ -1360,6 +1420,56 @@ bisa dijawab dengan suara (15).
 **Test:** kontak allowlist → nol `adapter.ask`. Kontak di luar allowlist →
 tetap ditanya. Mode `always` → perilaku lama utuh.
 
+##### Hasil Fase 16 — SELESAI 2026-08-05
+
+`tests/test_whatsapp_call_gate.py` (14 test) dibuktikan merah lebih dulu.
+
+Permintaan Takeda dipenuhi: **kontak allowlist langsung ditelepon, tanpa
+dialog**. Kontak itu sudah melewati satu gerbang manual ketika dimasukkan ke
+`data/whatsapp_contacts.json`; bertanya lagi setiap kali adalah gerbang kedua
+pada risiko yang sama.
+
+Perilaku nyata terhadap allowlist sungguhan:
+
+```
+mode = allowlisted_only
+  needs_confirmation('Honbrew')     = False
+  needs_confirmation('honbru')      = False   ← salah dengar STT, resolver sama
+  needs_confirmation('Ibu')         = True
+  needs_confirmation('Orang Asing') = True
+  needs_confirmation('')            = True
+```
+
+Yang dijaga:
+
+* `requires_confirmation` **tidak dihapus** — mode `always` mengembalikan
+  perilaku lama utuh, dan jalur mana pun yang tidak mengenal mode ini tetap
+  bertanya.
+* Nilai config tak dikenal (`"longgar"`, kosong, angka) **gagal tertutup** ke
+  `always`. Salah ketik tidak boleh diam-diam menghapus konfirmasi.
+* Gerbang memakai `resolve_contact` — **resolver yang sama** dengan yang
+  mengeksekusi panggilan. Gerbang yang lebih ketat daripada eksekusi hanya akan
+  bertanya untuk kontak yang toh tetap ditelepon.
+* `whatsapp_send_message` **tidak dilonggarkan** pada mode apa pun: isi pesan
+  tidak bisa ditarik kembali dan tidak terikat allowlist sebagaimana identitas
+  kontak.
+* `allow_direct_numbers` tetap `false`. Melonggarkan konfirmasi **dan** nomor
+  bebas sekaligus berarti satu salah dengar STT bisa menelepon nomor acak.
+* `whatsapp_answer` sengaja **di luar cakupan** — tetap bertanya sampai
+  diputuskan terpisah. Dikunci test agar keputusannya eksplisit, bukan
+  terlupakan.
+
+**Jejak yang terlihat.** Menghapus dialog boleh; menghapus kesempatan Takeda
+menyadari panggilan sedang berjalan tidak. Sebelum dial, tool mengumumkan
+`📞 Menelepon <kontak> via WhatsApp (kontak allowlist — tanpa konfirmasi)`
+ke panel lewat `adapter.progress`, plus log `whatsapp.call.auto_approved`.
+Tombol putus (`whatsapp_hangup`) tetap satu langkah.
+
+**Efek samping yang ditemukan:** `test_tools_require_confirmation_for_external_actions`
+lulus hanya karena "Ibu" kebetulan tidak ada di allowlist nyata — lulus tanpa
+menguji apa pun. Dibuat eksplisit: mode dipilih sengaja, dan ditambah test
+kedua untuk perilaku default.
+
 ---
 
 ### Fase 17 — Batas iterasi: jujur, bisa diatur, bisa dilanjut
@@ -1484,7 +1594,7 @@ Sama dengan siklus lalu, ditegaskan ulang karena temuan S-1 dan S-5:
 
 - [ ] 157 memori tanpa vektor terisi ulang; pencarian semantik menjangkaunya lagi *(13.0)*
 - [ ] Panggilan yang gagal dilaporkan **gagal** — klaim sukses mustahil tanpa bukti tool *(13, 14)*
-- [ ] "telepon Honbrew" lewat suara dieksekusi tanpa pindah ke keyboard *(15, 16)*
+- [x] "telepon Honbrew" lewat suara dieksekusi tanpa pindah ke keyboard *(15, 16)*
 - [x] Konfirmasi yang tersisa bisa dijawab dengan suara *(15)*
 - [ ] Batas iterasi memberi hasil parsial dan tidak menjanjikan resume yang tidak ada *(17)*
 - [ ] Nilai iterasi di Settings adalah nilai yang benar-benar dipakai *(17)*
