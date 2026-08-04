@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: a922097 feat(core): remote actor identity binding with explicit payload restrictions (ABD)
-Last updated: 2026-08-03 — 28-lanjutan COMPLETE (actor binding)
+HEAD: 3624b57 fix(live): use sounddevice device tuple for tone loopback (ALH2)
+Last updated: 2026-08-03 — WA3-live COMPLETE (audio live acceptance, LIVE-PROVEN)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 90 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON + CST + CAP + AWK + TIM3 + DLG + DUR + CAL3 + ABD a922097)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 92 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON + CST + CAP + AWK + TIM3 + DLG + DUR + CAL3 + ABD + ALH 74002ac + ALH2 3624b57)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: WA3-live — Audio Live Acceptance
+Status: COMPLETE (LIVE-PROVEN loopback hardware)
+Completed: 2026-08-03 (ALH 74002ac + ALH2 3624b57; frozen 094b696 OK)
+```
 
 ```text
 Phase: 28-lanjutan — Actor Binding
@@ -362,22 +368,22 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: 28-lanjutan — Actor Binding
-Status: COMPLETE — 2026-08-03 (ABD a922097)
-Priority: actor identity, bind proposal, payload guard
+Phase: WA3-live — Audio Live Acceptance
+Status: COMPLETE — 2026-08-03 (ALH 74002ac + ALH2 3624b57)
+Priority: tone loopback nyata, live-proven
 ```
 
 ### Outcome
 
-- `jarvis/core/actor_binding.py` (baru): **`ActorBinding`** — register actor (bounded ≤64/≤40, non-secret; duplicate ditolak); `bind_proposal` **one-shot** (actor harus terdaftar); `bound_actor`/`actor_owns` (verifikasi approval side); `known_actors()` metadata-only.
-- **`check_payload()` — larangan eksplisit remote**: `uia_ref/uia_reference/transcript/audio/path/screenshot/coordinate/raw_html/cookie/header/ocr` → `actor_payload_forbidden` (10 jenis diuji); metadata aman tetap OK. Kontrak statis tanpa provider/network/file.
-- TDD: RED 6 failed → GREEN 6 passed; regression 41 passed (actor + bridge + capability + review + durable + ring); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 14 passed; approval Takeda.
+- `jarvis/live/audio_live_harness.py` (baru; frozen STT/TTS/voice_listener tidak disentuh): `enumerate_devices()`/`find_loopback_pair()` (deteksi pasangan CABLE; tanpa cable → None jujur); `rms_of()`; `tone_loopback()` (sine → `sd.playrec` device=(capture, playback) → RMS ≥ 0.01); `live_proof()` (inject capture/playback NYATA ke CallAudioProof).
+- **LIVE-PROVEN (run nyata, approval live Takeda)**: tone 440Hz → CABLE Input → capture CABLE Output — `{ok: true, rms: 0.3366, samples: 144000, duration_s: 3}`; live_proof `{status: done, audio_exercised: true, samples_captured: 144000, playback_ok: true}` — label `live-proven` pertama di repo.
+- TDD: RED 6 failed → GREEN 6 passed (koreksi: FakeSD wait + _usable_devices 6 + fake loopback tone); regression 63 passed; ALH2 fix (playrec device tuple — TypeError nyata saat live run); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 15 passed; dua-approval (commit + live run).
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: Live lane (WA3 audio acceptance / WA9 rollout live / WA6 write path) — butuh approval live + hardware
+Phase: Live lane lanjutan (WA9 rollout live / WA6 write path / WA0 hardware) — butuh approval live
 Status: MENUNGGU KEPUTUSAN TAKEDA
 Guardrail: jangan mulai fase baru tanpa approval eksplisit Takeda.
 ```
@@ -415,7 +421,8 @@ WA4-lanjutan dialogue lanjutan ✅ (DLG 2443a40, 2026-08-03)
 WA5-lanjutan durable memory/recall ✅ (DUR 778f89f, 2026-08-03)
 WA6-lanjutan calendar review lanjutan ✅ (CAL3 ff99300, 2026-08-03)
 28-lanjutan actor binding ✅ (ABD a922097, 2026-08-03)
-→ live lane (MENUNGGU keputusan Takeda — butuh hardware/approval live)
+WA3-live audio acceptance ✅ LIVE-PROVEN (ALH 74002ac + ALH2 3624b57, 2026-08-03)
+→ live lane lanjutan (MENUNGGU keputusan Takeda)
 ```
 
 ## Mandatory completion protocol
@@ -447,17 +454,17 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: a922097 (ABD). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: 3624b57 (ALH2). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-28-lanjutan COMPLETE (2026-08-03): actor binding — register + bind
-one-shot + actor_owns + payload guard (10 jenis terlarang). RED 6 →
-GREEN 6; regression 41 passed.
+WA3-live COMPLETE (2026-08-03): audio live acceptance — tone loopback
+NYATA via VB-Audio Virtual Cable: RMS 0.337, 144000 samples,
+audio_exercised true. LIVE-PROVEN pertama di repo. ALH + ALH2 (fix
+playrec device tuple).
 
-Fase aktif: TIDAK ADA. Live lane (WA3 audio acceptance / WA9 rollout
-live / WA6 write path) DILARANG dimulai tanpa approval live + hardware.
-SEMUA fase offline TUNTAS.
+Fase aktif: TIDAK ADA. Live lane lanjutan (WA9 rollout live / WA6 write
+path / WA0 hardware) DILARANG dimulai tanpa approval live eksplisit.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,

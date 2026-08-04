@@ -307,7 +307,7 @@ Guardrail: ...
 - `jarvis/core/call_audio.py`: `CallAudioProof` — start hanya untuk session `active` (approved lokal WA2); stop via session cancel/end; inbound+outbound via injected `capture`/`playback` (fixture-only; STT/TTS/voice_listener FROZEN tidak disentuh);
 - `admit_duration` int 1–600s; deadline monotonic; `stop()` idempotent; `result()` metadata-only + `audio_exercised` jujur (tanpa fungsi audio → False); bus `call.audio.started/done` ringan.
 
-**Belum dikerjakan (live acceptance):** hardware nyata (two-cable bridge, virtual cables) — live proof memerlukan sesi acceptance manual terpisah; `live-proven` tetap tidak established.
+**Live acceptance:** ✅ LIVE-PROVEN (ALH `74002ac` + ALH2 `3624b57`, 2026-08-03) — tone loopback nyata via VB-Audio Virtual Cable: `{ok: true, rms: 0.3366, samples: 144000, duration_s: 3}`; live_proof `{audio_exercised: true, playback_ok: true, samples_captured: 144000}`; frozen STT/TTS/voice_listener tidak disentuh.
 
 **Acceptance (harness):** dua arah audio path teruji via fixture; bounded duration; tanpa remote control/authority baru — TERPENUHI. RED 9 failed → GREEN 9 passed; regression 35 passed; frozen `094b696` OK.
 
@@ -497,6 +497,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Live lane** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval live + hardware).
-Scope: WA3 audio live acceptance (two-cable bridge), WA0 call hardware checks, WA9 kill switch + rollout rings, WA6 write path `gcal_create_proposed`.
+**Live lane lanjutan — WA9 rollout live / WA6 write path / WA0 hardware** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval live).
+Scope: WA9 kill switch + visible hangup + rollout rings; WA6 write path `gcal_create_proposed`; WA0 call hardware checks. WA3-live ✅ LIVE-PROVEN.
 Guardrail: tidak ada eksekusi tanpa approval eksplisit Takeda; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.
