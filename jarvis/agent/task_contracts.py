@@ -76,6 +76,7 @@ class YouTubeLatestPlayContract:
     search_query: str
     search_url: str
     allowed_tools: tuple[str, ...] = YOUTUBE_ALLOWED_TOOLS
+    failure_label: str = "Verifikasi alur YouTube gagal"
 
     @property
     def execution_prompt(self) -> str:
@@ -116,13 +117,116 @@ class YouTubeLatestPlayContract:
             -> ContractValidation:
         return validate_youtube_latest_play(self, evidence)
 
+    def success_text(self, _evidence=()) -> str:
+        """Kalimat sukses milik kontrak ini sendiri.
+
+        Dulu di-hardcode di ``dispatch._verified_success``, sehingga kontrak
+        kedua apa pun akan mewarisi kalimat YouTube.
+        """
+        from jarvis.agent.interaction import detect_language
+
+        channel = str(self.expected_channel or "channel target").strip()
+        if detect_language(self.original_task) == "en":
+            return f"The latest video from {channel} is now playing."
+        return f"Video terbaru dari channel {channel} sudah diputar."
+
+
+EXTERNAL_CALL_ALLOWED_TOOLS: tuple[str, ...] = (
+    "whatsapp_open",
+    "whatsapp_status",
+    "whatsapp_list_contacts",
+    "whatsapp_call",
+    "whatsapp_hangup",
+    "clarify",
+)
+
+# Hanya keadaan yang benar-benar dibuktikan Fase 13 di halaman. ``calling``
+# sengaja TIDAK ada: itu status lama yang lahir dari klik semata.
+_PROVEN_CALL_STATES = frozenset({"ringing", "in_call"})
+
+
+@dataclass(frozen=True)
+class ExternalCallContract:
+    """Panggilan keluar hanya boleh dinyatakan berhasil dari hasil tool.
+
+    Fase 13 membuat ``whatsapp_call`` jujur. Yang diucapkan ke user tetap
+    kalimat penutup model, jadi tanpa kontrak ini model masih bisa mengarang
+    "sudah saya telepon" tanpa pernah memanggil toolnya — persis keluhan yang
+    memulai siklus ini.
+    """
+
+    original_task: str
+    allowed_tools: tuple[str, ...] = EXTERNAL_CALL_ALLOWED_TOOLS
+    failure_label: str = "Verifikasi panggilan gagal"
+
+    @property
+    def execution_prompt(self) -> str:
+        return (
+            "[KONTRAK PANGGILAN_KELUAR]\n"
+            f"Permintaan asli: {self.original_task}\n\n"
+            "Langkah yang dapat dibuktikan:\n"
+            "1. whatsapp_call dengan nama kontak persis dari allowlist. Bila "
+            "nama tidak jelas atau tidak ada di allowlist, panggil clarify — "
+            "jangan menebak nomor atau kontak.\n"
+            "2. Baca hasil toolnya. Panggilan dianggap berjalan HANYA bila "
+            "hasil itu menyatakan state 'ringing' atau 'in_call'.\n"
+            "3. Bila tool gagal, konfirmasi ditolak, atau keadaan panggilan "
+            "tidak diketahui — laporkan apa adanya beserta sebabnya. Jangan "
+            "menyatakan sudah menelepon.\n"
+            "4. Sebutkan juga apakah Jarvis bisa bicara di panggilan itu; "
+            "bridge audio yang mati bukan berarti panggilannya gagal."
+        )
+
+    def _call_events(self, events: list[ToolEvidence]) -> list[ToolEvidence]:
+        return [event for event in events if event.tool == "whatsapp_call"]
+
+    def validate(self, evidence: Iterable[ToolEvidence | Mapping[str, Any]]) \
+            -> ContractValidation:
+        events = [_coerce_evidence(item) for item in evidence]
+        calls = self._call_events(events)
+        if not calls:
+            return ContractValidation(False, (
+                "tool whatsapp_call tidak pernah dijalankan — tidak ada "
+                "panggilan yang terjadi",))
+        for event in reversed(calls):
+            if not _evidence_ok(event):
+                continue
+            state = _result_mapping(event.result)
+            if (str(state.get("state", "")) in _PROVEN_CALL_STATES
+                    and state.get("proven") is True):
+                return ContractValidation(True)
+        return ContractValidation(False, (
+            "whatsapp_call tidak menghasilkan keadaan panggilan yang "
+            "terbukti (ringing/in_call)",))
+
+    def success_text(self,
+                     evidence: Iterable[ToolEvidence | Mapping[str, Any]]
+                     ) -> str:
+        events = [_coerce_evidence(item) for item in evidence]
+        for event in reversed(self._call_events(events)):
+            state = _result_mapping(event.result)
+            if str(state.get("state", "")) not in _PROVEN_CALL_STATES:
+                continue
+            contact = str(state.get("contact")
+                          or event.args.get("contact") or "kontak").strip()
+            connected = str(state.get("state")) == "in_call"
+            audio = state.get("audio_bridge")
+            speaking = bool(isinstance(audio, Mapping) and audio.get("active"))
+            line = (f"Panggilan WhatsApp ke {contact} "
+                    + ("tersambung." if connected else "berdering."))
+            return line + (" Saya bisa bicara di panggilan ini."
+                           if speaking
+                           else " Saya tidak bisa bicara di panggilan ini — "
+                                "silakan bicara sendiri.")
+        return "Panggilan WhatsApp berjalan."
+
 
 @dataclass(frozen=True)
 class PreparedAgentTask:
     original_task: str
     execution_prompt: str
     allowed_tools: tuple[str, ...] | None = None
-    contract: YouTubeLatestPlayContract | None = None
+    contract: "YouTubeLatestPlayContract | ExternalCallContract | None" = None
 
     @property
     def contracted(self) -> bool:
@@ -190,17 +294,69 @@ def detect_youtube_latest_play(task: str) \
     )
 
 
+def detect_external_call(task: str) -> ExternalCallContract | None:
+    """Deteksi permintaan MEMULAI panggilan keluar.
+
+    Polanya dimiliki ``jarvis.agent.router`` supaya seluruh pemahaman niat
+    WhatsApp tinggal di satu tempat; di sini hanya dipakai. Subset "mulai
+    panggilan" dipakai, bukan pola WhatsApp yang luas — kirim pesan, jawab, dan
+    akhiri panggilan tidak pernah memanggil ``whatsapp_call``, jadi memberi
+    mereka kontrak ini akan melaporkan pekerjaan yang berhasil sebagai gagal.
+    """
+    if not isinstance(task, str) or not task.strip():
+        return None
+    from jarvis.agent.router import BARE_START_CALL_RE, WHATSAPP_START_CALL_RE
+
+    if WHATSAPP_START_CALL_RE.search(task):
+        # Menyebut WhatsApp sudah menyatakan transportnya. Kontak yang salah
+        # dengar adalah urusan resolver dan clarify, bukan alasan melepas
+        # kontrak bukti.
+        return ExternalCallContract(original_task=task.strip())
+
+    bare = BARE_START_CALL_RE.match(task.strip())
+    if bare is None or not _is_allowlisted_contact(bare.group("target")):
+        return None
+    return ExternalCallContract(original_task=task.strip())
+
+
+def _is_allowlisted_contact(target: str) -> bool:
+    """Apakah "panggil X" menunjuk kontak WhatsApp yang benar-benar diizinkan?
+
+    Jarvis hanya punya satu transport panggilan, jadi bentuk telanjang menggoda
+    untuk selalu dianggap panggilan WhatsApp. Tetapi "panggil taksi online" dan
+    "telepon customer service bank" juga cocok polanya — dan kontrak ini
+    mempersempit tool ke WhatsApp saja, sehingga tugas yang wajar dijamin
+    gagal. Resolver allowlist adalah pembeda yang jujur: bila targetnya bukan
+    kontak, ini memang bukan panggilan WhatsApp.
+    """
+    name = " ".join(str(target or "").split())
+    if not name:
+        return False
+    try:
+        from jarvis.integrations.whatsapp_web import resolve_contact
+
+        return bool(resolve_contact(name).allowed)
+    except Exception:                                        # noqa: BLE001
+        # Kontak tak dikenal, allowlist kosong, atau integrasi tidak tersedia.
+        return False
+
+
+# Urutan berarti: kontrak yang lebih spesifik diperiksa lebih dulu.
+_DETECTORS = (detect_youtube_latest_play, detect_external_call)
+
+
 def prepare_task(task: str) -> PreparedAgentTask:
     """Siapkan prompt dan allowlist khusus bila task cocok dengan kontrak."""
-    contract = detect_youtube_latest_play(task)
-    if contract is None:
-        return PreparedAgentTask(original_task=task, execution_prompt=task)
-    return PreparedAgentTask(
-        original_task=task,
-        execution_prompt=contract.execution_prompt,
-        allowed_tools=contract.allowed_tools,
-        contract=contract,
-    )
+    for detect in _DETECTORS:
+        contract = detect(task)
+        if contract is not None:
+            return PreparedAgentTask(
+                original_task=task,
+                execution_prompt=contract.execution_prompt,
+                allowed_tools=contract.allowed_tools,
+                contract=contract,
+            )
+    return PreparedAgentTask(original_task=task, execution_prompt=task)
 
 
 # Nama eksplisit agar seam pemanggil tidak perlu bergantung pada nama generik.

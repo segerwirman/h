@@ -220,6 +220,15 @@ def _log_call(name: str, args: dict, res: ToolResult, elapsed_s: float,
             session.record_tool(name, safe_args, session_result, elapsed_s)
         except Exception:                                    # noqa: BLE001
             pass
+        # Kanal bukti kontrak (S-12) — hasil UTUH, terpisah dari audit di atas.
+        # Tanpa ini validator kontrak hanya pernah melihat content=None dan
+        # tidak ada kontrak yang bisa lolos, seberapa benar pun pekerjaannya.
+        try:
+            record_evidence = getattr(session, "record_evidence", None)
+            if callable(record_evidence):
+                record_evidence(name, safe_args, res)
+        except Exception:                                    # noqa: BLE001
+            pass
     try:
         record = {
             "ts": time.time(), "tool": name,

@@ -3,9 +3,9 @@
 **Dibuat:** 2026-08-04 · **Diperbarui:** 2026-08-05 (audit ulang menyeluruh — Siklus 2 ditambahkan)
 **Baseline:** HEAD `39cae8c` · FROZEN `094b696` (10 file, integritas OK)
 **Status dokumen:** Fase 0-12 SELESAI (12 = opsi (b), tanpa perubahan frozen). T1 dimitigasi — sisa tindakan di sisi endpoint.
-**SIKLUS 2 (2026-08-05): Fase 13 SELESAI. Fase 14-19 belum dikerjakan.** Lihat
+**SIKLUS 2 (2026-08-05): Fase 13-14 SELESAI. Fase 15-19 belum dikerjakan.** Lihat
 bagian [Siklus 2](#siklus-2--audit-ulang-2026-08-05) di akhir dokumen.
-**Suite:** `pytest tests/ -q` → **2119 lulus, 0 gagal** · `ruff` bersih ·
+**Suite:** `pytest tests/ -q` → **2150 lulus, 0 gagal** (8 run berturut bersih; lihat S-13) · `ruff` bersih ·
 FROZEN OK (10 file, baseline `094b696`).
 
 ---
@@ -879,6 +879,76 @@ dan nilainya menunjuk provider yang terdaftar.
 
 ---
 
+### S-13 — Crash native intermiten di suite penuh — TERBUKA
+
+Dua kali dalam belasan run suite penuh selama Fase 14:
+
+```
+Windows fatal exception: access violation
+```
+
+dan satu kali satu test gagal tanpa pola. **Delapan run berturut-turut
+sesudahnya bersih**, jadi tidak bisa direproduksi sesuai permintaan.
+
+Access violation adalah crash tingkat C, bukan Python; seluruh perubahan Fase
+13-14 murni Python (kontrak, session, registry, selector). Kandidat penyebab
+ada di pustaka native yang dipakai suite: Playwright/Chromium, sounddevice,
+torch/onnx, mediapipe — kemungkinan besar pada shutdown interpreter dengan
+thread native masih hidup.
+
+**Tidak diklaim selesai dan tidak diklaim tidak berbahaya.** Dicatat karena
+mengubur kegagalan yang tidak dimengerti persis sama dengan penyakit S-1.
+Langkah berikutnya bila kambuh: jalankan dengan `faulthandler` aktif dan
+`-p no:cacheprovider`, lalu persempit dengan menonaktifkan modul native satu
+per satu.
+
+---
+
+### S-12 — Seam bukti kontrak tidak pernah menerima hasil tool
+
+Ditemukan saat hendak membangun Fase 14 **di atas** seam itu.
+
+`dispatch._observe_session` mengumpulkan bukti dengan membungkus
+`session.record_tool`. Satu-satunya pemanggil produksi metode itu adalah
+[registry.py:218](jarvis/agent/registry.py#L218), yang sengaja menyerahkan
+ToolResult **yang sudah diredaksi**:
+
+```python
+session_result = ToolResult(ok=res.ok, content=None, display=None,
+                            error=safe_error, meta={})
+```
+
+Dibuktikan dengan menjalankan tool sungguhan lewat `registry.execute`:
+
+```
+tool ok= True | content type= str
+EVIDENCE yang sampai ke validator kontrak:
+  result.content = None
+  result.display = None
+  result.meta    = {}
+```
+
+Akibatnya `validate_youtube_latest_play` membaca `_result_mapping(...)` yang
+selalu `{}` — sehingga **kontrak YouTube tidak pernah bisa lolos di produksi**.
+Setiap permintaan "putar video terbaru dari X" dijamin berakhir "Verifikasi
+alur YouTube gagal", seberapa benar pun pekerjaan agent.
+
+Test yang ada hijau karena memanggil `session.record_tool(...)` langsung dengan
+ToolResult utuh, **melewati** `registry.execute`. Yang terbukti hijau adalah
+validatornya, bukan kabel yang menyuplainya — kelas bug yang sama dengan
+"tes lolos, produksi rusak".
+
+Diperbaiki dengan kanal terpisah `Session.record_evidence`: `record_tool` tetap
+menerima hasil teredaksi untuk transkrip dan telemetry (redaksi itu benar dan
+harus tetap), sedangkan bukti kontrak menerima hasil utuh, hidup di memori satu
+run saja, tidak pernah ditulis ke disk atau log.
+
+**Gerbang yang tidak pernah bisa dilewati tidak memverifikasi apa pun — ia
+hanya memblokir.** Karena itu Fase 14 mengunci kedua arah: kontrak harus bisa
+MENOLAK karangan, dan harus bisa MELOLOSKAN pekerjaan yang benar.
+
+---
+
 ### S-11 — 3,45% call summary dibuang diam-diam sebagai "rahasia"
 
 Ditemukan mengejar `test_integration_ring` yang gagal acak dengan `assert 0 == 1`
@@ -963,7 +1033,7 @@ diverifikasi.
 | Fase | Judul | Menutup | Prasyarat | Status |
 |---|---|---|---|---|
 | 13 | Kejujuran hasil panggilan (+ 13.0 backfill vektor memori) | S-1, S-9, S-10, S-11 | — | ✅ **SELESAI** 2026-08-05 |
-| 14 | Kontrak bukti untuk aksi eksternal | S-1 | 13 | ⬜ |
+| 14 | Kontrak bukti untuk aksi eksternal | S-1, S-12 | 13 | ✅ **SELESAI** 2026-08-05 |
 | 15 | Konfirmasi bisa dijawab dengan suara | S-2 | 13 | ⬜ |
 | 16 | Eksekusi panggilan tanpa gerbang ganda | S-2 | 14, 15 | ⬜ |
 | 17 | Batas iterasi: jujur, bisa diatur, bisa dilanjut | S-5 | 14 | ⬜ |
@@ -1142,6 +1212,57 @@ Mesin kontrak sudah ada dan terbukti (`YouTubeLatestPlayContract`). Yang perlu:
 
 **Test:** sesi yang **tidak pernah** memanggil `whatsapp_call` tetapi
 mengembalikan teks "sudah saya telepon" harus **gagal** validasi kontrak.
+
+##### Hasil Fase 14 — SELESAI 2026-08-05
+
+Dibuktikan merah lebih dulu di dua berkas: `test_contract_evidence_seam.py`
+(seam) dan `test_external_call_contract.py` (kontrak).
+
+**Seam dulu, karena kontraknya akan dibangun di atasnya.** S-12 ditemukan
+sebelum satu baris kontrak ditulis: bukti yang sampai ke validator selalu
+kosong. Membangun `ExternalCallContract` di atas seam itu akan menghasilkan
+gerbang yang hanya bisa menolak. `Session.record_evidence` dipisah dari
+`record_tool`; redaksi audit tetap utuh.
+
+Yang berubah:
+
+* `ExternalCallContract` — sukses hanya terbit bila bukti memuat
+  `whatsapp_call` dengan `ok=True` **dan** state terbukti (`ringing`/`in_call`)
+  **dan** `proven is True`. State `calling` lama sengaja tidak diterima.
+* `prepare_task` kini menjalankan daftar detektor, bukan satu kontrak
+  hardcoded; kontrak yang lebih spesifik diperiksa lebih dulu.
+* `success_text` dan `failure_label` menjadi milik masing-masing kontrak.
+  Sebelumnya `dispatch._verified_success` menuliskan kalimat YouTube secara
+  hardcoded — kontrak kedua apa pun akan mengumumkan "video sudah diputar"
+  setelah menelepon seseorang.
+* Pola niat tetap tinggal di `router.py`: `WHATSAPP_START_CALL_RE` (sebut
+  WhatsApp) dan `BARE_START_CALL_RE` (bentuk telanjang, dengan target
+  ditangkap).
+
+**Positif palsu yang tertangkap sebelum masuk:** sweep frasa nyata menunjukkan
+"panggil taksi online lewat aplikasi Grab" ikut terkena kontrak — toolnya
+dipersempit ke WhatsApp saja, jadi tugas yang wajar dijamin gagal. Bentuk
+telanjang kini hanya berkontrak bila targetnya benar-benar **kontak allowlist**
+(lewat `resolve_contact`, sehingga salah dengar STT seperti "honbru" tetap
+tertangani). Menyebut "whatsapp" eksplisit tetap berkontrak apa pun namanya.
+
+Sweep akhir:
+
+```
+ExternalCallContract      | telepon Honbrew
+ExternalCallContract      | telepon honbru          (STT, fuzzy)
+ExternalCallContract      | telepon Budi lewat whatsapp
+-                         | panggil taksi online lewat aplikasi Grab
+-                         | telepon customer service bank
+-                         | kirim pesan whatsapp ke Honbrew
+-                         | akhiri panggilan whatsapp
+YouTubeLatestPlayContract | putar video terbaru dari Deddy Corbuzier
+```
+
+Sekarang klaim "sudah saya telepon" tanpa hasil tool **tidak bisa terbit**:
+ia dihentikan oleh kode di `dispatch`, bukan oleh kepatuhan model. Batas jujur
+Fase 13 nomor 1 tertutup; nomor 2 (selector belum diuji terhadap WhatsApp Web
+nyata) **masih terbuka** dan tetap butuh satu panggilan sungguhan.
 
 ---
 

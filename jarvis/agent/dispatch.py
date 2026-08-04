@@ -163,13 +163,18 @@ def _prepared_task(task: str,
 
 
 def _observe_session(session, evidence: list[ToolEvidence]) -> None:
-    """Collect evidence through Session's existing registry callback."""
+    """Collect evidence through Session's dedicated evidence callback.
 
-    original = session.record_tool
+    Deliberately NOT ``record_tool``: that channel feeds the session transcript
+    and telemetry, so registry hands it a redacted result. Riding on it meant
+    every contract validator saw ``content=None`` and no contract could ever
+    pass in production, however correct the work was (S-12).
+    """
 
-    def _record(name: str, args: dict, result: Any,
-                elapsed_s: float) -> None:
-        original(name, args, result, elapsed_s)
+    original = session.record_evidence
+
+    def _record(name: str, args: dict, result: Any) -> None:
+        original(name, args, result)
         safe_args = {
             str(key): value for key, value in dict(args or {}).items()
             if not str(key).startswith("_")
@@ -181,17 +186,20 @@ def _observe_session(session, evidence: list[ToolEvidence]) -> None:
             ok=bool(getattr(result, "ok", False)),
         ))
 
-    session.record_tool = _record
+    session.record_evidence = _record
 
 
-def _verified_success(prepared: PreparedAgentTask) -> str:
+def _verified_success(prepared: PreparedAgentTask,
+                      evidence: list[ToolEvidence]) -> str:
+    """Kalimat sukses milik kontraknya sendiri, bukan milik dispatch.
+
+    Bentuk lama menuliskan kalimat YouTube di sini, jadi kontrak kedua apa pun
+    akan mengumumkan video diputar setelah menelepon seseorang.
+    """
     contract = prepared.contract
     if contract is None:
         return ""
-    channel = str(contract.expected_channel or "channel target").strip()
-    if detect_language(prepared.original_task) == "en":
-        return f"The latest video from {channel} is now playing."
-    return f"Video terbaru dari channel {channel} sudah diputar."
+    return contract.success_text(evidence)
 
 
 def _safe_callback(callback, value: str) -> None:
@@ -378,7 +386,7 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
                 if prepared.contract is not None:
                     validation = prepared.contract.validate(evidence)
                     if not validation.ok:
-                        err = ("Verifikasi alur YouTube gagal: "
+                        err = (f"{prepared.contract.failure_label}: "
                                + validation.reason)
                         session.finish(err, ok=False)
                         _logger.warning(
@@ -389,7 +397,7 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
                         REGISTRY.finish(bg_task.id, error=err)
                         _safe_callback(on_error, err)
                         return
-                    text = _verified_success(prepared)
+                    text = _verified_success(prepared, evidence)
                     session.finish(text, ok=True)
                 _logger.info("agent.dispatch.done", elapsed_s=elapsed,
                              session=result.session_id)
@@ -464,7 +472,7 @@ def run_sync(task: str, adapter=None, timeout_s: float | None = None,
                 _logger.warning("agent.run_sync.contract_failed",
                                 error=validation.reason[:300])
                 return ""
-            return _verified_success(prepared)
+            return _verified_success(prepared, evidence)
         return result.text
     except Exception as e:                                   # noqa: BLE001
         _logger.error("agent.run_sync_failed",

@@ -107,6 +107,21 @@ class Session:
         if not res.ok and res.error:
             self.errors.append(f"{name}: {res.error}")
 
+    def record_evidence(self, name: str, args: dict, res) -> None:
+        """Kanal bukti kontrak — hasil tool UTUH, tidak diarsip (S-12).
+
+        Terpisah dari ``record_tool`` dengan sengaja. ``record_tool`` memberi
+        makan transkrip sesi dan telemetry, jadi ``registry`` menyerahkan hasil
+        yang sudah diredaksi ke sana — dan itu benar. Tetapi validator kontrak
+        membutuhkan isi hasil yang sebenarnya, sehingga membonceng kanal audit
+        membuat setiap kontrak menerima ``content=None`` dan tidak pernah bisa
+        lolos.
+
+        Default no-op: hanya pemanggil yang benar-benar memvalidasi bukti
+        (``dispatch._observe_session``) yang menggantinya, dan datanya hidup di
+        memori selama satu run saja — tidak pernah ditulis ke disk atau log.
+        """
+
     def finish(self, result: str, ok: bool = True) -> None:
         if self.is_subagent:
             return

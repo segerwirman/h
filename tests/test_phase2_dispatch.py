@@ -125,7 +125,12 @@ def _record_valid_youtube_trace(session, events: list[str]):
 
     def record(name, args, result):
         events.append(name)
+        # Kanal produksi (S-12): registry menyerahkan hasil UTUH ke
+        # record_evidence, dan hasil yang SUDAH DIREDAKSI ke record_tool.
+        # Menyuapi bukti lewat record_tool membuat tes ini hijau sementara
+        # jalur nyata mustahil lolos.
         session.record_tool(name, args, result, 0.01)
+        session.record_evidence(name, args, result)
 
     record("browser_navigate", {"url": contract.search_url},
            ToolResult.success("terbuka"))
@@ -211,9 +216,9 @@ def test_youtube_model_success_is_rejected_without_playback_evidence(
 
     async def fake_run(_task, *, adapter, session, **_kwargs):
         await adapter.send("Video sudah diputar.")
-        session.record_tool(
+        session.record_evidence(
             "browser_navigate", {"url": "https://youtube.com"},
-            ToolResult.success("terbuka"), 0.01)
+            ToolResult.success("terbuka"))
         return RunResult(ok=True, text="Video sudah diputar.",
                          session_id=session.id)
 

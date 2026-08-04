@@ -272,6 +272,26 @@ _WHATSAPP_ACTION_RE = re.compile(
     r"\s+[\w .'-]{2,80}(?:\s+dan\b.*)?$)",
     re.IGNORECASE,
 )
+# Subset MEMULAI panggilan saja — dipakai juga oleh ExternalCallContract
+# (§Fase 14). Sengaja dipisah dari _WHATSAPP_ACTION_RE di atas: pola itu ikut
+# mencakup kirim/balas/jawab/akhiri, dan memaksakan kontrak panggilan pada
+# pengiriman pesan akan melaporkan setiap pesan yang berhasil sebagai gagal.
+WHATSAPP_START_CALL_RE = re.compile(
+    r"(?:\b(?:telepon|telpon|panggil|call|hubungi)\b"
+    r"(?!\s*(?:masuk|yang\s+masuk))[^.?!]*\bwhats?app\b)"
+    r"|(?:\bwhats?app\b[^.?!]*\b(?:telepon|telpon|panggil|call|hubungi)\b)",
+    re.IGNORECASE,
+)
+# Bentuk telanjang "telepon <sesuatu>" tanpa menyebut platform. Targetnya
+# ditangkap agar pemanggil dapat memutuskan apakah itu benar-benar kontak.
+# Tanpa pemeriksaan itu, "panggil taksi online lewat aplikasi Grab" ikut
+# terbaca sebagai panggilan WhatsApp.
+BARE_START_CALL_RE = re.compile(
+    r"^(?:jarvis[,\s]+)?(?:tolong\s+)?(?:telepon|telpon|panggil|call|"
+    r"hubungi)\s+(?P<target>[\w .'-]{2,80}?)(?:\s+(?:dan|lalu|kemudian)\b.*)?"
+    r"\s*[.!]?$",
+    re.IGNORECASE,
+)
 _WHATSAPP_HANGUP_RE = re.compile(
     r"\b(?:akhiri|tutup|hang\s*up)\b.*\b(?:panggilan|telepon|call)\b"
     r"(?:.*\bwhats?app\b)?|\bwhats?app\b.*\b(?:akhiri|hang\s*up)\b",
