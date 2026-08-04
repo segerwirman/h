@@ -771,7 +771,13 @@ agent:
   data_dir: "data"
   skills_dir: "jarvis/agent/skills_data"
   max_iterations: 20             # cron/background ceiling
-  interactive_max_iterations: 12
+  # §17 — disamakan dengan agent.max_iterations. Sebelumnya 12, sementara
+  # panel Settings menampilkan agent.max_iterations (20) yang TIDAK dipakai
+  # jalur suara/UI — satu nilai yang bohong lebih buruk daripada dua nilai
+  # yang jujur. Kini kedua kunci muncul di Settings dengan label berbeda.
+  interactive_max_iterations: 20
+  iteration_escalation:
+    enabled: true               # tawarkan berhenti saat mendekati batas
   task_timeout_s: 900
   # ── Task Deck (AUDIT_REPORT §8.6) — konkurensi tugas latar ──────────────
   max_concurrent_tasks: 3        # tugas paralel; >3 mulai berebut CPU/API quota

@@ -3,9 +3,9 @@
 **Dibuat:** 2026-08-04 · **Diperbarui:** 2026-08-05 (audit ulang menyeluruh — Siklus 2 ditambahkan)
 **Baseline:** HEAD `39cae8c` · FROZEN `094b696` (10 file, integritas OK)
 **Status dokumen:** Fase 0-12 SELESAI (12 = opsi (b), tanpa perubahan frozen). T1 dimitigasi — sisa tindakan di sisi endpoint.
-**SIKLUS 2 (2026-08-05): Fase 13-16 SELESAI. Fase 17-19 belum dikerjakan.** Lihat
+**SIKLUS 2 (2026-08-05): Fase 13-17 SELESAI. Fase 18-19 belum dikerjakan.** Lihat
 bagian [Siklus 2](#siklus-2--audit-ulang-2026-08-05) di akhir dokumen.
-**Suite:** `pytest tests/ -q` → **2207 lulus, 0 gagal** · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
+**Suite:** `pytest tests/ -q` → **2217 lulus, 0 gagal** · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
 FROZEN OK (10 file, baseline `094b696`).
 
 ---
@@ -1096,7 +1096,7 @@ diverifikasi.
 | 14 | Kontrak bukti untuk aksi eksternal | S-1, S-12 | 13 | ✅ **SELESAI** 2026-08-05 |
 | 15 | Konfirmasi bisa dijawab dengan suara | S-2 | 13 | ✅ **SELESAI** 2026-08-05 |
 | 16 | Eksekusi panggilan tanpa gerbang ganda | S-2 | 14, 15 | ✅ **SELESAI** 2026-08-05 |
-| 17 | Batas iterasi: jujur, bisa diatur, bisa dilanjut | S-5 | 14 | ⬜ |
+| 17 | Batas iterasi: jujur, bisa diatur, bisa dilanjut | S-5 | 14 | ✅ **SELESAI** 2026-08-05 |
 | 18 | Sumber pencarian terbuka di browser | S-3 | — | ⬜ |
 | 19 | Barge-in adaptif tahan noise | S-4 | — | ⬜ |
 | S-7 | Perbaikan test config | S-7 | — | ✅ hijau sendiri setelah lane ringan dikembalikan |
@@ -1497,6 +1497,51 @@ kedua untuk perilaku default.
 **Test:** loop yang menabrak batas mengembalikan ringkasan parsial dan **tidak**
 memuat frasa "Progres tersimpan di sesi".
 
+##### Hasil Fase 17 — SELESAI 2026-08-05
+
+`tests/test_iteration_limit_honesty.py` (10 test) dibuktikan merah lebih dulu.
+
+**1. Klaim palsu dibuang.** "Progres tersimpan di sesi" hilang. Penggantinya
+fakta yang bisa diperiksa:
+
+```
+Batas 20 iterasi tercapai sebelum tugas tuntas (terpakai 20).
+Yang sudah berjalan: web_search, web_extract. 1 pemanggilan tool gagal.
+Tugas ini tidak dilanjutkan otomatis — minta lagi bila ingin saya teruskan.
+```
+
+Kalimat terakhir menyatakan batasnya secara terbuka alih-alih menyiratkan
+kelanjutan yang tidak ada.
+
+**2. Hasil parsial dikembalikan**, bukan hanya kegagalan. Jejak tool sudah
+dipegang loop; membuangnya berarti membuang pekerjaan yang benar-benar
+selesai. Saat belum ada yang berhasil, itu pun dinyatakan apa adanya.
+
+**3. Angka Settings tidak lagi bohong.** `agent.interactive_max_iterations`
+12 → **20**, setara `agent.max_iterations`, dan **kedua kunci kini muncul di
+panel** dengan label berbeda — jalur suara/UI memakai kunci kedua, jadi
+menampilkan hanya yang pertama berarti panel menunjukkan angka yang tidak
+berlaku bagi perintah sehari-hari.
+
+**4. Eskalasi sebelum menabrak dinding.** Pada 80% iterasi, peringatan progres
+selalu terbit; pada run interaktif Jarvis menawarkan berhenti. **Tidak menjawab
+bukan berarti berhenti** — pekerjaan lanjut sampai batas, karena memblokir
+tugas gara-gara user sedang tidak di meja adalah kegagalan yang lebih buruk.
+Run non-interaktif (cron, sub-agent) tidak pernah ditanya.
+
+**5. Penolakan konfirmasi ditegakkan di kode.** Pesan lama sudah berbunyi
+"jangan ulangi tanpa diminta", tetapi itu menitipkan jaminan pada kepatuhan
+model — padahal tiap pengulangan memakan satu iterasi, dan begitulah 12 iterasi
+habis tanpa satu pun pekerjaan nyata. `Session.denied_confirmations` kini
+menyimpan permintaan yang ditolak, dan permintaan **identik** (tool + argumen)
+langsung gagal tanpa bertanya lagi. Penolakan mengikat satu permintaan, bukan
+seluruh tool selamanya: kontak berbeda tetap ditanyakan.
+
+**Efek samping yang ditemukan di tes sendiri:** fixture autouse menambal
+`registry.execute` untuk seluruh modul, sehingga dua test yang justru menguji
+guardrail konfirmasi asli malah menguji tiruan — dan lulus tanpa arti. Referensi
+aslinya ditangkap sebelum penambalan lalu dipulihkan di kedua test itu.
+
 ---
 
 ### Fase 18 — Sumber pencarian terbuka di browser
@@ -1596,8 +1641,8 @@ Sama dengan siklus lalu, ditegaskan ulang karena temuan S-1 dan S-5:
 - [ ] Panggilan yang gagal dilaporkan **gagal** — klaim sukses mustahil tanpa bukti tool *(13, 14)*
 - [x] "telepon Honbrew" lewat suara dieksekusi tanpa pindah ke keyboard *(15, 16)*
 - [x] Konfirmasi yang tersisa bisa dijawab dengan suara *(15)*
-- [ ] Batas iterasi memberi hasil parsial dan tidak menjanjikan resume yang tidak ada *(17)*
-- [ ] Nilai iterasi di Settings adalah nilai yang benar-benar dipakai *(17)*
+- [x] Batas iterasi memberi hasil parsial dan tidak menjanjikan resume yang tidak ada *(17)*
+- [x] Nilai iterasi di Settings adalah nilai yang benar-benar dipakai *(17)*
 - [ ] Pencarian menampilkan sumber — dan mode berita memuat URL sama sekali *(18)*
 - [ ] Jarvis bisa dipotong bicara secara natural *(19)*
 - [ ] Kebisingan ruangan tidak memotong Jarvis *(19)*

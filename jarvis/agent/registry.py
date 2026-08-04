@@ -154,6 +154,20 @@ async def execute(name: str, args: dict, adapter=None,
         if descriptor.toolset == "desktop_safe" and not _is_active_native_desktop_adapter(adapter):
             return ToolResult.fail(
                 "desktop_safe confirmation membutuhkan adapter desktop-local")
+        # §17 — permintaan identik yang SUDAH ditolak tidak ditanyakan ulang.
+        # Pesan gagal lama sudah berbunyi "jangan ulangi tanpa diminta", tetapi
+        # itu menitipkan jaminan pada kepatuhan model. Tiap pengulangan memakan
+        # satu iterasi, dan begitulah batas iterasi habis tanpa pekerjaan nyata
+        # (S-5). Penolakan mengikat SATU permintaan (tool + argumen), bukan
+        # seluruh tool selamanya.
+        denied_key = _confirmation_key(name, args)
+        if _confirmation_denied(session, denied_key):
+            res = ToolResult.fail(
+                "permintaan identik sudah ditolak user di sesi ini — "
+                "jangan tanyakan lagi; lanjutkan tanpa aksi ini atau "
+                "tanyakan apa yang user inginkan")
+            _log_call(name, args, res, 0.0, session)
+            return res
         approved = False
         if adapter is not None:
             try:
@@ -165,6 +179,7 @@ async def execute(name: str, args: dict, adapter=None,
                 _logger.warning("agent.confirm_failed", tool=name,
                                 error=str(e)[:100])
         if not approved:
+            _remember_denial(session, denied_key)
             res = ToolResult.fail("aksi butuh konfirmasi user dan tidak "
                                   "disetujui — jangan ulangi tanpa diminta")
             _log_call(name, args, res, 0.0, session)
@@ -195,6 +210,40 @@ async def execute(name: str, args: dict, adapter=None,
     elapsed = time.perf_counter() - t0
     _log_call(name, args, res, elapsed, session)
     return res
+
+
+def _confirmation_key(name: str, args: dict) -> str:
+    """Identitas satu permintaan berkonfirmasi: nama tool + argumen publik."""
+    import json
+
+    public = {str(k): v for k, v in dict(args or {}).items()
+              if not str(k).startswith("_")}
+    try:
+        payload = json.dumps(public, sort_keys=True, ensure_ascii=False,
+                             default=str)
+    except Exception:                                        # noqa: BLE001
+        payload = str(sorted(public))
+    return f"{name}:{payload}"[:600]
+
+
+def _confirmation_denied(session, key: str) -> bool:
+    try:
+        return key in getattr(session, "denied_confirmations", ())
+    except Exception:                                        # noqa: BLE001
+        return False
+
+
+def _remember_denial(session, key: str) -> None:
+    if session is None:
+        return
+    try:
+        denied = getattr(session, "denied_confirmations", None)
+        if denied is None:
+            denied = set()
+            setattr(session, "denied_confirmations", denied)
+        denied.add(key)
+    except Exception:                                        # noqa: BLE001
+        pass
 
 
 def _is_active_native_desktop_adapter(adapter) -> bool:

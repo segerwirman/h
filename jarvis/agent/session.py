@@ -74,6 +74,9 @@ class Session:
     errors: list[str] = field(default_factory=list)
     transcript: list[dict] = field(default_factory=list)
     todos: list[dict] = field(default_factory=list)
+    # §17 — permintaan berkonfirmasi yang sudah ditolak user, agar tidak
+    # ditanyakan berulang dan menghabiskan iterasi.
+    denied_confirmations: set[str] = field(default_factory=set, repr=False)
     execution_context: object | None = field(default=None, repr=False)
     conversation_context: str = field(default="", repr=False)
     _persisted: bool = False

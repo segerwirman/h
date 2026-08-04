@@ -314,6 +314,11 @@ def sections() -> list[dict]:
               "type": "text"},
              {"key": "agent.max_iterations", "label": "Iterasi maks / tugas",
               "type": "int"},
+             # §17 — jalur suara/UI memakai kunci INI, bukan yang di atas.
+             # Menampilkan hanya satu dari keduanya membuat panel menunjukkan
+             # angka yang tidak berlaku bagi perintah sehari-hari.
+             {"key": "agent.interactive_max_iterations",
+              "label": "Iterasi maks / tugas (suara & UI)", "type": "int"},
          ]},
         {"id": "appearance", "title": "Appearance",
          "hint": "Preset tema milik Jarvis (theme.py) — bukan tema Hermes.",

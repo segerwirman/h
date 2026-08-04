@@ -202,6 +202,7 @@ async def run(task: str, adapter: Adapter | None = None,
 
     final_text = ""
     iterations = 0
+    _escalated: set[str] = set()      # peringatan batas hanya sekali per run
     for iterations in range(1, max_iter + 1):
         # ① batal kooperatif — antar iterasi (AUDIT §8.3)
         if session.cancelled or _cancelled(bg_task):
@@ -212,6 +213,17 @@ async def run(task: str, adapter: Adapter | None = None,
 
         # ② progres — satu-satunya sumber angka bagi UI/suara
         _task_update(bg_task, iteration=iterations, step="berpikir…")
+
+        # §17 — eskalasi sebelum menabrak dinding, bukan sesudahnya.
+        if await _iteration_escalation(adapter, session, iterations,
+                                       max_iter, _escalated):
+            final_text = _limit_report(session, iterations, max_iter,
+                                       stopped_by_user=True)
+            await _safe_send(adapter, final_text)
+            session.finish(final_text, ok=False)
+            reflect_async(session)
+            return RunResult(ok=False, text=final_text, iterations=iterations,
+                             session_id=session.id)
 
         resp = await asyncio.to_thread(cl.chat, messages, tool_schemas)
         # §3.1 — rantai fallback berat: 402/kredit habis/timeout (retry
@@ -277,8 +289,7 @@ async def run(task: str, adapter: Adapter | None = None,
             messages = await asyncio.to_thread(
                 ctx.compact, messages, model_routing.compression_client())
     else:
-        final_text = ("Batas iterasi tercapai sebelum tugas tuntas. "
-                      "Progres tersimpan di sesi.")
+        final_text = _limit_report(session, iterations, max_iter)
         await _safe_send(adapter, final_text)
         session.finish(final_text, ok=False)
         reflect_async(session)
@@ -298,6 +309,75 @@ async def run(task: str, adapter: Adapter | None = None,
                  iterations=iterations, chars=len(final_text))
     return RunResult(ok=True, text=final_text, iterations=iterations,
                      session_id=session.id)
+
+
+def _limit_report(session, iterations: int, max_iter: int,
+                  *, stopped_by_user: bool = False) -> str:
+    """Laporan jujur saat loop berhenti tanpa menuntaskan tugas (S-5).
+
+    Bentuk lama menjanjikan "Progres tersimpan di sesi". Sesi memang tersimpan,
+    tetapi TIDAK ADA jalur yang bisa melanjutkannya — janji itu ditulis oleh
+    kode kita sendiri, bukan oleh model. Diganti fakta yang bisa diperiksa:
+    berapa iterasi terpakai, tool apa yang benar-benar berhasil, dan apa yang
+    gagal.
+    """
+    calls = list(getattr(session, "tool_calls", []) or [])
+    done: list[str] = []
+    for entry in calls:
+        name = str(entry.get("tool", "")).strip()
+        if name and entry.get("ok") and name not in done:
+            done.append(name)
+    failed = [str(entry.get("tool", "")) for entry in calls
+              if not entry.get("ok")]
+
+    head = ("Saya hentikan atas permintaan Anda"
+            if stopped_by_user else
+            f"Batas {max_iter} iterasi tercapai sebelum tugas tuntas")
+    parts = [f"{head} (terpakai {iterations})."]
+    if done:
+        parts.append("Yang sudah berjalan: " + ", ".join(done[:8]) + ".")
+    else:
+        parts.append("Belum ada langkah yang berhasil diselesaikan.")
+    if failed:
+        parts.append(f"{len(failed)} pemanggilan tool gagal.")
+    parts.append("Tugas ini tidak dilanjutkan otomatis — "
+                 "minta lagi bila ingin saya teruskan.")
+    return " ".join(parts)
+
+
+async def _iteration_escalation(adapter, session, iterations: int,
+                                max_iter: int, warned: set) -> bool:
+    """Peringatkan mendekati batas; tawarkan berhenti pada run interaktif.
+
+    Return ``True`` bila user memilih berhenti. Tidak menjawab BUKAN berarti
+    berhenti — pekerjaan lanjut sampai batas, karena memblokir tugas gara-gara
+    user sedang tidak di meja adalah kegagalan yang lebih buruk.
+    """
+    if "warned" in warned or max_iter < 3:
+        return False
+    threshold = max(1, int(max_iter * 0.8))
+    if iterations < threshold:
+        return False
+    warned.add("warned")
+    try:
+        await adapter.progress(
+            f"⚠ mendekati batas iterasi ({iterations}/{max_iter})")
+    except Exception:                                        # noqa: BLE001
+        pass
+    if not bool(getattr(adapter, "interactive", False)):
+        return False
+    if not bool(config.get("agent.iteration_escalation.enabled", True)):
+        return False
+    try:
+        answer = await adapter.ask(
+            f"Sudah {iterations} dari {max_iter} iterasi dan tugas belum "
+            "tuntas. Lanjutkan sampai batas, atau hentikan sekarang dan "
+            "laporkan yang sudah ada?",
+            ["Lanjutkan", "Hentikan"])
+    except Exception:                                        # noqa: BLE001
+        return False
+    return str(answer or "").strip().casefold() in (
+        "hentikan", "berhenti", "stop", "batal", "cancel")
 
 
 def _cancelled(bg_task) -> bool:
