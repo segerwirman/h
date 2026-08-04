@@ -252,6 +252,18 @@ _COMPOSER_SELECTORS = (
     '[contenteditable="true"][aria-label*="ketik pesan" i]',
 )
 _CALL_SELECTORS = (
+    # S-16 — DOM WhatsApp Web sungguhan (probe read-only 2026-08-05, akun
+    # Takeda, locale Indonesia) hanya menampilkan SATU tombol panggilan:
+    #     {"aria_label": "Telepon", "data_icon": "", "title": "", "tag": "button"}
+    # Selector lama mencari "voice call" / "panggilan suara" dan tidak ada yang
+    # cocok, sehingga start_call selalu gagal di "Tombol panggilan suara tidak
+    # ditemukan" — panggilan tidak pernah benar-benar dimulai.
+    #
+    # Cocok PERSIS, bukan substring: "Telepon" sebagai substring juga ada di
+    # label lain (mis. "Panggilan telepon masuk"), dan substring "panggilan"
+    # akan ikut menangkap tombol panggilan VIDEO.
+    'button[aria-label="Telepon" i]',
+    'button[aria-label="Call" i]',
     'button[aria-label*="voice call" i]',
     'button[aria-label*="panggilan suara" i]',
     'button[title*="voice call" i]',

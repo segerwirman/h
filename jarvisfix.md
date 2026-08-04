@@ -5,7 +5,7 @@
 **Status dokumen:** Fase 0-12 SELESAI (12 = opsi (b), tanpa perubahan frozen). T1 dimitigasi — sisa tindakan di sisi endpoint.
 **SIKLUS 2 (2026-08-05): Fase 13-17 SELESAI. Fase 18-19 belum dikerjakan.** Lihat
 bagian [Siklus 2](#siklus-2--audit-ulang-2026-08-05) di akhir dokumen.
-**Suite:** `pytest tests/ -q` → **2227 lulus, 0 gagal** · hijau juga dengan jaringan keluar diblokir · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
+**Suite:** `pytest tests/ -q` → **2229 lulus, 0 gagal** · hijau juga dengan jaringan keluar diblokir · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
 FROZEN OK (10 file, baseline `094b696`).
 
 ---
@@ -879,6 +879,40 @@ dan nilainya menunjuk provider yang terdaftar.
 
 ---
 
+### S-16 — Selector tombol panggilan meleset dari DOM sungguhan — SELESAI ✅
+
+**Bukti DOM pertama yang benar-benar `live-proven`**, bukan fixture. Probe
+read-only (`scripts/whatsapp_selector_probe.py`) terhadap profil Chrome Jarvis
+yang login, chat honbrew terbuka, state `ready`. Satu-satunya tombol panggilan
+yang ada:
+
+```json
+{"aria_label": "Telepon", "data_icon": "", "title": "", "tag": "button"}
+```
+
+`_CALL_SELECTORS` lama hanya mencari `"voice call"` dan `"panggilan suara"`.
+**Tidak ada yang cocok.** Artinya `start_call` selalu gagal di "Tombol
+panggilan suara tidak ditemukan" — panggilan tidak pernah benar-benar dimulai,
+dan itu berlaku SEBELUM maupun SESUDAH Fase 13.
+
+Ini melengkapi gambaran keluhan awal Takeda: toolnya gagal, lalu model
+menarasikan sukses. Fase 14 kini menutup narasi palsunya; S-16 menutup
+sebab teknisnya.
+
+Diperbaiki dengan cocok **persis**, bukan substring — "Telepon" muncul juga di
+dalam label lain, dan substring "panggilan" akan ikut menangkap tombol
+panggilan VIDEO. Diverifikasi ulang lewat probe: `call_button: COCOK`.
+
+**Yang MASIH belum tervalidasi:** `_HANGUP_SELECTORS`, `_ANSWER_SELECTORS`,
+dan `_RINGING_SELECTORS`. Ketiganya hanya muncul saat panggilan berlangsung,
+jadi butuh satu panggilan sungguhan. Konsekuensinya jujur dan sudah dirancang:
+bila meleset, Fase 13 melaporkan keadaan **TIDAK DIKETAHUI** dan menyuruh
+Takeda memeriksa jendelanya — bukan mengaku berhasil, bukan pula mengaku
+gagal. Jalankan `python scripts/whatsapp_selector_probe.py --during-call`
+saat panggilan aktif untuk menutupnya.
+
+---
+
 ### S-15 — Laporan ucapan terpotong di tengah kata — SELESAI ✅
 
 `test_typed_t2_speaks_ack_then_concrete_report` gagal satu kali dalam enam run
@@ -1137,7 +1171,7 @@ diverifikasi.
 | 18 | Sumber pencarian terbuka di browser | S-3 | — | ⬜ |
 | 19 | Barge-in adaptif tahan noise | S-4 | — | ⬜ |
 | S-7 | Perbaikan test config | S-7 | — | ✅ hijau sendiri setelah lane ringan dikembalikan |
-| S-6 | Keputusan TLS — **milik Takeda, bukan pekerjaan kode** | S-6 | — | ⏸ menunggu |
+| S-6 | Keputusan TLS | S-6 | — | ✅ diputuskan: diterima apa adanya |
 
 ---
 
@@ -1643,7 +1677,29 @@ Nilai pilihan user tidak boleh membuat suite merah.
 
 ---
 
-### S-6 — keputusan Takeda, bukan pekerjaan kode
+### S-6 — KEPUTUSAN DIAMBIL 2026-08-05: diterima apa adanya
+
+Takeda memilih **membiarkan endpoint plaintext apa adanya**, dengan risiko
+diketahui dan diterima. Dicatat sebagai keputusan sadar, bukan temuan terbuka —
+audit berikutnya tidak perlu mengangkatnya lagi sebagai masalah.
+
+Yang berlaku sekarang:
+
+```
+routing.light.provider : gemini    (TLS)  — dikembalikan 2026-08-05
+routing.heavy.provider : custom    http://43.167.18.81:20128/v1
+```
+
+Cakupan paparan yang diterima: system prompt beserta memori yang di-recall,
+90 schema tool, dan setiap hasil tool — isi file, keluaran terminal, snapshot
+browser, nama kontak. Percakapan biasa, kompresi konteks, dan embedding TIDAK
+lagi termasuk sejak lane ringan kembali ke gemini.
+
+Peringatan runtime tetap menyala (`agent.llm.insecure_base_url` + panel
+Settings); tidak dimatikan, supaya keputusan ini tetap terlihat dan bisa
+ditinjau ulang kapan saja dengan mengganti satu baris `routing.heavy.provider`.
+
+#### Catatan asli
 
 Repo sudah memperingatkan (T1 siklus lalu: log + panel Settings). Yang berubah:
 lane ringan **juga** melintasi endpoint plaintext sekarang, jadi paparannya
@@ -1684,4 +1740,4 @@ Sama dengan siklus lalu, ditegaskan ulang karena temuan S-1 dan S-5:
 - [ ] Jarvis bisa dipotong bicara secara natural *(19)*
 - [ ] Kebisingan ruangan tidak memotong Jarvis *(19)*
 - [ ] `pytest tests/ -q` hijau penuh kembali *(S-7 + seluruh fase)*
-- [ ] Keputusan TLS diambil *(S-6 — Takeda)*
+- [x] Keputusan TLS diambil *(S-6 — diterima apa adanya, 2026-08-05)*

@@ -298,3 +298,54 @@ def test_agent_prompt_forbids_unproven_success_claims():
 
     assert "jangan" in text and "bukti" in text
     assert "aksi eksternal" in text
+
+
+# ── bukti DOM sungguhan (probe read-only, 2026-08-05) ─────────────────────
+
+def test_call_selectors_match_the_real_indonesian_label():
+    """S-16 — DOM WhatsApp Web sungguhan memakai aria-label "Telepon".
+
+    Diambil dari `scripts/whatsapp_selector_probe.py` terhadap profil Chrome
+    Jarvis yang benar-benar login (chat honbrew terbuka, state `ready`).
+    Satu-satunya tombol panggilan yang ada:
+
+        {"aria_label": "Telepon", "data_icon": "", "title": "", "tag": "button"}
+
+    `_CALL_SELECTORS` lama hanya mencari "voice call" dan "panggilan suara",
+    jadi TIDAK ADA yang cocok: `start_call` selalu gagal di
+    "Tombol panggilan suara tidak ditemukan" sebelum bukti Fase 13 sempat
+    berperan. Panggilan tidak pernah benar-benar dimulai.
+    """
+    import re
+
+    from jarvis.integrations import whatsapp_web as ww
+
+    def _matches(label: str) -> bool:
+        for selector in ww._CALL_SELECTORS:
+            m = re.fullmatch(
+                r'button\[aria-label([*^]?)="([^"]+)" i\]', selector)
+            if not m:
+                continue
+            op, value = m.groups()
+            if op == "*" and value.casefold() in label.casefold():
+                return True
+            if op == "" and value.casefold() == label.casefold():
+                return True
+        return False
+
+    assert _matches("Telepon"), (
+        "label DOM sungguhan tidak dikenali — panggilan mustahil dimulai")
+    # Bahasa Inggris tetap didukung; akun berbeda memakai locale berbeda.
+    assert _matches("Voice call")
+
+
+def test_call_selectors_do_not_grab_a_video_call():
+    """Melonggarkan selector tidak boleh membuat Jarvis menelepon video."""
+    import re
+
+    from jarvis.integrations import whatsapp_web as ww
+
+    for selector in ww._CALL_SELECTORS:
+        m = re.fullmatch(r'button\[aria-label([*^]?)="([^"]+)" i\]', selector)
+        if m and m.group(1) == "*":
+            assert "video" not in m.group(2).casefold()
