@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** WA3-live COMPLETE — 2026-08-03 (live lane pertama, LIVE-PROVEN)
+**Updated:** WA9-live COMPLETE — 2026-08-03 (kill switch, LIVE-PROVEN x2)
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `3624b57` (ALH2); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `main`, HEAD `987864e` (CLK); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
 
 ## Current status
 
@@ -88,7 +88,10 @@ WA6-lanjutan calendar review               COMPLETE
   → sisa 28 tuntas
 WA3-live audio acceptance                 COMPLETE (LIVE-PROVEN)
   → ALH 74002ac + ALH2 3624b57 (tone loopback nyata RMS 0.337)
-  → live lane pertama; berikutnya WA9/WA6/WA0 live (menunggu Takeda)
+  → live lane pertama
+WA9-live call live controls               COMPLETE (LIVE-PROVEN)
+  → CLK 987864e (kill switch nyata: session cancelled + proof done)
+  → berikutnya WA6/WA0 live (menunggu Takeda)
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -110,6 +113,10 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
 ⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+
+## WA9-live milestone (2026-08-03)
+
+**WA9-live COMPLETE — LIVE-PROVEN #2** — commit CLK `987864e`. `jarvis/live/call_live_controls.py`: `CallKillSwitch` one-shot (arm → kill = session cancel + proof stop + bus `call.killed`); `visible_hangup` (metadata-only, one-shot); `RolloutRings` bertingkat (test → trusted → business → public; butuh bukti accept ring sebelumnya). Live run nyata (approval live Takeda): session approved + audio proof tone loopback (144.000 samples) → arm → kill → `session: cancelled` + `proof: done`. RED 5 → GREEN 5; regression 40 passed; frozen `094b696` OK.
 
 ## WA3-live milestone (2026-08-03)
 
@@ -329,7 +336,7 @@ JARVIS.MD
 
 ## Next phase
 
-**Live lane lanjutan — WA9 rollout live / WA6 write path / WA0 hardware** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval live)
+**Live lane lanjutan — WA6 write path / WA0 hardware / WA9 rings live** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval live)
 
 ### Goal
 
@@ -337,9 +344,9 @@ Melanjutkan acceptance live yang butuh kredensial/hardware.
 
 ### Scope
 
-- WA9 kill switch + visible hangup + rollout rings bertingkat (live integration);
 - WA6 write path `gcal_create_proposed` (create kalender nyata, butuh kredensial);
-- WA0 call hardware checks (Playwright/profile/login, call button).
+- WA0 call hardware checks (Playwright/profile/login, call button);
+- WA9 rings live integration (wire RolloutRings ke lane nyata).
 
 ### Guardrails
 
@@ -360,14 +367,15 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-WA3-live COMPLETE (2026-08-03): audio live acceptance — LIVE-PROVEN
-(ALH 74002ac + ALH2 3624b57): tone loopback nyata RMS 0.337, 144000
-samples, audio_exercised true. Live lane pertama berhasil. Worktree
-bersih kecuali 2 artifact (.curator_state.json, full_run.txt) — JANGAN
-di-commit. Index kosong. Frozen 094b696 OK.
+WA9-live COMPLETE (2026-08-03): kill switch LIVE-PROVEN (CLK 987864e) —
+session cancelled + audio proof done (tone loopback nyata 144000
+samples); visible hangup + rings bertingkat. LIVE-PROVEN x2 total.
+Worktree bersih kecuali 2 artifact (.curator_state.json, full_run.txt) —
+JANGAN di-commit. Index kosong. Frozen 094b696 OK.
 
-TIDAK ADA fase aktif — Live lane lanjutan (WA9 rollout live / WA6 write
-path / WA0 hardware) DILARANG dimulai tanpa approval live eksplisit.
+TIDAK ADA fase aktif — Live lane lanjutan (WA6 write path / WA0
+hardware / WA9 rings live) DILARANG dimulai tanpa approval live
+eksplisit.
 Tugas sesi: verifikasi posisi (read-only), audit worktree/HEAD/frozen,
 presentasikan status + opsi lanjutan, minta approval sebelum eksekusi
 apa pun. Jangan

@@ -413,7 +413,7 @@ Guardrail: ...
 
 **Acceptance:** deny-by-default + allowlist + rate limit + caps + opt-out — TERPENUHI. RED 7 failed → GREEN 7 passed; regression 81 passed; frozen `094b696` OK.
 
-**Belum dikerjakan (live lane):** master toggle duration/turn caps, visible hangup, kill switch (web call, streams, Gemini phone state, pending permit), rollout rings (owned test account → consenting trusted contact → information-only business call → appointment inquiry → hotel/flight availability → reservation continuation without payment); live integration membutuhkan approval live terpisah.
+**Live lane:** ✅ kill switch LIVE-PROVEN (CLK `987864e`, 2026-08-03) — session cancelled + audio proof done (tone loopback nyata 144000 samples) via `jarvis/live/call_live_controls.py`; visible hangup + rollout rings bertingkat (test → trusted → business → public) tersedia; sisa: caps duration/turn live, rings live integration, web call/streams/Gemini phone state (butuh SDK/kredensial).
 
 **Fase berikutnya:** **26 — Cross-Integration Live Ring** — MENUNGGU KEPUTUSAN TAKEDA.
 
@@ -497,6 +497,6 @@ Guardrail: ...
 
 # Immediate next phase
 
-**Live lane lanjutan — WA9 rollout live / WA6 write path / WA0 hardware** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval live).
-Scope: WA9 kill switch + visible hangup + rollout rings; WA6 write path `gcal_create_proposed`; WA0 call hardware checks. WA3-live ✅ LIVE-PROVEN.
+**Live lane lanjutan — WA6 write path / WA0 hardware / WA9 rings live** (MENUNGGU KEPUTUSAN TAKEDA; DILARANG dieksekusi tanpa approval live).
+Scope: WA6 write path `gcal_create_proposed`; WA0 call hardware checks; WA9 rings live integration. WA3-live ✅ + WA9-live ✅ LIVE-PROVEN.
 Guardrail: tidak ada eksekusi tanpa approval eksplisit Takeda; untuk setiap commit — exact allowlist, staged diff review, targeted tests, frozen, independent review, approval Takeda; jangan mengubah provider/credential/live integration/authority/frozen.

@@ -7,10 +7,10 @@
 ```text
 Repository: E:\jarvis agent\h
 Branch: main
-HEAD: 3624b57 fix(live): use sounddevice device tuple for tone loopback (ALH2)
-Last updated: 2026-08-03 — WA3-live COMPLETE (audio live acceptance, LIVE-PROVEN)
+HEAD: 987864e feat(live): call kill switch, visible hangup, and staged rollout rings (CLK)
+Last updated: 2026-08-03 — WA9-live COMPLETE (kill switch, LIVE-PROVEN x2)
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 92 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON + CST + CAP + AWK + TIM3 + DLG + DUR + CAL3 + ABD + ALH 74002ac + ALH2 3624b57)
+Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 93 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON + CST + CAP + AWK + TIM3 + DLG + DUR + CAL3 + ABD + ALH + ALH2 + CLK 987864e)
 Frozen: OK — 10 files, baseline 094b696
 Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
 ```
@@ -29,6 +29,12 @@ Relevant stabilization roadmap:
 `E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
 
 ## Latest completed phase
+
+```text
+Phase: WA9-live — Call Live Controls (kill switch)
+Status: COMPLETE (LIVE-PROVEN kill switch audio)
+Completed: 2026-08-03 (CLK 987864e; frozen 094b696 OK)
+```
 
 ```text
 Phase: WA3-live — Audio Live Acceptance
@@ -368,22 +374,22 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: WA3-live — Audio Live Acceptance
-Status: COMPLETE — 2026-08-03 (ALH 74002ac + ALH2 3624b57)
-Priority: tone loopback nyata, live-proven
+Phase: WA9-live — Call Live Controls (kill switch)
+Status: COMPLETE — 2026-08-03 (CLK 987864e)
+Priority: kill switch nyata, hangup, rings
 ```
 
 ### Outcome
 
-- `jarvis/live/audio_live_harness.py` (baru; frozen STT/TTS/voice_listener tidak disentuh): `enumerate_devices()`/`find_loopback_pair()` (deteksi pasangan CABLE; tanpa cable → None jujur); `rms_of()`; `tone_loopback()` (sine → `sd.playrec` device=(capture, playback) → RMS ≥ 0.01); `live_proof()` (inject capture/playback NYATA ke CallAudioProof).
-- **LIVE-PROVEN (run nyata, approval live Takeda)**: tone 440Hz → CABLE Input → capture CABLE Output — `{ok: true, rms: 0.3366, samples: 144000, duration_s: 3}`; live_proof `{status: done, audio_exercised: true, samples_captured: 144000, playback_ok: true}` — label `live-proven` pertama di repo.
-- TDD: RED 6 failed → GREEN 6 passed (koreksi: FakeSD wait + _usable_devices 6 + fake loopback tone); regression 63 passed; ALH2 fix (playrec device tuple — TypeError nyata saat live run); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 15 passed; dua-approval (commit + live run).
+- `jarvis/live/call_live_controls.py` (baru): **`CallKillSwitch`** one-shot (`arm(session, proof)` → `kill()` = session cancel + proof stop + bus `call.killed`; idle → armed → killed; tidak bisa re-arm); **`visible_hangup`** (end session + stop proof; metadata `{hangup_visible: True}`; one-shot); **`RolloutRings`** (`test → trusted → business → public`; ring berikutnya butuh ≥1 accept ring sebelumnya; deny-by-default).
+- **LIVE-PROVEN #2 (run nyata, approval live Takeda)**: session approved + audio proof nyata (tone loopback 144.000 samples) → arm → kill → `session: cancelled` + `proof: done` + `call.killed` — kill switch menghentikan lane audio hardware nyata.
+- TDD: RED 5 failed → GREEN 5 passed; regression 40 passed (controls + rollout + states + harness + audio + actor); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 18 passed; dua-approval (commit + live run).
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
 ### Next phase (BELUM disetujui — DILARANG dieksekusi)
 
 ```text
-Phase: Live lane lanjutan (WA9 rollout live / WA6 write path / WA0 hardware) — butuh approval live
+Phase: Live lane lanjutan (WA6 write path / WA0 hardware / WA9 rings live) — butuh approval live
 Status: MENUNGGU KEPUTUSAN TAKEDA
 Guardrail: jangan mulai fase baru tanpa approval eksplisit Takeda.
 ```
@@ -422,6 +428,7 @@ WA5-lanjutan durable memory/recall ✅ (DUR 778f89f, 2026-08-03)
 WA6-lanjutan calendar review lanjutan ✅ (CAL3 ff99300, 2026-08-03)
 28-lanjutan actor binding ✅ (ABD a922097, 2026-08-03)
 WA3-live audio acceptance ✅ LIVE-PROVEN (ALH 74002ac + ALH2 3624b57, 2026-08-03)
+WA9-live call controls ✅ LIVE-PROVEN (CLK 987864e, 2026-08-03)
 → live lane lanjutan (MENUNGGU keputusan Takeda)
 ```
 
@@ -454,17 +461,17 @@ Baca berurutan:
 5. .hermes.md
 6. roadmap stabilisasi yang disebut di session.md
 
-HEAD: 3624b57 (ALH2). Index kosong. Frozen 094b696 OK. Worktree bersih
+HEAD: 987864e (CLK). Index kosong. Frozen 094b696 OK. Worktree bersih
 kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
 noise + full_run.txt) — KEDUANYA JANGAN di-commit.
 
-WA3-live COMPLETE (2026-08-03): audio live acceptance — tone loopback
-NYATA via VB-Audio Virtual Cable: RMS 0.337, 144000 samples,
-audio_exercised true. LIVE-PROVEN pertama di repo. ALH + ALH2 (fix
-playrec device tuple).
+WA9-live COMPLETE (2026-08-03): kill switch LIVE-PROVEN — session
+cancelled + audio proof done (tone loopback nyata 144000 samples);
+visible hangup + rollout rings bertingkat. CLK 987864e.
 
-Fase aktif: TIDAK ADA. Live lane lanjutan (WA9 rollout live / WA6 write
-path / WA0 hardware) DILARANG dimulai tanpa approval live eksplisit.
+Fase aktif: TIDAK ADA. Live lane lanjutan (WA6 write path / WA0
+hardware / WA9 rings live) DILARANG dimulai tanpa approval live
+eksplisit.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,
