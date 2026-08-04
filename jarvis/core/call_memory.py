@@ -43,10 +43,27 @@ def admit_summary(value: object) -> dict:
     }}
 
 
+_OPAQUE_ID_RE = re.compile(r"\A[0-9a-f]{32}\Z")
+
+
+def _is_opaque_id(text: str) -> bool:
+    """Hex 32-karakter kanonik — bentuk ``uuid.uuid4().hex`` yang dipakai
+    ``CallSession``. Identitas mesin, tidak pernah memuat masukan user."""
+    return bool(_OPAQUE_ID_RE.match(text))
+
+
 def _looks_like_secret(text: str) -> bool:
     lowered = text.lower()
     if any(marker in lowered for marker in _SECRET_MARKERS):
         return True
+    if _is_opaque_id(text):
+        # Temuan S-11: ~3,45% dari uuid4().hex kebetulan memuat 12+ digit
+        # berurutan, sehingga heuristik nomor kartu di bawah menolak record
+        # yang sah — dan record itu hilang tanpa pesan apa pun. Id opaque
+        # dikecualikan dari heuristik DIGIT saja; penanda kata rahasia di
+        # atas tetap berlaku, dan bentuk lain (mis. "4111111111111111")
+        # tetap ditolak seperti semula.
+        return False
     return bool(re.search(r"\d{12,19}", text))
 
 

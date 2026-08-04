@@ -612,10 +612,20 @@ class WhatsAppWebService:
                 # Sengaja melempar, bukan mengembalikan status lunak: pemanggil
                 # di atas kita mengubah hasil sukses apa pun menjadi kalimat
                 # "sudah saya telepon" (S-1).
+                #
+                # Yang TIDAK boleh ditulis di sini: "tidak ada panggilan yang
+                # sedang berjalan". Bukti gagal bisa berarti selector tidak
+                # cocok dengan DOM WhatsApp, bukan panggilan tidak dimulai —
+                # dan memutusnya otomatis mustahil, karena tombol akhiri
+                # panggilan dicari dengan selector yang baru saja terbukti
+                # tidak cocok. Menukar klaim palsu dengan klaim palsu arah
+                # sebaliknya bukan perbaikan.
                 raise WhatsAppError(
                     f"Panggilan ke {contact.name} tidak terbukti dimulai — "
-                    "tombol diklik tetapi jendela panggilan tidak muncul. "
-                    "Tidak ada panggilan yang sedang berjalan."
+                    "tombol diklik tetapi jendela panggilan tidak terdeteksi. "
+                    "Keadaan panggilan TIDAK DIKETAHUI: periksa jendela "
+                    "WhatsApp Jarvis, dan akhiri sendiri bila ternyata "
+                    "sedang menelepon."
                 )
             return {"state": state, "contact": contact.name, "proven": True}
 
@@ -633,8 +643,9 @@ class WhatsAppWebService:
             button.click()
             if self._prove_call_started(page) != "in_call":
                 raise WhatsAppError(
-                    "Panggilan masuk diklik jawab tetapi tidak tersambung — "
-                    "tidak ada panggilan aktif."
+                    "Tombol jawab diklik tetapi panggilan aktif tidak "
+                    "terdeteksi. Keadaan panggilan TIDAK DIKETAHUI: periksa "
+                    "jendela WhatsApp Jarvis."
                 )
             return {"state": "in_call", "proven": True}
 

@@ -94,6 +94,29 @@ def contacts(tmp_path, monkeypatch):
     return path
 
 
+class _ConfigShim:
+    """Bayangan modul config, hanya untuk namespace whatsapp_web.
+
+    Sengaja TIDAK menambal ``jarvis.core.config.get`` langsung. Menambal atribut
+    modul bersama berarti setiap pembaca config di seluruh proses melewati
+    lambda tes selama fixture hidup — persis kelas kerapuhan yang membuat T7
+    (cache registry tercemar patch aktif) butuh bisect biner untuk ditemukan.
+    Rebinding nama di dalam satu modul jauh lebih sempit dan dipulihkan utuh.
+    """
+
+    def __init__(self, real, overrides: dict):
+        self._real = real
+        self._overrides = overrides
+
+    def get(self, path, default=None):
+        if path in self._overrides:
+            return self._overrides[path]
+        return self._real.get(path, default)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
 @pytest.fixture
 def service(monkeypatch):
     """Jalankan operasi langsung di halaman palsu, tanpa Playwright."""
@@ -103,13 +126,11 @@ def service(monkeypatch):
         return function(svc._page)
 
     monkeypatch.setattr(svc, "_call", _call)
-    # Bukti panggilan harus cepat gagal dalam tes.
-    real_get = ww.config.get
+    # Bukti panggilan harus cepat gagal dalam tes — jendela nyata 8 detik
+    # membuat setiap kasus negatif menunggu sia-sia.
     monkeypatch.setattr(
-        ww.config, "get",
-        lambda path, default=None: (
-            0.3 if path == "whatsapp_web.call_confirm_timeout_s"
-            else real_get(path, default)),
+        ww, "config",
+        _ConfigShim(ww.config, {"whatsapp_web.call_confirm_timeout_s": 0.3}),
     )
     return svc
 
@@ -153,6 +174,33 @@ def test_call_succeeds_only_with_visible_call_state(contacts, service,
     assert result["state"] in {"ringing", "in_call"}
     assert result["contact"] == "Ibu"
     assert result["proven"] is True
+
+
+def test_failure_message_claims_only_what_is_knowable(contacts, service,
+                                                      monkeypatch):
+    """Gagal bukti ≠ tidak ada panggilan. Jangan menukar satu klaim palsu
+    dengan klaim palsu arah sebaliknya.
+
+    Bukti bisa gagal karena selector tidak cocok dengan DOM WhatsApp, bukan
+    karena panggilan tidak dimulai. Bila kliknya ternyata benar-benar
+    menelepon, HP lawan bicara berdering sementara kita melapor gagal.
+    Memutusnya otomatis mustahil: tombol akhiri panggilan dicari dengan
+    selector yang sama yang baru saja terbukti tidak cocok.
+
+    Yang tersisa dan jujur: nyatakan bahwa keadaannya TIDAK DIKETAHUI, dan
+    suruh user memeriksa jendelanya sendiri.
+    """
+    page = FakePage(READY | {CALL_BUTTON})
+    _wire(service, page, monkeypatch)
+
+    with pytest.raises(ww.WhatsAppError) as excinfo:
+        service.start_call("Ibu")
+
+    message = str(excinfo.value).casefold()
+    assert "tidak ada panggilan" not in message, (
+        "kita tidak bisa tahu itu — jangan mengklaimnya")
+    assert "periksa" in message or "cek" in message
+    assert "whatsapp" in message
 
 
 def test_call_never_reports_the_unproven_calling_state(contacts, service,

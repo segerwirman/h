@@ -879,6 +879,34 @@ dan nilainya menunjuk provider yang terdaftar.
 
 ---
 
+### S-11 — 3,45% call summary dibuang diam-diam sebagai "rahasia"
+
+Ditemukan mengejar `test_integration_ring` yang gagal acak dengan `assert 0 == 1`
+— tampak seperti flake test, ternyata bug produksi.
+
+`CallSession` memberi `uuid.uuid4().hex` (32 karakter heks). Filter rahasia di
+[call_memory.py:50](jarvis/core/call_memory.py#L50) menolak teks apa pun yang
+memuat 12-19 digit berurutan — heuristik nomor kartu. Terukur:
+
+```
+uuid4().hex dengan 12+ digit berurutan: 6906 / 200000 = 3,453%
+contoh: 4f4f8790482849258072e99f9f28767f  -> ditolak
+```
+
+Jadi ~1 dari 29 call summary yang sah **hilang tanpa pesan apa pun** —
+`record()` mengembalikan `False` dan tidak ada yang membacanya.
+
+Diperbaiki sempit: hex 32-karakter kanonik dikecualikan dari heuristik **digit
+saja**. Penanda kata rahasia tetap berlaku untuk semua field, dan bentuk lain
+seperti `4111111111111111` tetap ditolak persis seperti sebelumnya — test
+lama yang mengunci penolakan itu tetap hijau.
+
+**Pelajarannya sama dengan S-10:** kegagalan yang tampak seperti keributan tes
+adalah satu-satunya alasan bug ini terlihat. Kalau ring test dilonggarkan agar
+"tidak rewel", kerusakan produksinya tetap ada dan tak terlihat.
+
+---
+
 ### S-10 — `embed()` mengembalikan vektor lebih sedikit daripada teks
 
 Ditemukan **saat menjalankan backfill 13.0 pada DB nyata**, bukan dari
@@ -934,7 +962,7 @@ diverifikasi.
 
 | Fase | Judul | Menutup | Prasyarat | Status |
 |---|---|---|---|---|
-| 13 | Kejujuran hasil panggilan (+ 13.0 backfill vektor memori) | S-1, S-9, S-10 | — | ✅ **SELESAI** 2026-08-05 |
+| 13 | Kejujuran hasil panggilan (+ 13.0 backfill vektor memori) | S-1, S-9, S-10, S-11 | — | ✅ **SELESAI** 2026-08-05 |
 | 14 | Kontrak bukti untuk aksi eksternal | S-1 | 13 | ⬜ |
 | 15 | Konfirmasi bisa dijawab dengan suara | S-2 | 13 | ⬜ |
 | 16 | Eksekusi panggilan tanpa gerbang ganda | S-2 | 14, 15 | ⬜ |
@@ -1069,9 +1097,29 @@ Yang berubah:
   tanpa hasil tool yang membuktikannya; konfirmasi ditolak berarti aksi TIDAK
   terjadi.
 
-**Batas jujur:** aturan prompt adalah lapisan terluar, bukan penegakan. Model
-masih bisa mengarangnya. Yang menutup celah itu adalah **Fase 14** — validasi
-bukti di `dispatch`, bukan kepatuhan model.
+**Koreksi setelah review sendiri.** Pesan gagal versi pertama berbunyi *"Tidak
+ada panggilan yang sedang berjalan."* Itu klaim yang tidak bisa kita ketahui:
+bukti gagal bisa berarti selector tidak cocok dengan DOM WhatsApp, bukan
+panggilan tidak dimulai — dan memutusnya otomatis mustahil, karena tombol
+akhiri panggilan dicari dengan selector yang baru saja terbukti tidak cocok.
+Menukar klaim palsu dengan klaim palsu arah sebaliknya bukan perbaikan. Pesan
+sekarang menyatakan keadaan **TIDAK DIKETAHUI** dan menyuruh user memeriksa
+jendelanya. Dikunci `test_failure_message_claims_only_what_is_knowable`.
+
+**Batas jujur — dua, dan keduanya nyata:**
+
+1. Aturan prompt adalah lapisan terluar, bukan penegakan. Model masih bisa
+   mengarangnya. Yang menutup celah itu **Fase 14** — validasi bukti di
+   `dispatch`, bukan kepatuhan model.
+2. **Selectornya belum pernah diuji terhadap WhatsApp Web sungguhan.**
+   `_HANGUP_SELECTORS` sudah ada sebelumnya dan dipakai `_status_on_page`;
+   `_RINGING_SELECTORS` baru dan disusun tanpa melihat DOM asli. Label bukti
+   repo ini: `focused-tested`, **bukan** `live-proven` — "LIVE-PROVEN" pada
+   CLK `987864e` adalah tone loopback, bukan DOM panggilan.
+   Risikonya berbalik arah: bila overlay asli tidak cocok dalam 8 detik, setiap
+   panggilan nyata dilaporkan tidak terbukti padahal mungkin berdering. Karena
+   itu pesannya dibuat "TIDAK DIKETAHUI", bukan "gagal". Menutupnya butuh satu
+   panggilan nyata dengan approval live Takeda.
 
 ---
 

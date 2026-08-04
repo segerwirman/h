@@ -96,3 +96,42 @@ def test_memory_metadata_is_safe_to_serialize(monkeypatch):
     text = str(store.list_summaries())
     assert "abc123" in text                       # session_id metadata OK
     assert "isi rahasia" not in text
+
+
+def test_generated_opaque_session_id_is_not_mistaken_for_a_secret(monkeypatch):
+    """Temuan S-11 — 3,45% call summary dibuang diam-diam.
+
+    ``CallSession`` memberi ``uuid.uuid4().hex``: 32 karakter heksadesimal.
+    Sekitar 3,45% di antaranya kebetulan memuat 12+ digit berurutan, sehingga
+    heuristik nomor kartu menolaknya dan record hilang **tanpa pesan apa pun**.
+    Terlihat pertama kali sebagai `test_integration_ring` yang gagal acak
+    (`assert 0 == 1`), padahal penyebabnya di produksi, bukan di tes.
+
+    Heuristiknya sendiri tetap dipertahankan: id yang BUKAN hex 32-karakter
+    diperlakukan seperti semula.
+    """
+    cm = _memory(monkeypatch)
+    store = cm.CallMemoryStore()
+
+    # Contoh nyata dari uuid4().hex yang memuat 12 digit berurutan.
+    assert store.record(
+        _valid_summary(session_id="4f4f8790482849258072e99f9f28767f")) is True
+    assert store.record(
+        _valid_summary(session_id="2236928471244ec8875f9641c013df2f")) is True
+
+    # Nomor kartu tetap ditolak — panjangnya bukan 32 hex.
+    assert store.record(_valid_summary(session_id="4111111111111111")) is False
+    assert store.count() == 2
+
+
+def test_every_generated_session_id_survives_the_secret_filter(monkeypatch):
+    """Tidak boleh ada id sah yang tertolak — nol dari seribu, bukan 'jarang'."""
+    import uuid
+
+    cm = _memory(monkeypatch)
+    store = cm.CallMemoryStore()
+    accepted = sum(
+        1 for _ in range(1000)
+        if store.record(_valid_summary(session_id=uuid.uuid4().hex))
+    )
+    assert accepted == 1000
