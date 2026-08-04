@@ -140,10 +140,32 @@ def _speech_anchors(delivery: ConversationDelivery) -> tuple[str, ...]:
     return tuple(anchor for anchor in delivery.factual_anchors if anchor in speech)
 
 
+_COMPLETE_SENTENCE_RE = re.compile(r"[.!?]['\"”’)]*\Z")
+
+
+def _looks_truncated(text: str) -> bool:
+    """Apakah kandidat ini kalimat yang terputus di tengah jalan? (S-15)
+
+    Komposer dibatasi ``auxiliary.response_composer.max_tokens`` (120). Ketika
+    generasi menabrak cap itu, hasilnya berhenti di mana saja — kerap di tengah
+    kata. Bentuk lama hanya memeriksa panjang, anchor wajib, dan anchor
+    terlarang, sehingga potongan seperti "… sudah dip" lolos semuanya lalu
+    diucapkan sebagai laporan.
+
+    Prompt komposer meminta "one or two natural sentences", jadi tanda baca
+    akhir adalah syarat yang wajar. Menolak selalu aman: teks deterministik
+    yang sudah terverifikasi tetap dipakai.
+    """
+    return not _COMPLETE_SENTENCE_RE.search(str(text or "").rstrip())
+
+
 def _validated_speech(candidate: str, delivery: ConversationDelivery,
                        required: tuple[str, ...]) -> str:
     text = _two_sentences(candidate)
     if not text or len(text) > speech_limit():
+        return ""
+    if _looks_truncated(text):
+        _logger.info("response_composer.rejected", reason="truncated")
         return ""
     if any(not _contains_anchor(text, anchor) for anchor in required):
         _logger.info("response_composer.rejected", reason="anchor_mismatch")

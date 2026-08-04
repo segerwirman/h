@@ -5,7 +5,7 @@
 **Status dokumen:** Fase 0-12 SELESAI (12 = opsi (b), tanpa perubahan frozen). T1 dimitigasi — sisa tindakan di sisi endpoint.
 **SIKLUS 2 (2026-08-05): Fase 13-17 SELESAI. Fase 18-19 belum dikerjakan.** Lihat
 bagian [Siklus 2](#siklus-2--audit-ulang-2026-08-05) di akhir dokumen.
-**Suite:** `pytest tests/ -q` → **2217 lulus, 0 gagal** · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
+**Suite:** `pytest tests/ -q` → **2227 lulus, 0 gagal** · hijau juga dengan jaringan keluar diblokir · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
 FROZEN OK (10 file, baseline `094b696`).
 
 ---
@@ -879,7 +879,7 @@ dan nilainya menunjuk provider yang terdaftar.
 
 ---
 
-### S-15 — Laporan ucapan terpotong di tengah kata — TERBUKA
+### S-15 — Laporan ucapan terpotong di tengah kata — SELESAI ✅
 
 `test_typed_t2_speaks_ack_then_concrete_report` gagal satu kali dalam enam run
 suite penuh. Teks yang diucapkan terpotong pada 44 karakter:
@@ -897,9 +897,46 @@ Lima run berkas itu sendirian: bersih. Pasangan dengan
 `test_phase3_model_routing` (yang memanggil `config.reload()`) dan dengan
 `test_phase3_conversation_delivery`: bersih. Pencemarnya belum ditemukan.
 
-**Belum diperbaiki dan belum dimengerti.** Dicatat apa adanya. Bila kambuh,
-bisect biner atas berkas yang berjalan lebih dulu adalah cara yang sudah
-terbukti untuk kelas ini (lihat T7).
+#### Penyebabnya — ditemukan 2026-08-05
+
+Petunjuk pertama: potongan itu **tidak berakhiran elipsis**. `sanitize_for_speech`
+selalu menambahkan `…` saat memangkas, jadi bukan dia pelakunya.
+
+Petunjuk kedua: test itu memakai delivery lifecycle dengan `naturalize=True`,
+sementara `auxiliary.response_composer.enabled` bernilai **true** di config
+repo dan test-nya **tidak menstub komposer**. Artinya test unit itu benar-benar
+menembak provider LLM di tengah suite, dengan `max_tokens: 120`.
+
+Generasi yang menabrak token cap berhenti di mana saja — kerap di tengah kata.
+`_validated_speech` memeriksa panjang, anchor wajib, dan anchor terlarang,
+tetapi **tidak pernah memeriksa apakah kalimatnya utuh**. Dibuktikan
+deterministik, bukan dengan menunggu flake kambuh:
+
+```
+deterministik      : 'Video "Deddy Corbuzier Episode 123" sudah diputar, sir.'
+anchors wajib      : ('Deddy Corbuzier Episode 123', '123')
+kandidat terpotong DITERIMA? True -> 'Video "Deddy Corbuzier Episode 123" sudah dip'
+```
+
+Jadi ini **bug produksi, bukan flake tes**: setiap kali komposer menabrak token
+cap, Jarvis mengucapkan setengah kalimat sebagai laporan.
+
+#### Perbaikan
+
+* `_looks_truncated()` menolak kandidat yang tidak berakhir tanda baca kalimat.
+  Prompt komposer sendiri meminta "one or two natural sentences", jadi syarat
+  itu wajar — dan menolak selalu aman karena teks deterministik yang sudah
+  terverifikasi tetap dipakai. Komposer memang opsional; itulah gunanya.
+* `test_typed_t2_speaks_ack_then_concrete_report` kini menstub komposer. Test
+  unit tidak boleh memanggil LLM sungguhan.
+
+**Diverifikasi dengan memblokir socket keluar**: `2227 lulus` dengan seluruh
+koneksi non-lokal dilempar `OSError`. Suite tidak lagi bergantung pada
+provider mana pun.
+
+`auxiliary.response_composer.max_tokens: 120` sengaja **tidak** dinaikkan.
+Menaikkannya hanya menggeser frekuensi; yang diperbaiki adalah penerimaan
+hasil yang cacat.
 
 ---
 

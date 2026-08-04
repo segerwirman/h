@@ -42,6 +42,7 @@ class _TypedHarness:
         self.logs = []
         self.spoken = []
         self.restored = 0
+        self.task_results = []
 
     def write_log(self, text):
         self.logs.append(text)
@@ -52,10 +53,22 @@ class _TypedHarness:
     def _restore_orb(self):
         self.restored += 1
 
+    def _record_task_result(self, kind, text):
+        """Drawer hasil task F1 (window.py:2002). Produk memanggilnya di jalur
+        T2; stub harus menyediakannya agar yang teruji tetap alur nyata."""
+        self.task_results.append((kind, text))
+
 
 def test_typed_t2_speaks_ack_then_concrete_report(monkeypatch):
-    from jarvis.agent import interactive_dispatch
+    from jarvis.agent import interactive_dispatch, response_composer
     from jarvis.ui.window import MainWindow
+
+    # S-15 — `auxiliary.response_composer.enabled` bernilai true di config
+    # repo, jadi tanpa stub ini test benar-benar menembak provider di tengah
+    # suite: lambat, bergantung jaringan, dan gagal acak ketika generasi
+    # terpotong token cap. Test unit tidak boleh memanggil LLM sungguhan.
+    monkeypatch.setattr(response_composer, "compose",
+                        lambda delivery, task, **_: delivery)
 
     events = []
     result = (
@@ -72,8 +85,14 @@ def test_typed_t2_speaks_ack_then_concrete_report(monkeypatch):
 
     monkeypatch.setattr(
         interactive_dispatch.dispatch, "dispatch_async", primitive)
+    # Seam ACK PINDAH: dulu ``interactive_dispatch.render_ack``, kini
+    # ``ack_composer.compose_ack`` (interactive_dispatch.py:66). Teks yang
+    # diucapkan adalah hasil composer, bukan ``raw`` dari primitive — dan
+    # render_ack memilih dari daftar template, jadi tanpa penambatan ini
+    # assert teks persis akan flaky.
+    from jarvis.agent import ack_composer
     monkeypatch.setattr(
-        interactive_dispatch, "render_ack",
+        ack_composer, "compose_ack",
         lambda _task, **_kwargs: "Baik, sir. Saya kerjakan.")
 
     harness = _TypedHarness()
