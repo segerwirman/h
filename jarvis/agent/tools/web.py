@@ -7,16 +7,89 @@ hardcode region di sini.
 from __future__ import annotations
 
 import asyncio
+import re
 import threading
 import time
 
 from pydantic import BaseModel, Field
 
-from jarvis.core import locale as jlocale
+from jarvis.core import config, locale as jlocale
 from jarvis.core import log
 from jarvis.agent.base import Tool, ToolResult
 
 _logger = log.get("agent.tools.web")
+
+# §18 — kapan sumber pencarian dibuka di browser agent.
+OPEN_SOURCE_MODES = ("always", "on_request", "never")
+# Kata yang SELALU berarti "tunjukkan sumbernya": berimbuhan pemilik, atau
+# kata kerja meminta yang berdiri sendiri.
+_SOURCE_REQUEST_RE = re.compile(
+    r"\b(?:sumber(?:-sumber)?nya|source[sd]?\b|referensi|reference|"
+    r"bukti(?:kan)?(?:nya)?|tunjukkan|tunjukin|perlihatkan|"
+    r"link(?:nya)|tautan(?:nya))\b",
+    re.IGNORECASE,
+)
+# "sumber"/"link" telanjang ambigu: bisa TOPIK ("apa sumber energi terbarukan",
+# "cari link aja deh") dan membuka tab untuk itu merebut layar user. Baru
+# dihitung permintaan bila didahului kata kerja meminta.
+_SOURCE_VERB_RE = re.compile(
+    r"\b(?:tunjukkan|tunjukin|perlihatkan|tampilkan|sebutkan|cantumkan|"
+    r"sertakan|beri(?:kan)?|kasih|buka(?:kan)?|lampirkan|show|give|include|"
+    r"cite)\b[^.?!]{0,40}?\b(?:sumber|source|link|tautan|halaman)\b",
+    re.IGNORECASE,
+)
+
+
+def _open_sources_mode() -> str:
+    """Mode pembukaan sumber; nilai tak dikenal jatuh ke ``on_request``."""
+    try:
+        value = config.get("agent.search.open_sources", "on_request")
+    except Exception:                                        # noqa: BLE001
+        return "on_request"
+    value = str(value or "").strip().casefold()
+    return value if value in OPEN_SOURCE_MODES else "on_request"
+
+
+def _wants_sources(mode: str, task: str, query: str) -> bool:
+    if mode == "never":
+        return False
+    if mode == "always":
+        return True
+    text = f"{task} {query}"
+    return bool(_SOURCE_REQUEST_RE.search(text)
+                or _SOURCE_VERB_RE.search(text))
+
+
+def _top_source_url(rows: list[dict]) -> str:
+    for row in rows:
+        url = str(row.get("href") or row.get("url") or "").strip()
+        if url.lower().startswith(("http://", "https://")):
+            return url
+    return ""
+
+
+async def _open_top_source(rows: list[dict], session, adapter, context,
+                           query: str) -> None:
+    """Buka SATU tab ke sumber peringkat teratas; best-effort.
+
+    Satu tab per pencarian, bukan satu per hasil — membuka enam tab tiap kali
+    Takeda bertanya akan merebut layarnya. Memakai panel browser agent (lewat
+    registry, bukan memanggil internal browser) supaya lease, lifecycle, dan
+    pelepasannya tetap ditangani jalur yang sudah ada.
+    """
+    url = _top_source_url(rows)
+    if not url or session is None:
+        return
+    try:
+        from jarvis.agent import registry
+
+        await registry.execute("browser_new_tab", {"url": url},
+                               adapter, session, context)
+        _logger.info("web_search.source_opened", query=query[:80])
+    except Exception as e:                                   # noqa: BLE001
+        # Membuka sumber adalah bonus. Kegagalannya tidak boleh menggagalkan
+        # hasil pencarian yang sudah benar.
+        _logger.warning("web_search.source_open_failed", error=str(e)[:120])
 
 _rate_lock = threading.Lock()
 _last_search = 0.0
@@ -44,10 +117,12 @@ class WebSearch(Tool):
                    "URL, dan snippet. mode=news untuk berita terbaru.")
     params_schema = _SearchParams
     read_only = True
+    wants_context = True
     timeout_s = 45
 
     async def run(self, query: str, max_results: int = 6,
-                  mode: str = "text", **_) -> ToolResult:
+                  mode: str = "text", _session=None, _adapter=None,
+                  _context=None, **_) -> ToolResult:
         max_results = min(int(max_results or 6), 15)
 
         # §6 — locale per permintaan: region ddgs + augmentasi query berita
@@ -95,9 +170,12 @@ class WebSearch(Tool):
         try:
             from jarvis.core.bus import BUS
             if mode == "news":
+                # §18 — bentuk lama membuang href sepenuhnya di mode news,
+                # sehingga sumbernya tidak terlihat bahkan sebagai teks.
                 card_lines = [
-                    f"{r.get('title', '')}  "
-                    f"[{r.get('source', '')} {r.get('date', '')}]".strip()
+                    (f"{r.get('title', '')} — "
+                     f"{r.get('href') or r.get('url', '')}".rstrip(" —")
+                     + f"  [{r.get('source', '')} {r.get('date', '')}]".rstrip())
                     for r in rows[:6] if r.get("title")]
                 source = "DuckDuckGo News"
             else:
@@ -124,6 +202,10 @@ class WebSearch(Tool):
             if src or date:
                 head += f"  ({src} {date})".rstrip()
             lines.append(f"{head}\n  {body}")
+        # §18 — tampilkan sumbernya, bukan hanya menyebutkannya.
+        task = str(getattr(_session, "task", "") or "")
+        if _wants_sources(_open_sources_mode(), task, query):
+            await _open_top_source(rows, _session, _adapter, _context, query)
         return ToolResult.success("\n".join(lines),
                                   display=f"{len(rows)} hasil")
 

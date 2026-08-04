@@ -791,6 +791,15 @@ agent:
   context_window_tokens: 128000
   context_threshold: 0.7
   compact_keep_last: 10
+  search:
+    # §18 — kapan sumber pencarian dibuka di panel browser agent.
+    #   always     : setiap pencarian membuka satu tab sumber teratas
+    #   on_request : hanya bila diminta ("sumbernya", "buktikan",
+    #                "tunjukkan", "referensi", "linknya")   ← default
+    #   never      : tidak pernah
+    # Satu tab per pencarian, bukan satu per hasil. Nilai tak dikenal jatuh
+    # ke `on_request`.
+    open_sources: on_request
   tool_selection:
     enabled: true                # deterministic shortlist for clear tasks
     max_tools: 28                # cukup untuk browser+CUA tanpa fallback full registry

@@ -3,9 +3,9 @@
 **Dibuat:** 2026-08-04 · **Diperbarui:** 2026-08-05 (audit ulang menyeluruh — Siklus 2 ditambahkan)
 **Baseline:** HEAD `39cae8c` · FROZEN `094b696` (10 file, integritas OK)
 **Status dokumen:** Fase 0-12 SELESAI (12 = opsi (b), tanpa perubahan frozen). T1 dimitigasi — sisa tindakan di sisi endpoint.
-**SIKLUS 2 (2026-08-05): Fase 13-17 SELESAI. Fase 18-19 belum dikerjakan.** Lihat
+**SIKLUS 2 (2026-08-05): Fase 13-18 SELESAI. Sisa: Fase 19 (barge-in).** Lihat
 bagian [Siklus 2](#siklus-2--audit-ulang-2026-08-05) di akhir dokumen.
-**Suite:** `pytest tests/ -q` → **2229 lulus, 0 gagal** · hijau juga dengan jaringan keluar diblokir · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
+**Suite:** `pytest tests/ -q` → **2252 lulus, 0 gagal** · hijau juga dengan jaringan keluar diblokir · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
 FROZEN OK (10 file, baseline `094b696`).
 
 ---
@@ -1168,7 +1168,7 @@ diverifikasi.
 | 15 | Konfirmasi bisa dijawab dengan suara | S-2 | 13 | ✅ **SELESAI** 2026-08-05 |
 | 16 | Eksekusi panggilan tanpa gerbang ganda | S-2 | 14, 15 | ✅ **SELESAI** 2026-08-05 |
 | 17 | Batas iterasi: jujur, bisa diatur, bisa dilanjut | S-5 | 14 | ✅ **SELESAI** 2026-08-05 |
-| 18 | Sumber pencarian terbuka di browser | S-3 | — | ⬜ |
+| 18 | Sumber pencarian terbuka di browser | S-3 | — | ✅ **SELESAI** 2026-08-05 |
 | 19 | Barge-in adaptif tahan noise | S-4 | — | ⬜ |
 | S-7 | Perbaikan test config | S-7 | — | ✅ hijau sendiri setelah lane ringan dikembalikan |
 | S-6 | Keputusan TLS | S-6 | — | ✅ diputuskan: diterima apa adanya |
@@ -1638,6 +1638,54 @@ aslinya ditangkap sebelum penambalan lalu dipulihkan di kedua test itu.
 **Test:** pencarian mode `news` menghasilkan kartu yang memuat URL; permintaan
 "cari X, tunjukkan sumbernya" memicu tepat satu navigasi.
 
+##### Hasil Fase 18 — SELESAI 2026-08-05
+
+`tests/test_search_sources.py` (23 test) dibuktikan merah lebih dulu.
+
+**Cacat data diperbaiki lebih dulu.** Kartu mode `news` membuang `href`
+sepenuhnya — tanpa itu, membuka browser pun tidak ada yang bisa dibuka.
+
+**Pembukaan sumber** lewat `agent.search.open_sources`:
+`always` · `on_request` (**default**) · `never`, nilai tak dikenal jatuh ke
+`on_request`. Yang dibuka adalah **panel browser agent** lewat
+`registry.execute("browser_new_tab", …)` — bukan memanggil internal browser —
+supaya lease, lifecycle, dan pelepasannya tetap ditangani jalur yang sudah ada
+dan sudah teruji.
+
+Batasan yang disengaja:
+
+* **Satu tab per pencarian**, bukan satu per hasil. Enam tab tiap Takeda
+  bertanya berarti merebut layarnya.
+* Tanpa sesi (cron, sub-agent) → tidak membuka apa pun. Jendela tidak boleh
+  muncul diam-diam dari pekerjaan latar.
+* Kegagalan browser **tidak menggagalkan pencarian**. Menampilkan sumber itu
+  bonus; hasil yang sudah benar tidak boleh hilang karenanya.
+
+**Positif palsu yang tertangkap sebelum masuk.** Sweep frasa nyata menunjukkan
+"apa sumber energi terbarukan" ikut memicu pembukaan tab — padahal "sumber" di
+situ TOPIK, bukan permintaan. Kata telanjang `sumber`/`link`/`tautan` kini baru
+dihitung permintaan bila berimbuhan pemilik ("sumbernya") atau didahului kata
+kerja meminta ("sebutkan/tampilkan/sertakan/buka … sumber"):
+
+```
+False | cari harga gpu
+False | apa sumber energi terbarukan
+False | cari sumber protein nabati
+False | cari link aja deh
+False | jelaskan sumber daya alam indonesia
+ True | cari harga gpu dan tunjukkan sumbernya
+ True | buktikan dari mana beritanya
+ True | cari data itu dan sertakan sumber
+ True | cari beritanya lalu tampilkan link
+ True | cari referensi soal transformer
+```
+
+**Aturan lama dicabut secara sadar.** `voice_native_tools` dulu berbunyi
+*"jangan membuka browser hanya untuk pencarian"* — larangan yang bertentangan
+langsung dengan permintaan Takeda. Diganti, dan alasan pencabutannya ditulis di
+tempatnya agar siklus berikutnya tidak "memperbaikinya" kembali ke perilaku
+lama. Dikunci `test_voice_rules_no_longer_forbid_opening_sources`.
+
 ---
 
 ### Fase 19 — Barge-in adaptif tahan noise
@@ -1736,7 +1784,7 @@ Sama dengan siklus lalu, ditegaskan ulang karena temuan S-1 dan S-5:
 - [x] Konfirmasi yang tersisa bisa dijawab dengan suara *(15)*
 - [x] Batas iterasi memberi hasil parsial dan tidak menjanjikan resume yang tidak ada *(17)*
 - [x] Nilai iterasi di Settings adalah nilai yang benar-benar dipakai *(17)*
-- [ ] Pencarian menampilkan sumber — dan mode berita memuat URL sama sekali *(18)*
+- [x] Pencarian menampilkan sumber — dan mode berita memuat URL sama sekali *(18)*
 - [ ] Jarvis bisa dipotong bicara secara natural *(19)*
 - [ ] Kebisingan ruangan tidak memotong Jarvis *(19)*
 - [ ] `pytest tests/ -q` hijau penuh kembali *(S-7 + seluruh fase)*

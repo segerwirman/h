@@ -372,7 +372,12 @@ _RULES = """
 
 [KONTROL NATIVE CEPAT]
 - Buka aplikasi desktop -> open_app. Tutup aplikasi desktop bernama -> close_app.
-- Cari fakta/berita web -> web_search; jangan membuka browser hanya untuk pencarian.
+- Cari fakta/berita web -> web_search. Bila user meminta sumber/bukti
+  ("sumbernya", "buktikan", "tunjukkan", "referensi"), web_search sendiri
+  yang membuka satu tab sumber teratas di panel browser agent — jangan
+  memanggil browser_navigate terpisah untuk itu. (§18: larangan lama
+  "jangan membuka browser untuk pencarian" DICABUT atas permintaan
+  eksplisit Takeda; jangan dikembalikan tanpa keputusan baru.)
 - Buka URL -> browser_navigate, lalu browser_snapshot sebelum menilai isi halaman.
 - Cari video YouTube -> youtube_search, lalu browser_snapshot; play hanya setelah bukti target dan browser_media sukses.
 - Baca/cari/daftar file -> file_read/file_search/file_list. Jangan panggil file_processor untuk operasi umum.
