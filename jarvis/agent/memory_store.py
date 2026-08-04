@@ -118,6 +118,71 @@ def _to_blob(vec: list[float] | None) -> bytes | None:
     return np.asarray(vec, dtype=np.float32).tobytes()
 
 
+def backfill_embeddings(batch_size: int = 32,
+                        limit: int | None = None) -> dict:
+    """Isi ulang vektor memori yang kosong (Fase 13.0, temuan S-9).
+
+    Baris ``embedding IS NULL`` tertinggal setiap kali lane ringan menunjuk
+    provider yang tidak melayani embedding: ``_embed`` mengembalikan ``None``
+    dan ``write``/``update`` tetap menyimpan barisnya tanpa vektor. Memori itu
+    tidak pernah pulih sendiri saat provider diperbaiki, sehingga pencarian
+    semantik terus melewatinya.
+
+    Sengaja memakai ``_embed`` yang sama dengan jalur tulis — dimensi vektor
+    harus punya satu sumber, kalau tidak ``_cosine`` diam-diam mengembalikan
+    0.0 untuk vektor berdimensi beda (baris 125).
+
+    Kontrak kejujuran (sama seperti S-1): provider yang tidak bisa embed
+    membuat fungsi ini **melapor gagal**, bukan menulis vektor kosong atau
+    mengaku selesai. Batch yang sudah mendarat tidak ditarik kembali.
+
+    Return ``{"pending", "embedded", "failed", "reason"}`` — ``pending`` adalah
+    jumlah baris kosong yang tersisa SETELAH backfill.
+    """
+    init_db()
+    size = max(1, min(128, int(batch_size or 32)))
+    embedded = 0
+    reason = ""
+
+    with _lock, _conn() as c:
+        rows = c.execute(
+            "SELECT id, content FROM memories WHERE embedding IS NULL "
+            "ORDER BY created_at ASC" + (" LIMIT ?" if limit else ""),
+            (int(limit),) if limit else ()).fetchall()
+
+    for start in range(0, len(rows), size):
+        batch = rows[start:start + size]
+        try:
+            vecs = _embed([str(content) for _, content in batch])
+        except Exception as e:                               # noqa: BLE001
+            vecs, reason = None, f"{type(e).__name__}: {str(e)[:120]}"
+        if not vecs or len(vecs) != len(batch):
+            reason = reason or ("provider lane ringan tidak mengembalikan "
+                                "embedding — vektor tidak diubah")
+            break
+        # Commit per batch: kegagalan batch berikutnya tidak boleh menghapus
+        # pekerjaan yang sudah berhasil.
+        with _lock, _conn() as c:
+            for (mem_id, _), vec in zip(batch, vecs):
+                blob = _to_blob(vec)
+                if blob is None:
+                    continue
+                c.execute("UPDATE memories SET embedding = ? WHERE id = ?",
+                          (blob, mem_id))
+                embedded += 1
+
+    with _lock, _conn() as c:
+        pending = int(c.execute(
+            "SELECT COUNT(*) FROM memories WHERE embedding IS NULL"
+        ).fetchone()[0])
+
+    failed = bool(reason)
+    _logger.info("memory.backfill", embedded=embedded, pending=pending,
+                 failed=failed, reason=reason[:160] or None)
+    return {"pending": pending, "embedded": embedded, "failed": failed,
+            "reason": reason}
+
+
 def _cosine(a: bytes, b: list[float]) -> float:
     import numpy as np
     va = np.frombuffer(a, dtype=np.float32)

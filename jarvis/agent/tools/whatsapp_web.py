@@ -14,6 +14,32 @@ def available() -> bool:
     return web_available()
 
 
+def _start_bridge() -> dict:
+    """Seam bridge audio — dipisah agar dapat diuji tanpa perangkat nyata."""
+    from jarvis.integrations.whatsapp_voice import start_bridge
+
+    return start_bridge()
+
+
+def _call_display(contact: str, state: str, audio: dict) -> str:
+    """Satu kalimat keadaan panggilan + satu kalimat kemampuan bicara.
+
+    Bentuk lama ("Memanggil X; virtual audio tidak siap") menyatukan dua fakta
+    berbeda dalam satu klausa, sehingga model menyimpulkan salah satu dari dua
+    arah yang sama-sama keliru: panggilannya gagal, atau audionya baik-baik
+    saja. Keduanya dinyatakan terpisah dan eksplisit (S-1).
+    """
+    call_line = {
+        "in_call": f"Panggilan WhatsApp ke {contact} tersambung.",
+        "ringing": f"Panggilan WhatsApp ke {contact} berdering.",
+    }.get(str(state), f"Panggilan WhatsApp ke {contact} dimulai.")
+    if audio.get("active"):
+        return f"{call_line} Jarvis bisa bicara di panggilan ini."
+    reason = str(audio.get("error") or "audio bridge nonaktif").rstrip(".")
+    return (f"{call_line} Jarvis TIDAK bisa bicara di panggilan ini "
+            f"({reason}) — bicaralah sendiri.")
+
+
 class _NoParams(BaseModel):
     pass
 
@@ -183,26 +209,19 @@ class WhatsAppCall(Tool):
         )
 
     async def run(self, contact: str, **_) -> ToolResult:
-        from jarvis.integrations.whatsapp_voice import start_bridge
         from jarvis.integrations.whatsapp_web import WhatsAppWebService
 
         try:
             result = await asyncio.to_thread(
                 WhatsAppWebService.get().start_call, contact
             )
-            audio = await asyncio.to_thread(start_bridge)
+            audio = await asyncio.to_thread(_start_bridge)
             payload = {**result, "audio_bridge": audio}
-            if audio.get("active"):
-                display = (
-                    f"Memanggil {result.get('contact', contact)}; "
-                    "audio Jarvis aktif."
-                )
-            else:
-                display = (
-                    f"Memanggil {result.get('contact', contact)}; "
-                    f"{audio.get('error', 'audio bridge nonaktif')}"
-                )
-            return ToolResult.success(payload, display=display)
+            return ToolResult.success(
+                payload,
+                display=_call_display(result.get("contact", contact),
+                                      result.get("state", ""), audio),
+            )
         except Exception as exc:  # noqa: BLE001
             return ToolResult.fail(str(exc))
 
@@ -220,24 +239,17 @@ class WhatsAppAnswer(Tool):
         return "Jawab panggilan WhatsApp yang sedang masuk?"
 
     async def run(self, **_) -> ToolResult:
-        from jarvis.integrations.whatsapp_voice import start_bridge
         from jarvis.integrations.whatsapp_web import WhatsAppWebService
 
         try:
             result = await asyncio.to_thread(
                 WhatsAppWebService.get().answer_call
             )
-            audio = await asyncio.to_thread(start_bridge)
+            audio = await asyncio.to_thread(_start_bridge)
             return ToolResult.success(
                 {**result, "audio_bridge": audio},
-                display=(
-                    "Panggilan WhatsApp dijawab; "
-                    + (
-                        "audio Jarvis aktif."
-                        if audio.get("active")
-                        else audio.get("error", "audio bridge nonaktif.")
-                    )
-                ),
+                display=_call_display("penelepon",
+                                      result.get("state", "in_call"), audio),
             )
         except Exception as exc:  # noqa: BLE001
             return ToolResult.fail(str(exc))

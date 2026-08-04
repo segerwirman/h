@@ -270,6 +270,15 @@ _HANGUP_SELECTORS = (
     'button[aria-label*="hang up" i]',
     '[data-icon="call-end"]',
 )
+# Panggilan keluar yang masih berdering sudah menampilkan overlay-nya sendiri
+# sebelum tersambung. Salah satu dari dua kelompok ini adalah bukti sah bahwa
+# panggilan benar-benar dimulai; klik tombol saja BUKAN bukti (S-1).
+_RINGING_SELECTORS = (
+    '[aria-label*="calling" i]',
+    '[aria-label*="memanggil" i]',
+    '[aria-label*="ringing" i]',
+    '[data-testid*="call" i][role="dialog"]',
+)
 
 
 class WhatsAppWebService:
@@ -566,6 +575,26 @@ class WhatsAppWebService:
 
         return dict(self._call(operation))
 
+    @staticmethod
+    def _prove_call_started(page) -> str:
+        """``'in_call'`` / ``'ringing'`` bila terbukti, ``''`` bila tidak.
+
+        Klik tombol bukan bukti. Satu-satunya bukti yang diterima adalah
+        keadaan panggilan yang benar-benar terlihat pada halaman.
+        """
+        try:
+            timeout_s = float(
+                config.get("whatsapp_web.call_confirm_timeout_s", 8)
+            )
+        except (TypeError, ValueError):
+            timeout_s = 8.0
+        timeout_ms = int(max(0.2, min(60.0, timeout_s)) * 1000)
+        if _wait_visible(page, _HANGUP_SELECTORS, timeout_ms=timeout_ms):
+            return "in_call"
+        if _first_visible(page, _RINGING_SELECTORS):
+            return "ringing"
+        return ""
+
     def start_call(self, contact_value: str) -> dict:
         contact = resolve_contact(contact_value)
 
@@ -578,8 +607,17 @@ class WhatsAppWebService:
                     "mungkin belum tersedia pada akun/rollout WhatsApp Web ini."
                 )
             button.click()
-            page.wait_for_timeout(500)
-            return {"state": "calling", "contact": contact.name}
+            state = self._prove_call_started(page)
+            if not state:
+                # Sengaja melempar, bukan mengembalikan status lunak: pemanggil
+                # di atas kita mengubah hasil sukses apa pun menjadi kalimat
+                # "sudah saya telepon" (S-1).
+                raise WhatsAppError(
+                    f"Panggilan ke {contact.name} tidak terbukti dimulai — "
+                    "tombol diklik tetapi jendela panggilan tidak muncul. "
+                    "Tidak ada panggilan yang sedang berjalan."
+                )
+            return {"state": state, "contact": contact.name, "proven": True}
 
         result = dict(self._call(operation))
         self._last_status = dict(result)
@@ -593,7 +631,12 @@ class WhatsAppWebService:
                     "Tidak ada panggilan WhatsApp masuk yang dapat dijawab."
                 )
             button.click()
-            return {"state": "in_call"}
+            if self._prove_call_started(page) != "in_call":
+                raise WhatsAppError(
+                    "Panggilan masuk diklik jawab tetapi tidak tersambung — "
+                    "tidak ada panggilan aktif."
+                )
+            return {"state": "in_call", "proven": True}
 
         result = dict(self._call(operation))
         self._last_status = dict(result)

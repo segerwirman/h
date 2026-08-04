@@ -190,36 +190,70 @@ class LLMClient:
         return (r.content or "").strip()
 
     def embed(self, texts: list[str]) -> list[list[float]] | None:
-        """Embedding untuk memory store. None bila provider tak mendukung."""
+        """Embedding untuk memory store. None bila provider tak mendukung.
+
+        Kontrak: **satu vektor per satu teks, urut posisi** — pemanggil
+        (``memory_store``) menyandingkan keduanya berdasarkan indeks. Vektor
+        yang lebih sedikit dari teks berarti memori mendapat vektor milik
+        memori lain, dan pencarian semantik jadi salah tanpa satu pun error.
+
+        Temuan S-10: google-genai 2.14.0 dengan ``gemini-embedding-2``
+        mengembalikan **satu** embedding untuk banyak ``contents``. Karena itu
+        paritas diperiksa, lalu dipulihkan dengan permintaan per teks. Bila
+        paritas tetap tidak tercapai, kembalikan ``None`` — hasil sebagian
+        lebih berbahaya daripada tidak ada hasil.
+        """
         if time.monotonic() < self._embed_unavailable_until:
             return None
+        if not texts:
+            return []
         try:
-            if self.provider.kind == "gemini":
-                from google.genai import types as gtypes
-
-                res = self._client().models.embed_content(
-                    model=str(config.get("agent.embedding_model",
-                                         "gemini-embedding-2")),
-                    contents=texts,
-                    config=gtypes.EmbedContentConfig(
-                        output_dimensionality=int(config.get(
-                            "agent.embedding_dimensions", 768)),
-                    ),
-                )
-                self._embed_unavailable_until = 0.0
-                return [list(e.values) for e in res.embeddings]
-            if self.provider.kind == "openai_compat":
-                res = self._client().embeddings.create(
-                    model=str(config.get("agent.embedding_model_openai",
-                                         "text-embedding-3-small")),
-                    input=texts)
-                self._embed_unavailable_until = 0.0
-                return [list(d.embedding) for d in res.data]
+            vectors = self._embed_batch(texts)
+            if vectors is not None and len(vectors) != len(texts):
+                # Fallback paritas: satu permintaan per teks.
+                recovered: list[list[float]] = []
+                for text in texts:
+                    single = self._embed_batch([text])
+                    if not single or len(single) != 1:
+                        recovered = []
+                        break
+                    recovered.append(single[0])
+                vectors = recovered or None
+            if vectors is None or len(vectors) != len(texts):
+                _logger.warning("agent.llm.embed_parity_failed",
+                                requested=len(texts),
+                                returned=0 if vectors is None else len(vectors))
+                return None
+            self._embed_unavailable_until = 0.0
+            return vectors
         except Exception as e:                               # noqa: BLE001
             cooldown = max(30.0, float(config.get(
                 "agent.embedding_failure_cooldown_s", 900)))
             self._embed_unavailable_until = time.monotonic() + cooldown
             _logger.warning("agent.llm.embed_failed", error=str(e)[:120])
+        return None
+
+    def _embed_batch(self, texts: list[str]) -> list[list[float]] | None:
+        """Satu permintaan embedding mentah; paritas diurus ``embed()``."""
+        if self.provider.kind == "gemini":
+            from google.genai import types as gtypes
+
+            res = self._client().models.embed_content(
+                model=str(config.get("agent.embedding_model",
+                                     "gemini-embedding-2")),
+                contents=texts,
+                config=gtypes.EmbedContentConfig(
+                    output_dimensionality=int(config.get(
+                        "agent.embedding_dimensions", 768)),
+                ),
+            )
+            return [list(e.values) for e in res.embeddings]
+        if self.provider.kind == "openai_compat":
+            res = self._client().embeddings.create(
+                model=str(config.get("agent.embedding_model_openai",
+                                     "text-embedding-3-small")),
+                input=texts)
+            return [list(d.embedding) for d in res.data]
         return None
 
     # ── openai_compat ─────────────────────────────────────────────────────
