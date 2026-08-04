@@ -449,6 +449,12 @@ wake:                            # Modul 10 — double-clap wake trigger
   diagnostics: false             # true → log every candidate accept/reject
 
 voice:                           # Mark L Change 4 — barge-in interrupt
+  # Batas tunggu API key sebelum pipeline suara menyerah dan MELAPOR.
+  # Bentuk lama menunggu tanpa batas di thread non-daemon: bila key belum
+  # diisi, JarvisLive tak pernah dibuat sehingga on_text_command tak pernah
+  # ter-bind — JARVIS diam total untuk suara MAUPUN teks, dan proses tidak
+  # bisa keluar bersih. Dibaca jarvis/ui/window.py (wait_for_api_key).
+  api_key_wait_timeout_s: 300
   text_only_observer:
     enabled: false              # diagnostic hook; legacy runtime stays unchanged by default
   barge_in:
@@ -772,7 +778,17 @@ agent:
   tool_selection:
     enabled: true                # deterministic shortlist for clear tasks
     max_tools: 28                # cukup untuk browser+CUA tanpa fallback full registry
-  confirm_timeout_s: 300
+  # Fase 15 — konfirmasi kini bisa dijawab dengan SUARA, jadi 5 menit tidak
+  # lagi diperlukan; menunggu selama itu memakan iterasi agent (S-5) dan
+  # membuat tugas menggantung tanpa alasan. Naikkan lagi bila kamu sering
+  # meninggalkan meja di tengah tugas.
+  confirm_timeout_s: 45
+  confirm:
+    # Jawaban suara yang dihitung sebagai persetujuan/penolakan TEGAS.
+    # Hanya ucapan yang SELURUHNYA berupa jawaban yang diterima: "ya sir" ya,
+    # "ya sudah jangan jadi" tidak. Kosongkan untuk memakai daftar bawaan.
+    voice_yes: []
+    voice_no: []
   # Frasa lama tetap menjadi salah satu kandidat agar kontrol Settings ini
   # benar-benar mengubah perilaku. Kandidat tambahan memberi variasi §4.
   ack_phrase: "Baik, sedang saya kerjakan."

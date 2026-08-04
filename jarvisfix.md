@@ -3,9 +3,9 @@
 **Dibuat:** 2026-08-04 · **Diperbarui:** 2026-08-05 (audit ulang menyeluruh — Siklus 2 ditambahkan)
 **Baseline:** HEAD `39cae8c` · FROZEN `094b696` (10 file, integritas OK)
 **Status dokumen:** Fase 0-12 SELESAI (12 = opsi (b), tanpa perubahan frozen). T1 dimitigasi — sisa tindakan di sisi endpoint.
-**SIKLUS 2 (2026-08-05): Fase 13-14 SELESAI. Fase 15-19 belum dikerjakan.** Lihat
+**SIKLUS 2 (2026-08-05): Fase 13-15 SELESAI. Fase 16-19 belum dikerjakan.** Lihat
 bagian [Siklus 2](#siklus-2--audit-ulang-2026-08-05) di akhir dokumen.
-**Suite:** `pytest tests/ -q` → **2150 lulus, 0 gagal** (8 run berturut bersih; lihat S-13) · `ruff` bersih ·
+**Suite:** `pytest tests/ -q` → **2190 lulus, 0 gagal** (lihat S-13 untuk crash native intermiten) · `ruff` bersih ·
 FROZEN OK (10 file, baseline `094b696`).
 
 ---
@@ -1034,7 +1034,7 @@ diverifikasi.
 |---|---|---|---|---|
 | 13 | Kejujuran hasil panggilan (+ 13.0 backfill vektor memori) | S-1, S-9, S-10, S-11 | — | ✅ **SELESAI** 2026-08-05 |
 | 14 | Kontrak bukti untuk aksi eksternal | S-1, S-12 | 13 | ✅ **SELESAI** 2026-08-05 |
-| 15 | Konfirmasi bisa dijawab dengan suara | S-2 | 13 | ⬜ |
+| 15 | Konfirmasi bisa dijawab dengan suara | S-2 | 13 | ✅ **SELESAI** 2026-08-05 |
 | 16 | Eksekusi panggilan tanpa gerbang ganda | S-2 | 14, 15 | ⬜ |
 | 17 | Batas iterasi: jujur, bisa diatur, bisa dilanjut | S-5 | 14 | ⬜ |
 | 18 | Sumber pencarian terbuka di browser | S-3 | — | ⬜ |
@@ -1288,6 +1288,49 @@ nyata) **masih terbuka** dan tetap butuh satu panggilan sungguhan.
 **Test:** "ya" di luar jendela ask **tidak** menerbitkan `confirm`; di dalam
 jendela, menerbitkan tepat satu.
 
+##### Hasil Fase 15 — SELESAI 2026-08-05
+
+`tests/test_voice_confirmation.py` (37 test) dibuktikan merah lebih dulu.
+
+Yang berubah:
+
+* `jarvis/agent/voice_consent.py` — modul murni yang hanya memutuskan apakah
+  SATU ucapan adalah jawaban tegas. Tidak menerbitkan apa pun, tidak menyentuh
+  audio, tidak tahu tentang agent. Pemanggilnya yang memegang gerbang.
+* `MainWindow._handle_spoken_confirmation` menerbitkan event BUS
+  `confirm`/`cancel` — **event yang sama persis** dengan kata yang diketik.
+  Kanal baru, gerbang lama.
+* Dipasang di `_voice_intercept` **setelah** `reply_flow.handle_utterance`.
+  ReplyFlow hanya melahap ucapan saat state-nya `CONFIRM`, jadi selama flow itu
+  aktif "ya" tetap miliknya dan dua konteks konfirmasi tidak saling mencuri.
+* `UIAdapter.ask` kini **mengucapkan pertanyaannya**. Bentuk lama mengucapkan
+  "Saya butuh konfirmasi Anda, sir" dan membuang isi pertanyaan ke panel teks
+  — mustahil dijawab tanpa melihat layar.
+* `agent.confirm_timeout_s` 300 → **45**, dan daftar katanya pindah ke config
+  (`agent.confirm.voice_yes` / `voice_no`, kosong = pakai bawaan).
+
+**Asimetri yang disengaja.** Hanya ucapan yang SELURUHNYA berupa jawaban yang
+dihitung; sapaan ("sir", "jarvis") dan pengisi ("tolong", "dong") boleh
+menempel. Kalimat berkualifikasi jatuh ke `None`:
+
+```
+confirm | ya · iya sir · lanjut · oke · boleh · setuju · ya tolong · gas
+ cancel | tidak · jangan · batal · stop · ga usah · nanti saja
+   None | ya sudah jangan jadi · boleh tapi nanti · iya kalau perlu
+   None | ok sekarang buka spotify · benarkah begitu
+```
+
+Melewatkan persetujuan berarti bertanya sekali lagi. Melewatkan penolakan
+berarti tidak terjadi apa-apa. **Menyetujui aksi eksternal yang tidak pernah
+disetujui adalah satu-satunya kesalahan yang tidak bisa ditarik kembali** —
+jadi saat ragu, jawabannya `None`. Dikunci
+`test_false_confirm_is_the_only_unsafe_direction`.
+
+**Efek samping yang ditemukan:** satu test lama membangun fake parsial
+`MainWindow` lewat `SimpleNamespace` dan pecah begitu metode baru dipanggil.
+Fake-nya yang diperbaiki, bukan kodenya dilemahkan dengan `getattr` — pelemahan
+itu justru akan menyembunyikan kabel yang benar-benar putus.
+
 ---
 
 ### Fase 16 — Eksekusi panggilan tanpa gerbang ganda
@@ -1442,7 +1485,7 @@ Sama dengan siklus lalu, ditegaskan ulang karena temuan S-1 dan S-5:
 - [ ] 157 memori tanpa vektor terisi ulang; pencarian semantik menjangkaunya lagi *(13.0)*
 - [ ] Panggilan yang gagal dilaporkan **gagal** — klaim sukses mustahil tanpa bukti tool *(13, 14)*
 - [ ] "telepon Honbrew" lewat suara dieksekusi tanpa pindah ke keyboard *(15, 16)*
-- [ ] Konfirmasi yang tersisa bisa dijawab dengan suara *(15)*
+- [x] Konfirmasi yang tersisa bisa dijawab dengan suara *(15)*
 - [ ] Batas iterasi memberi hasil parsial dan tidak menjanjikan resume yang tidak ada *(17)*
 - [ ] Nilai iterasi di Settings adalah nilai yang benar-benar dipakai *(17)*
 - [ ] Pencarian menampilkan sumber — dan mode berita memuat URL sama sekali *(18)*

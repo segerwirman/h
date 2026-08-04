@@ -49,6 +49,10 @@ def _typed_window() -> SimpleNamespace:
         _CONFIRM_WORDS=("confirm", "konfirmasi"),
         _CANCEL_WORDS=("cancel", "batalkan aksi"),
         _pending_close_decision=None,
+        # 18A proposal suara: MainWindow.__init__ (window.py:694) memulainya
+        # None dan handle_command membacanya (window.py:965). Stub harus
+        # mencerminkan default itu, bukan menghilangkannya.
+        _pending_voice_proposal_id=None,
         _skip_next_intercept=False,
         reply_flow=_ReplyFlow(),
         router=legacy,
@@ -213,7 +217,19 @@ def test_posthoc_voice_intercept_suppresses_heavy_legacy_action(monkeypatch):
             AssertionError("legacy voice action must be suppressed")
         )
     )
-    fake = SimpleNamespace(reply_flow=_ReplyFlow(), router=legacy)
+    # Fase 15 menambahkan gerbang konfirmasi suara di jalur ini. Fake parsial
+    # MainWindow harus ikut membawanya — melemahkan kode dengan getattr hanya
+    # akan menyembunyikan kabel yang benar-benar putus.
+    fake = SimpleNamespace(
+        reply_flow=_ReplyFlow(),
+        router=legacy,
+        _pending_close_decision=None,
+        _pending_voice_proposal_id=None,
+        write_log=lambda _text: None,
+    )
+    fake._handle_spoken_confirmation = (
+        lambda spoken: window.MainWindow._handle_spoken_confirmation(
+            fake, spoken))
 
     window.MainWindow._voice_intercept(fake, "buka dan putar video terbaru")
 

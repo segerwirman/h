@@ -2043,6 +2043,13 @@ class MainWindow(QMainWindow):
             return
         if self.reply_flow.handle_utterance(spoken):
             return
+        # Fase 15 — jawaban konfirmasi lewat suara. Kanal baru, gerbang lama:
+        # ucapan tegas menerbitkan event BUS yang sama persis dengan kata yang
+        # diketik. ReplyFlow di atas sudah lewat, jadi dua konteks konfirmasi
+        # tidak saling mencuri: selama ReplyFlow berstatus CONFIRM, "ya" tetap
+        # miliknya.
+        if self._handle_spoken_confirmation(spoken):
+            return
         route = classify_execution(spoken, {"source": "voice"})
         _logger.info(
             "router.decision",
@@ -2065,6 +2072,31 @@ class MainWindow(QMainWindow):
             self.open_url(c.slots.get("url", ""))
         elif c.intent is Intent.SEARCH_WEB:
             self.run_search(c.slots.get("query", spoken))
+
+    def _handle_spoken_confirmation(self, spoken: str) -> bool:
+        """Terbitkan confirm/cancel bila ucapan ini menjawab pertanyaan aktif.
+
+        Hanya berlaku SELAMA ada pertanyaan yang menunggu. Di luar jendela itu
+        "ya" tetap percakapan biasa — kata setuju tidak boleh melayang lalu
+        menyetujui aksi yang belum pernah ditanyakan.
+        """
+        pending = (self._pending_close_decision is not None
+                   or self._pending_voice_proposal_id is not None
+                   or _agent_ask_active())
+        if not pending:
+            return False
+        try:
+            from jarvis.agent import voice_consent
+            decision = voice_consent.decide(spoken)
+        except Exception as exc:                             # noqa: BLE001
+            _logger.warning("voice.consent_unavailable", error=str(exc)[:100])
+            return False
+        if decision is None:
+            return False
+        BUS.publish(decision)
+        self.write_log(
+            f"SYS: konfirmasi suara — {'disetujui' if decision == 'confirm' else 'dibatalkan'}.")
+        return True
 
     def _speak_line(self, line: str) -> None:
         """Say one exact sentence via the live voice; log regardless."""
@@ -2445,9 +2477,34 @@ class JarvisUI:
     def show_content(self, title: str, text: str):
         self._win._content_sig.emit(title[:64], text[:6000])
 
-    def wait_for_api_key(self):
+    def wait_for_api_key(self, timeout: float | None = None,
+                         should_stop=None) -> bool:
+        """Tunggu API key sampai BATAS waktu. True bila siap, False bila
+        habis waktu atau dibatalkan.
+
+        Bentuk lama menunggu tanpa batas (``while not _ready: sleep(0.1)``)
+        pada thread ``jarvis-live`` yang dibuat ``daemon=False``. Bila key
+        belum diisi, ``JarvisLive`` tak pernah dibuat sehingga
+        ``ui.on_text_command`` tak pernah ter-bind — gejalanya sama persis
+        dengan boot-diam 2026-08-04 walau penyebabnya berbeda — dan proses
+        tidak bisa keluar bersih.
+        """
+        if timeout is None:
+            try:
+                timeout = float(config.get("voice.api_key_wait_timeout_s", 300))
+            except (TypeError, ValueError):
+                timeout = 300.0
+        deadline = time.monotonic() + max(0.0, float(timeout))
         while not self._win._ready:
+            if should_stop is not None and should_stop():
+                _logger.info("voice.api_key_wait_cancelled")
+                return False
+            if time.monotonic() >= deadline:
+                _logger.warning("voice.api_key_wait_timeout",
+                                timeout_s=round(float(timeout), 1))
+                return False
             time.sleep(0.1)
+        return True
 
     def prompt_reconfig(self):
         self._win._ready = False

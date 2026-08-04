@@ -119,12 +119,15 @@ class UIAdapter(Adapter):
             _resolve_stale.set_result(None)
 
         opts = f" [{' / '.join(options)}]" if options else ""
-        win.write_log(f"AGENT ? {question}{opts} — ketik 'confirm' "
-                      f"untuk lanjut atau 'cancel' untuk batal.")
+        win.write_log(f"AGENT ? {question}{opts} — jawab 'ya' atau 'tidak', "
+                      f"atau ketik 'confirm' / 'cancel'.")
         BUS.publish("agent.ask", question=question, options=options or [])
         if hasattr(win, "_speak_line"):
             try:
-                win._speak_line("Saya butuh konfirmasi Anda, sir.")
+                # Ucapkan PERTANYAANNYA. Bentuk lama hanya mengumumkan bahwa
+                # ada pertanyaan dan membuang isinya ke panel teks, sehingga
+                # user mustahil menjawab tanpa melihat layar (Fase 15).
+                win._speak_line(" ".join(str(question or "").split())[:300])
             except Exception:                                # noqa: BLE001
                 pass
 
