@@ -393,3 +393,75 @@ def test_diagnostics_name_the_reason_blocks_are_rejected():
 
     assert isinstance(rejects, dict)
     assert rejects.get("below_threshold", 0) > 0
+
+
+# ── S-25: pembeda suara dipelajari dari mikrofon, bukan angka sintetis ────
+
+def test_voice_band_reference_is_learned_from_this_microphone():
+    """Log sesi nyata Takeda (2026-08-05 21:37):
+
+        threshold 0.02, echo_floor 0.0001, peak_rms 0.9797, triggers 0
+        rejects: below_threshold 4857, broadband 262, transient 56,
+                 sustaining 1
+
+    Echo guard sudah benar \u2014 ambang tidak lagi melonjak. Tetapi dari ~318 blok
+    yang lolos ambang, hampir semua ditolak `broadband`. Ambang 0.55 dipilih
+    dari NADA SINTETIS 4-harmonik (rasio 0.95), bukan dari mikrofon Takeda.
+
+    Perbaikannya bukan menurunkan angka tebakan lagi \u2014 itu sudah dua kali
+    gagal. Suara Jarvis sendiri yang lewat speaker ke mikrofon ADALAH ucapan,
+    jadi rasio pita yang terukur di jendela grace adalah acuan yang benar untuk
+    "seperti apa ucapan terlihat di mikrofon INI".
+    """
+    analyzer = _analyzer()
+    now = _calibrate(analyzer, _hiss(0.01, seed=60))
+
+    # Jarvis bicara: acuan pita suara diukur dari echo-nya sendiri.
+    _feed(analyzer, _speechlike(0.30, seed=61), now, 6, speaking=True,
+          speaking_since=now, playback_level=0.9)
+
+    assert analyzer.voice_ratio_floor > 0.0
+
+
+def test_speech_no_worse_than_jarvis_own_voice_is_accepted():
+    """Jangan menuntut ucapan user lebih "mirip suara" daripada suara Jarvis."""
+    analyzer = _analyzer(min_voice_band_ratio=0.95)   # mustahil secara absolut
+    now = _calibrate(analyzer, _hiss(0.01, seed=62))
+    _feed(analyzer, _speechlike(0.25, seed=63), now, 6, speaking=True,
+          speaking_since=now, playback_level=0.9)
+    now += 6 * BLOCK_S
+
+    # Level dari log sesi nyata Takeda: peak_rms_while_speaking 0.9797.
+    # Memakai angka yang lebih rendah membuat test menguji skenario yang
+    # tidak pernah terjadi di mesinnya.
+    hit, _ = _feed(analyzer, _speechlike(0.95, seed=64), now, 40,
+                   speaking=True, speaking_since=now - 5.0, playback_level=0.9)
+
+    assert hit is not None, (
+        "acuan terukur harus mengalahkan ambang absolut yang terlalu ketat")
+
+
+def test_broadband_noise_is_still_rejected_against_the_reference():
+    """Melonggarkan tidak boleh berarti menerima desis."""
+    analyzer = _analyzer()
+    now = _calibrate(analyzer, _hiss(0.01, seed=65))
+    _feed(analyzer, _speechlike(0.25, seed=66), now, 6, speaking=True,
+          speaking_since=now, playback_level=0.9)
+    now += 6 * BLOCK_S
+
+    hit, _ = _feed(analyzer, _hiss(0.40, seed=67), now, 40,
+                   speaking=True, speaking_since=now - 5.0, playback_level=0.9)
+
+    assert hit is None
+
+
+def test_diagnostics_expose_the_observed_ratio():
+    """Angka berikutnya harus datang dari mikrofon Takeda, bukan dari sintesis."""
+    analyzer = _analyzer()
+    now = _calibrate(analyzer, _hiss(0.01, seed=68))
+    _feed(analyzer, _speechlike(0.55, seed=69), now, 10, speaking=True)
+
+    snapshot = analyzer.diagnostics()
+
+    assert "voice_ratio_floor" in snapshot
+    assert "last_voice_ratio" in snapshot

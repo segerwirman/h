@@ -51,7 +51,11 @@ class BargeInConfig:
     echo_margin: float = 2.5              # ambang = echo terukur × ini
     echo_alpha: float = 0.08              # EMA echo floor saat Jarvis bicara
     max_crest: float = 6.0                # di atas ini = transien, bukan ucapan
+    # S-25 — ambang ABSOLUT, dipakai hanya sampai acuan mikrofon terukur.
     min_voice_band_ratio: float = 0.55    # energi < 1 kHz terhadap total
+    # Ucapan user tidak boleh dituntut lebih "mirip suara" daripada suara
+    # Jarvis sendiri yang terdengar di mikrofon yang sama.
+    voice_ratio_tolerance: float = 0.8
     sample_rate: int = 16000
     # §22 — jarak antar catatan diagnostik saat Jarvis bicara. "Tidak pernah
     # memicu" dan "tidak pernah jalan" sama-sama sunyi di log; angka berkala
@@ -94,6 +98,7 @@ class BargeInConfig:
             echo_alpha=_num("echo_alpha", 0.08, float),
             max_crest=_num("max_crest", 6.0, float),
             min_voice_band_ratio=_num("min_voice_band_ratio", 0.55, float),
+            voice_ratio_tolerance=_num("voice_ratio_tolerance", 0.8, float),
             diagnostics_every_s=_num("diagnostics_every_s", 20.0, float),
         )
 
@@ -117,6 +122,8 @@ class BargeInAnalyzer:
     _cooldown_until: float = 0.0
     _last_block_at: float = 0.0
     echo_floor: float = 0.0
+    voice_ratio_floor: float = 0.0
+    last_voice_ratio: float = 0.0
     _rejects: dict = field(default_factory=dict)
     _blocks_speaking: int = 0
     _peak_rms_speaking: float = 0.0
@@ -139,6 +146,9 @@ class BargeInAnalyzer:
                 "peak_rms_while_speaking": round(self._peak_rms_speaking, 4),
                 "triggers": self._triggers,
                 "echo_floor": round(self.echo_floor, 4),
+                "voice_ratio_floor": round(self.voice_ratio_floor, 3),
+                "last_voice_ratio": round(self.last_voice_ratio, 3),
+                "voice_ratio_gate": round(self._voice_ratio_gate(), 3),
                 "rejects": dict(self._rejects),
             }
         except Exception:                                    # noqa: BLE001
@@ -243,7 +253,14 @@ class BargeInAnalyzer:
             # bicara dan user hampir pasti belum, jadi apa yang terdengar di
             # mikrofon SEKARANG adalah echo + ruangan. Di sinilah echo diukur,
             # bukan ditebak lewat pengali.
+            #
+            # S-25 — dan suara Jarvis ADALAH ucapan. Rasio pita suaranya di
+            # mikrofon INI adalah acuan yang benar untuk "seperti apa ucapan
+            # terlihat di sini", jauh lebih baik daripada angka yang dipilih
+            # dari nada sintetis.
             self._learn_echo(rms)
+            if rms > self.cfg.min_abs_rms:
+                self._learn_voice_ratio(self._voice_ratio(x))
             self.sustained_s = 0.0
             return self._reject("tts_onset", rms, 0.0)
 
@@ -264,11 +281,9 @@ class BargeInAnalyzer:
             return self._reject("transient", rms, threshold)
 
         # Ucapan memusatkan energi di bawah ~1 kHz; desis broadband tidak.
-        mag = np.abs(np.fft.rfft(x))
-        total = float(np.sum(mag)) + 1e-9
-        cut = max(1, int(1000 * x.size / self.cfg.sample_rate))
-        voice_ratio = float(np.sum(mag[:cut])) / total
-        if voice_ratio < self.cfg.min_voice_band_ratio:
+        voice_ratio = self._voice_ratio(x)
+        self.last_voice_ratio = voice_ratio
+        if voice_ratio < self._voice_ratio_gate():
             self.sustained_s = 0.0
             return self._reject("broadband", rms, threshold)
 
@@ -289,6 +304,37 @@ class BargeInAnalyzer:
                 ) -> BargeInVerdict:
         self._rejects[reason] = self._rejects.get(reason, 0) + 1
         return BargeInVerdict(False, reason, rms, self.noise_floor, threshold)
+
+    def _voice_ratio(self, x) -> float:
+        """Bagian magnitudo spektral di bawah ~1 kHz."""
+        import numpy as np
+
+        mag = np.abs(np.fft.rfft(x))
+        total = float(np.sum(mag)) + 1e-9
+        cut = max(1, int(1000 * x.size / self.cfg.sample_rate))
+        return float(np.sum(mag[:cut])) / total
+
+    def _voice_ratio_gate(self) -> float:
+        """Ambang pita suara: acuan terukur bila ada, absolut bila belum.
+
+        Acuan diambil dari suara Jarvis sendiri di mikrofon ini, lalu diberi
+        toleransi — menuntut ucapan user LEBIH mirip suara daripada suara
+        Jarvis adalah tuntutan yang tidak masuk akal, dan itulah yang menolak
+        99% audio Takeda di sesi 2026-08-05.
+        """
+        if self.voice_ratio_floor <= 0.0:
+            return self.cfg.min_voice_band_ratio
+        learned = self.voice_ratio_floor * self.cfg.voice_ratio_tolerance
+        return min(self.cfg.min_voice_band_ratio, learned)
+
+    def _learn_voice_ratio(self, ratio: float) -> None:
+        value = max(0.0, min(1.0, float(ratio)))
+        if value <= 0.0:
+            return
+        if self.voice_ratio_floor <= 0.0:
+            self.voice_ratio_floor = value
+            return
+        self.voice_ratio_floor = 0.8 * self.voice_ratio_floor + 0.2 * value
 
     def _learn_echo(self, rms: float) -> None:
         """Turun cepat, naik pelan — floor mengikuti bagian yang SENYAP.
