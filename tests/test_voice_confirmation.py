@@ -196,8 +196,11 @@ def test_confirmation_question_is_spoken_not_just_announced(monkeypatch):
         def write_log(self, _text):
             pass
 
-        def _speak_line(self, line):
-            spoken.append(line)
+        # §28 — tanda tangan asli menerima `kind`; fake yang tidak menerimanya
+        # membuat pemanggilan melempar, lalu ditelan try/except di `ask` — dan
+        # test lulus/gagal tanpa arti.
+        def _speak_line(self, line, *, kind="info", turn=""):
+            spoken.append((line, kind))
 
     monkeypatch.setattr(ui_adapter, "current_window", lambda: _Win())
     monkeypatch.setattr(ui_adapter.config, "get",
@@ -210,4 +213,6 @@ def test_confirmation_question_is_spoken_not_just_announced(monkeypatch):
                     ["Lanjut", "Batal"]))
 
     assert answer is None                      # timeout, tidak disetujui
-    assert any("Honbrew" in line for line in spoken), spoken
+    assert any("Honbrew" in line for line, _kind in spoken), spoken
+    # Pertanyaan konfirmasi tidak boleh ikut dibuang antrean (§28).
+    assert any(kind == "confirm" for _line, kind in spoken), spoken

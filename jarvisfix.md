@@ -2395,10 +2395,13 @@ pemakaian harian, dan di situlah "instan" benar-benar terasa.
 | 25 | Memori perintah TERVERIFIKASI | ⬜ |
 | 26 | Routing berbasis embedding, lokal | ⬜ |
 | 27 | Eksekusi spekulatif untuk aksi reversible | ⬜ |
-| 28 | Satu antrean bicara | ⬜ |
+| 28 | Satu antrean bicara | ✅ **SELESAI** 2026-08-06 |
 | 29 | Sesi model hangat | ⬜ |
 
-**Urutan yang disarankan: 24 → 28 → 25 → 26 → 27 → 29.**
+**Urutan disarankan semula: 24 → 28 → 25 → 26 → 27 → 29.**
+**Diperbarui setelah Fase 24:** 26 (embedding lokal) NAIK — ia ada di
+jalur kritis setiap giliran, bukan hanya routing. Urutan sisa:
+**26 → 25 → 27 → 29.**
 24 lebih dulu karena tanpa rincian latensi, sisanya menebak — sesi ini sudah
 dua kali membuktikan tebakan arsitektur bisa meleset total (S-13 dikira
 pustaka native, ternyata thread bocor; S-22 dikira ambang, ternyata echo guard
@@ -2525,6 +2528,44 @@ aksinya berjalan.
 
 Ini juga pekerjaan latensi: yang perlu instan adalah UMPAN BALIKNYA, bukan
 pekerjaannya.
+
+### Hasil Fase 28 — SELESAI 2026-08-06
+
+`jarvis/core/speech_queue.py` + `tests/test_speech_queue.py` (18 test), merah
+lebih dulu.
+
+**Sebabnya terukur di kode, bukan ditebak:** `MainWindow._speak_line`
+melahirkan **thread baru untuk setiap kalimat**, dan ada **42 pemanggil** —
+ACK, narator progres, hasil akhir, konfirmasi, ringkasan pencarian. Tidak ada
+satu pun yang menyerialkan mereka.
+
+Semua kini lewat satu pintu. Tetapi yang membuatnya berguna bukan pengurutan,
+melainkan **apa yang DIBUANG**:
+
+| Jenis | Perlakuan |
+|---|---|
+| `confirm` | mendahului antrean, **tidak pernah** dibuang |
+| `final` | membatalkan progres dan ACK giliran yang sama |
+| `ack` | dibuang bila hasilnya sudah tiba |
+| `progress` | digantikan progres yang lebih baru |
+
+Progres basi yang terdengar SETELAH hasilnya ada persis penyebab kebingungan
+"apa yang sedang dikerjakan". Pembatalan mengikat SATU giliran, bukan seluruh
+antrean — pekerjaan latar milik giliran lain tidak ikut bungkam.
+
+Pertanyaan konfirmasi sengaja jadi satu-satunya yang kebal: pertanyaan yang
+hilang membuat user menunggu jawaban yang tidak pernah diminta.
+
+**Ditemukan lewat test:** fake `_speak_line` di test Fase 15 tidak menerima
+argumen `kind` baru, sehingga pemanggilannya melempar dan **ditelan `try/except`
+di `ask`** — test lulus/gagal tanpa arti. Fake diperbaiki dan assertion
+diperkuat: pertanyaan konfirmasi kini juga diperiksa jenisnya, bukan hanya
+isinya. Kelas kesalahan yang sama sudah muncul di Fase 15, 19, 21, dan 24 —
+fake parsial yang tertinggal dari bentuk aslinya.
+
+**Yang BELUM dikerjakan dari rencana fase ini:** ACK yang menyebut rencana
+terurai ("Menelepon Honbrew…"). Antreannya sudah siap menerimanya; teks ACK-nya
+sendiri masih milik `ack_composer` dan belum sadar-kontrak.
 
 ---
 

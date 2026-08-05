@@ -2124,14 +2124,53 @@ class MainWindow(QMainWindow):
             f"SYS: konfirmasi suara — {'disetujui' if decision == 'confirm' else 'dibatalkan'}.")
         return True
 
-    def _speak_line(self, line: str) -> None:
-        """Say one exact sentence via the live voice; log regardless."""
+    def _speech(self):
+        """Antrean bicara tunggal milik window ini (§28).
+
+        Dibuat malas supaya window yang dipakai tes tidak perlu menyalakan
+        thread apa pun.
+        """
+        queue = getattr(self, "_speech_queue", None)
+        if queue is None:
+            from jarvis.core.speech_queue import SpeechQueue
+
+            queue = SpeechQueue(speaker=self._speak_now)
+            self._speech_queue = queue
+            worker = threading.Thread(
+                target=self._speech_worker, daemon=True, name="jarvis-speech")
+            self._speech_worker_thread = worker
+            worker.start()
+        return queue
+
+    def _speech_worker(self) -> None:
+        import time as _time
+
+        while True:
+            try:
+                if not self._speech_queue.run_once():
+                    _time.sleep(0.05)
+            except Exception:                                # noqa: BLE001
+                _time.sleep(0.2)
+
+    def _speak_now(self, line: str) -> None:
+        """Kirim SATU kalimat ke lane suara. Dipanggil hanya oleh antrean."""
+        if self.on_text_command is None:
+            return
+        msg = ("Ucapkan kalimat berikut PERSIS seperti tertulis, tanpa "
+               "tambahan: «" + line + "»")
+        self.on_text_command(msg)
+
+    def _speak_line(self, line: str, *, kind: str = "info",
+                    turn: str = "") -> None:
+        """Say one exact sentence via the live voice; log regardless.
+
+        §28 — bentuk lama melahirkan thread baru per kalimat, dan 42 pemanggil
+        memakainya. Tidak ada yang menyerialkan mereka, sehingga ACK, progres,
+        hasil, dan konfirmasi bisa berbunyi bersamaan. Sekarang semuanya lewat
+        satu antrean yang juga MEMBUANG yang sudah basi.
+        """
         self.write_log(f"Jarvis: {line}")
-        if self.on_text_command is not None:
-            msg = ("Ucapkan kalimat berikut PERSIS seperti tertulis, tanpa "
-                   "tambahan: «" + line + "»")
-            threading.Thread(target=self.on_text_command, args=(msg,),
-                             daemon=True).start()
+        self._speech().say(line, kind=kind, turn=turn)
 
     def _show_content(self, title: str, text: str) -> None:
         if self.info_panel is None:

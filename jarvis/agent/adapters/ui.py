@@ -101,7 +101,9 @@ class UIAdapter(Adapter):
             from jarvis.agent.progress_narrator import phrase_for
             phrase = phrase_for(text)
             if self._narrator.should_speak(phrase) and hasattr(win, "_speak_line"):
-                win._speak_line(phrase)
+                # §28 — narasi kerja: boleh digantikan progres yang lebih baru,
+                # dan dibuang begitu hasil akhir tiba.
+                win._speak_line(phrase, kind="progress")
         except Exception:                                    # noqa: BLE001
             pass
 
@@ -127,7 +129,11 @@ class UIAdapter(Adapter):
                 # Ucapkan PERTANYAANNYA. Bentuk lama hanya mengumumkan bahwa
                 # ada pertanyaan dan membuang isinya ke panel teks, sehingga
                 # user mustahil menjawab tanpa melihat layar (Fase 15).
-                win._speak_line(" ".join(str(question or "").split())[:300])
+                # §28 — pertanyaan konfirmasi mendahului antrean dan tidak
+                # pernah dibuang: pertanyaan yang hilang membuat user menunggu
+                # jawaban yang tidak pernah diminta.
+                win._speak_line(" ".join(str(question or "").split())[:300],
+                                kind="confirm")
             except Exception:                                # noqa: BLE001
                 pass
 

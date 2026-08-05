@@ -19,7 +19,112 @@ import threading
 # dimuat saat boot (efisiensi; dulu import ini load-bearing untuk panel).
 
 from jarvis.core import config, log
+from jarvis.core.bus import BUS
 from jarvis.runtime.supervisor import RuntimeSupervisor
+
+_VOICE_SUBSYSTEM = "core.voice"
+_SYNC_HINT = "uv sync --extra voice --extra vision --extra agent"
+
+
+def _import_legacy():
+    """Impor pipeline legacy (main.py FROZEN). Seam terpisah supaya kegagalan
+    impor dapat diuji tanpa merusak lingkungan."""
+    sys.path.insert(0, str(config.base_dir()))
+    import main as legacy                        # legacy pipeline, unchanged
+    return legacy
+
+
+def _await_api_key(ui, should_stop) -> bool:
+    """Tunggu API key dengan batas waktu bila UI mendukungnya.
+
+    UI lama (``ui.py`` FROZEN) hanya punya ``wait_for_api_key(self)`` tanpa
+    argumen dan tidak mengembalikan apa pun; perilakunya dipertahankan apa
+    adanya. UI MK50 mengembalikan False saat habis waktu/dibatalkan.
+    """
+    try:
+        result = ui.wait_for_api_key(should_stop=should_stop)
+    except TypeError:                                        # UI lama
+        result = ui.wait_for_api_key()
+    return result is not False
+
+
+def _voice_failure_detail(exc: BaseException) -> str:
+    """Ubah exception jadi kalimat yang bisa DITINDAKLANJUTI.
+
+    Insiden 2026-08-04 hilang berjam-jam karena sebabnya hanya muncul sebagai
+    satu baris log; pesan di sini yang ditampilkan UI.
+    """
+    if isinstance(exc, ModuleNotFoundError):
+        name = getattr(exc, "name", "") or str(exc)
+        return f"Dependency hilang: {name}. Jalankan: {_SYNC_HINT}"
+    if isinstance(exc, TimeoutError):
+        return str(exc).strip()[:200] or "Pipeline suara habis waktu."
+    text = str(exc).strip()
+    low = text.lower()
+    if any(k in low for k in ("api key", "api_key", "unauthorized",
+                              "permission denied", "invalid authentication")):
+        return f"API key bermasalah — buka Settings. ({text[:120]})"
+    return (text or exc.__class__.__name__)[:200]
+
+
+def _publish_voice_status(ok: bool, detail: str) -> None:
+    """Terbitkan status pipeline suara lewat kanal boot.check yang sama dengan
+    subsistem lain, sehingga UI menampilkannya tanpa jalur khusus."""
+    try:
+        BUS.publish("boot.check", subsystem=_VOICE_SUBSYSTEM, ok=ok,
+                    degraded=False, detail=detail)
+    except Exception:                                        # noqa: BLE001
+        pass                                                 # visibilitas tidak boleh mematikan boot
+
+
+def _install_voice_seams(legacy, logger) -> None:
+    """Pasang seluruh seam suara pada modul legacy (main.py tetap FROZEN)."""
+    from jarvis.core import llm
+    from jarvis.integrations import (google_voice, voice_clarify,
+                                     voice_l1, voice_notices, voice_persona,
+                                     voice_safety, voice_tasks,
+                                     voice_text_only_observer,
+                                     voice_live_transport,
+                                     voice_native_tools,
+                                     voice_playback_level,
+                                     voice_proposal_install,
+                                     whatsapp_voice)
+    # Adapter credential di luar file FROZEN: suara tetap identik,
+    # hanya sumber API key yang berpindah dari plaintext ke store.
+    legacy._get_api_key = lambda: llm.api_key() or ""
+    legacy.LIVE_MODEL = str(
+        config.get("llm.live_model", legacy.LIVE_MODEL)
+        or legacy.LIVE_MODEL
+    )
+    google_voice.install(legacy)
+    # Perbaikan 'kosakata terpotong' saat suara: drain-aware playback
+    # dipasang via monkeypatch (file main.py FROZEN tidak diubah).
+    try:
+        from jarvis.integrations import voice_playback_fix
+        voice_playback_fix.install(legacy)
+    except Exception as _e:                                  # noqa: BLE001
+        logger.warning("voice.playback_fix_failed", error=str(_e)[:120])
+    # AUDIT §8.4 — tool tugas latar + antrean batas-giliran + aturan
+    # multi-tasking, semuanya lewat seam yang sama. main.py dan
+    # core/prompt.txt tetap tidak tersentuh.
+    voice_tasks.install(legacy)
+    voice_l1.install(legacy)
+    # 18A proposal hook is config-gated and fail-open; it never executes.
+    voice_proposal_install.install(legacy)
+    voice_notices.install(legacy)
+    voice_text_only_observer.install(legacy)
+    voice_live_transport.install(legacy)
+    voice_playback_level.install(legacy)   # §19 — ukur level untuk echo guard
+    whatsapp_voice.install(legacy)
+    voice_native_tools.install(legacy)
+    # DIAGNOSIS_2 MASALAH 2 — beri lane suara cara untuk bertanya.
+    voice_clarify.install(legacy)
+    # DIAGNOSIS_2 MASALAH 3 — shutdown berkonfirmasi + close_app
+    # bernama. Dipasang TERAKHIR supaya deklarasi shutdown_jarvis
+    # bawaan benar-benar tergantikan.
+    voice_safety.install(legacy)
+    # DIAGNOSIS_2 MASALAH 4c — gaya bicara, nada adaptif, inisiatif.
+    voice_persona.install(legacy)
 
 
 def _start_voice_pipeline(ui, *, stop_requested: threading.Event | None = None):
@@ -37,62 +142,29 @@ def _start_voice_pipeline(ui, *, stop_requested: threading.Event | None = None):
     def runner():
         try:
             import asyncio
-            sys.path.insert(0, str(config.base_dir()))
-            import main as legacy                # legacy pipeline, unchanged
-            from jarvis.core import llm
-            from jarvis.integrations import (google_voice, voice_clarify,
-                                             voice_l1, voice_notices, voice_persona,
-                                             voice_safety, voice_tasks,
-                                             voice_text_only_observer,
-                                             voice_live_transport,
-                                             voice_native_tools,
-                                             voice_proposal_install,
-                                             whatsapp_voice)
-            # Adapter credential di luar file FROZEN: suara tetap identik,
-            # hanya sumber API key yang berpindah dari plaintext ke store.
-            legacy._get_api_key = lambda: llm.api_key() or ""
-            legacy.LIVE_MODEL = str(
-                config.get("llm.live_model", legacy.LIVE_MODEL)
-                or legacy.LIVE_MODEL
-            )
-            google_voice.install(legacy)
-            # Perbaikan 'kosakata terpotong' saat suara: drain-aware playback
-            # dipasang via monkeypatch (file main.py FROZEN tidak diubah).
-            try:
-                from jarvis.integrations import voice_playback_fix
-                voice_playback_fix.install(legacy)
-            except Exception as _e:                          # noqa: BLE001
-                logger.warning("voice.playback_fix_failed", error=str(_e)[:120])
-            # AUDIT §8.4 — tool tugas latar + antrean batas-giliran + aturan
-            # multi-tasking, semuanya lewat seam yang sama. main.py dan
-            # core/prompt.txt tetap tidak tersentuh.
-            voice_tasks.install(legacy)
-            voice_l1.install(legacy)
-            # 18A proposal hook is config-gated and fail-open; it never executes.
-            voice_proposal_install.install(legacy)
-            voice_notices.install(legacy)
-            voice_text_only_observer.install(legacy)
-            voice_live_transport.install(legacy)
-            whatsapp_voice.install(legacy)
-            voice_native_tools.install(legacy)
-            # DIAGNOSIS_2 MASALAH 2 — beri lane suara cara untuk bertanya.
-            voice_clarify.install(legacy)
-            # DIAGNOSIS_2 MASALAH 3 — shutdown berkonfirmasi + close_app
-            # bernama. Dipasang TERAKHIR supaya deklarasi shutdown_jarvis
-            # bawaan benar-benar tergantikan.
-            voice_safety.install(legacy)
-            # DIAGNOSIS_2 MASALAH 4c — gaya bicara, nada adaptif, inisiatif.
-            voice_persona.install(legacy)
+            legacy = _import_legacy()
+            _install_voice_seams(legacy, logger)
             JarvisLive = legacy.JarvisLive
-            ui.wait_for_api_key()
+            if not _await_api_key(ui, stop_requested.is_set):
+                raise TimeoutError(
+                    "API key belum diisi — buka Settings, simpan key, "
+                    "lalu jalankan ulang JARVIS.")
             jarvis_live = JarvisLive(ui)
             live_ref["instance"] = jarvis_live
+            # Titik ini = on_text_command sudah ter-bind dan sesi siap dibuka.
+            # Persis di sinilah gejala "boot diam" berhenti, jadi di sinilah
+            # status ONLINE diterbitkan.
+            logger.info("voice.pipeline_ready")
+            _publish_voice_status(True, "voice pipeline ready")
             if stop_requested.is_set():
                 jarvis_live.request_stop()
             asyncio.run(jarvis_live.run())
         except Exception as e:
-            logger.error("voice.pipeline_failed", error=str(e)[:200])
-            ui.write_log(f"ERR: voice pipeline offline — {str(e)[:100]}")
+            detail = _voice_failure_detail(e)
+            logger.error("voice.pipeline_failed", error=str(e)[:200],
+                         detail=detail)
+            _publish_voice_status(False, detail)
+            ui.write_log(f"ERR: voice pipeline offline — {detail}")
 
     thread = threading.Thread(target=runner, daemon=False, name="jarvis-live")
     thread.request_stop = request_stop
@@ -170,7 +242,7 @@ def run(no_voice: bool = False, *, ui_factory=None) -> int:
             logger.info("wake.triggered", detail="Double clap detected")
             ui.write_log("SYS: Wake trigger (tepuk tangan 2x) terdeteksi.")
             if not no_voice and hasattr(ui._win, '_speak_line'):
-                ui._win._speak_line("Ya, sir. Saya mendengarkan.")
+                ui._win._speak_line("Ya, sir. Saya mendengarkan.", kind="ack")
 
         from jarvis.core.bus import BUS
         BUS.subscribe("wake.triggered", on_wake_triggered, ui=True)
@@ -252,7 +324,7 @@ def run(no_voice: bool = False, *, ui_factory=None) -> int:
             boot_briefing.start_if_enabled(
                 lambda text: (
                     ui._win._record_task_result("HASIL", text),
-                    ui._win._speak_line(text),
+                    ui._win._speak_line(text, kind="final"),
                 )
             )
         except Exception as exc:  # noqa: BLE001
