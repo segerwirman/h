@@ -315,6 +315,29 @@ _RINGING_SELECTORS = (
 )
 
 
+_CONTROL_PROBE_JS = """
+() => {
+  const out = [];
+  for (const el of document.querySelectorAll('button,[role="button"],[aria-label]')) {
+    const label = (el.getAttribute('aria-label') || '').trim();
+    if (!label) continue;
+    const r = el.getBoundingClientRect();
+    out.push(label + (r.width && r.height ? '' : ' (tersembunyi)'));
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+"""
+
+
+def _visible_call_controls(page) -> str:
+    """Label kontrol yang terlihat — untuk log kegagalan, bukan keputusan."""
+    try:
+        return ", ".join(str(x) for x in (page.evaluate(_CONTROL_PROBE_JS) or []))
+    except Exception:                                        # noqa: BLE001
+        return "(tidak terbaca)"
+
+
 class WhatsAppWebService:
     """Single-thread owner for one persistent WhatsApp Web context."""
 
@@ -541,16 +564,43 @@ class WhatsAppWebService:
         return dict(self._call(operation, timeout=10))
 
     @staticmethod
+    def _await_ready(page, timeout_s: float | None = None) -> None:
+        """Tunggu halaman siap, jangan menyerah pada detik pertama (S-26).
+
+        Log sesi 2026-08-05 21:29: *"WhatsApp Web belum siap (status:
+        loading)."* Bentuk lama membaca status SEKALI lalu gagal. WhatsApp Web
+        butuh beberapa detik untuk siap, sehingga perintah pertama setelah
+        Jarvis menyala hampir selalu jatuh di sini.
+
+        ``login_required`` TIDAK ditunggu: memindai QR butuh tindakan user, dan
+        menunggu hanya menunda pesan yang seharusnya ia terima sekarang.
+        """
+        if timeout_s is None:
+            try:
+                timeout_s = float(
+                    config.get("whatsapp_web.ready_timeout_s", 20))
+            except (TypeError, ValueError):
+                timeout_s = 20.0
+        deadline = time.monotonic() + max(0.1, float(timeout_s))
+        state = "unknown"
+        while time.monotonic() < deadline:
+            state = WhatsAppWebService._status_on_page(page)["state"]
+            if state == "login_required":
+                raise WhatsAppError(
+                    "WhatsApp Web belum login. Pindai QR pada jendela Chrome "
+                    "Jarvis."
+                )
+            if state in {"ready", "in_call"}:
+                return
+            page.wait_for_timeout(500)
+        raise WhatsAppError(
+            f"WhatsApp Web belum siap setelah {timeout_s:.0f} detik "
+            f"(status: {state})."
+        )
+
+    @staticmethod
     def _require_ready(page) -> None:
-        state = WhatsAppWebService._status_on_page(page)["state"]
-        if state == "login_required":
-            raise WhatsAppError(
-                "WhatsApp Web belum login. Pindai QR pada jendela Chrome Jarvis."
-            )
-        if state not in {"ready", "in_call"}:
-            raise WhatsAppError(
-                f"WhatsApp Web belum siap (status: {state})."
-            )
+        WhatsAppWebService._await_ready(page)
 
     @staticmethod
     def _open_chat(page, contact: Contact) -> None:
@@ -653,6 +703,14 @@ class WhatsAppWebService:
             if button is None:
                 # Menu terbuka tetapi pilihan suara tidak ada. Berhenti di sini:
                 # menebak elemen lain berisiko memulai panggilan VIDEO.
+                #
+                # S-26 — dan REKAM apa yang benar-benar terlihat. Probe sudah
+                # membuktikan label "Telepon suara" ada di DOM sungguhan, jadi
+                # kegagalan ini menyisakan pertanyaan yang hanya bisa dijawab
+                # oleh keadaan halaman saat itu. Menebak sebabnya sudah dua kali
+                # meleset di siklus ini.
+                _logger.warning("whatsapp.voice_option_missing",
+                                visible=_visible_call_controls(page)[:400])
                 raise WhatsAppError(
                     "Menu panggilan terbuka tetapi pilihan panggilan suara "
                     "tidak ditemukan. Tidak ada panggilan yang dimulai."

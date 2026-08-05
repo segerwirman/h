@@ -410,6 +410,10 @@ whatsapp_web:
   # dengar STT bisa menelepon nomor acak.
   call_confirmation: allowlisted_only    # nomor harus ada dalam contacts_file
   contact_fuzzy_threshold: 0.68  # toleransi nama hasil STT; tetap hanya allowlist
+  # S-26 — WhatsApp Web butuh beberapa detik untuk siap. Bentuk lama membaca
+  # status SEKALI lalu gagal, sehingga perintah pertama setelah Jarvis menyala
+  # hampir selalu jatuh di "belum siap (status: loading)".
+  ready_timeout_s: 20
   navigation_timeout_s: 45
   action_timeout_s: 20
   audio_bridge:

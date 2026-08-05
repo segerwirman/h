@@ -564,3 +564,98 @@ def test_status_reports_in_call_from_the_real_label(service, monkeypatch):
     status = ww.WhatsAppWebService._status_on_page(page)
 
     assert status["state"] == "in_call"
+
+
+# ── S-26: dua kegagalan nyata dari log sesi Takeda ────────────────────────
+
+def test_a_loading_page_is_waited_for_not_rejected(contacts, service,
+                                                   monkeypatch):
+    """Log sesi 2026-08-05 21:29:
+
+        "WhatsApp Web belum siap (status: loading)."
+
+    Halaman masih memuat dan `_require_ready` langsung menyerah. WhatsApp Web
+    butuh beberapa detik untuk siap; menyerah pada detik pertama berarti
+    perintah pertama setelah Jarvis menyala hampir selalu gagal.
+    """
+    page = FakePage(set())          # belum ada #pane-side: masih loading
+    service._page = page
+
+    ticks = {"n": 0}
+    real_wait_timeout = page.wait_for_timeout
+
+    def _tick(ms):
+        real_wait_timeout(ms)
+        ticks["n"] += 1
+        if ticks["n"] >= 3:         # setelah beberapa detik, halaman siap
+            page.visible.add("#pane-side")
+
+    page.wait_for_timeout = _tick
+
+    ww.WhatsAppWebService._await_ready(page, timeout_s=5.0)
+
+    assert ww.WhatsAppWebService._status_on_page(page)["state"] == "ready"
+
+
+def test_waiting_for_ready_still_gives_up_eventually(contacts, service):
+    """Menunggu tidak boleh berarti menggantung selamanya."""
+    page = FakePage(set())
+
+    with pytest.raises(ww.WhatsAppError) as excinfo:
+        ww.WhatsAppWebService._await_ready(page, timeout_s=0.2)
+
+    assert "siap" in str(excinfo.value).casefold()
+
+
+def test_login_required_is_reported_immediately_not_waited_out(contacts):
+    """QR belum dipindai bukan keadaan yang akan membaik dengan menunggu."""
+    page = FakePage({"canvas"})
+
+    with pytest.raises(ww.WhatsAppError) as excinfo:
+        ww.WhatsAppWebService._await_ready(page, timeout_s=5.0)
+
+    assert "qr" in str(excinfo.value).casefold()
+
+
+def test_a_missing_voice_option_records_what_was_visible(contacts, service,
+                                                         monkeypatch):
+    """Log sesi 2026-08-05 21:29:
+
+        "Menu panggilan terbuka tetapi pilihan panggilan suara tidak ditemukan."
+
+    Padahal probe membuktikan `button[aria-label="Telepon suara" i]` ADA di DOM
+    sungguhan. Menebak sebabnya sudah dua kali meleset di siklus ini, jadi
+    kegagalan ini harus MEREKAM apa yang benar-benar terlihat saat itu \u2014 bukan
+    menyisakan tiga kandidat terbuka lagi.
+    """
+    MENU = 'button[aria-label="Telepon" i]'
+    seen: list = []
+
+    page = FakePage(READY | {MENU})
+    page.evaluate = lambda _script: [{"aria_label": "Telepon video"}]
+    service._page = page
+
+    monkeypatch.setattr(
+        ww._logger, "warning",
+        lambda event, **kw: seen.append({"event": event, **kw}))
+
+    real_wait = ww._wait_visible
+
+    class _Opener:
+        def click(self):
+            pass
+
+    def _wait_visible(target, selectors, timeout_ms: int = 8_000):
+        if selectors is ww._VOICE_CALL_SELECTORS:
+            return None
+        if selectors is ww._CALL_MENU_SELECTORS:
+            return _Opener()
+        return real_wait(target, selectors, timeout_ms)
+
+    monkeypatch.setattr(ww, "_wait_visible", _wait_visible)
+
+    with pytest.raises(ww.WhatsAppError):
+        service.start_call("Ibu")
+
+    assert any("voice_option_missing" in str(item.get("event", ""))
+               for item in seen), seen
