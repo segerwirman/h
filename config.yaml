@@ -468,11 +468,26 @@ voice:                           # Mark L Change 4 — barge-in interrupt
   text_only_observer:
     enabled: false              # diagnostic hook; legacy runtime stays unchanged by default
   barge_in:
-    enabled: false              # default off: speaker echo can falsely interrupt playback
-    rms_threshold: 0.14          # mic RMS (0..1) that counts as user speech
-    min_ms: 280                  # sustained above threshold before triggering
-    cooldown_ms: 2000            # min gap between voice interrupts
-    tts_grace_ms: 400            # ignore first ms after SPEAKING starts (echo)
+    # §19 — MENYALA. Dulu mati karena echo speaker memicu interupsi palsu:
+    # detektornya gerbang RMS ambang TETAP 0.14, tanpa noise floor adaptif,
+    # tanpa pembeda suara-vs-bunyi, dan echo guard-nya hanya menutup 400 ms
+    # pertama. Ketiganya sudah diganti (jarvis/core/barge_in.py), jadi alasan
+    # mematikannya tidak lagi berlaku.
+    enabled: true
+    # SATU kenop yang biasanya cukup diputar: low | medium | high.
+    # Makin tinggi = makin peka = makin dekat ke noise floor ruangan.
+    sensitivity: medium
+    # Di bawah ini hanya untuk penyetelan halus; 0 = ikut sensitivity.
+    threshold_multiplier: 0       # ambang = noise_floor × ini
+    min_ms: 0                     # sustain BERTURUT-TURUT sebelum memicu
+    cooldown_ms: 2000             # jarak minimum antar interupsi
+    tts_grace_ms: 400             # abaikan awal ucapan (echo onset)
+    calibration_seconds: 1.5      # sampling kebisingan ruangan saat mulai
+    noise_alpha: 0.05             # bobot EMA noise floor adaptif
+    min_abs_rms: 0.02             # lantai mutlak untuk ruangan sangat sunyi
+    echo_multiplier: 8            # kenaikan ambang selama Jarvis bicara
+    max_crest: 6.0                # di atas ini = transien (pintu/tepukan)
+    min_voice_band_ratio: 0.55    # energi <1 kHz; menolak desis broadband
   playback:
     # Perbaikan 'kosakata terpotong' saat suara: beri grace lebih panjang
     # sebelum menutup giliran + drain buffer sebelum stream ditutup.

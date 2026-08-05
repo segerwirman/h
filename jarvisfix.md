@@ -3,9 +3,9 @@
 **Dibuat:** 2026-08-04 · **Diperbarui:** 2026-08-05 (audit ulang menyeluruh — Siklus 2 ditambahkan)
 **Baseline:** HEAD `39cae8c` · FROZEN `094b696` (10 file, integritas OK)
 **Status dokumen:** Fase 0-12 SELESAI (12 = opsi (b), tanpa perubahan frozen). T1 dimitigasi — sisa tindakan di sisi endpoint.
-**SIKLUS 2 (2026-08-05): Fase 13-18 SELESAI. Sisa: Fase 19 (barge-in).** Lihat
+**SIKLUS 2 (2026-08-05): Fase 13-19 SELESAI — seluruh fase tuntas.** Lihat
 bagian [Siklus 2](#siklus-2--audit-ulang-2026-08-05) di akhir dokumen.
-**Suite:** `pytest tests/ -q` → **2252 lulus, 0 gagal** · hijau juga dengan jaringan keluar diblokir · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
+**Suite:** `pytest tests/ -q` → **2281 lulus, 0 gagal** · hijau juga dengan jaringan keluar diblokir · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
 FROZEN OK (10 file, baseline `094b696`).
 
 ---
@@ -1169,7 +1169,7 @@ diverifikasi.
 | 16 | Eksekusi panggilan tanpa gerbang ganda | S-2 | 14, 15 | ✅ **SELESAI** 2026-08-05 |
 | 17 | Batas iterasi: jujur, bisa diatur, bisa dilanjut | S-5 | 14 | ✅ **SELESAI** 2026-08-05 |
 | 18 | Sumber pencarian terbuka di browser | S-3 | — | ✅ **SELESAI** 2026-08-05 |
-| 19 | Barge-in adaptif tahan noise | S-4 | — | ⬜ |
+| 19 | Barge-in adaptif tahan noise | S-4 | — | ✅ **SELESAI** 2026-08-05 |
 | S-7 | Perbaikan test config | S-7 | — | ✅ hijau sendiri setelah lane ringan dikembalikan |
 | S-6 | Keputusan TLS | S-6 | — | ✅ diputuskan: diterima apa adanya |
 
@@ -1714,6 +1714,62 @@ tidak boleh dinyalakan sebelum tahan noise.
 **Test:** derau broadband pada level ruangan **tidak** memicu interupsi; nada
 mirip-suara di atas noise floor **memicu** dalam < 600 ms.
 
+##### Hasil Fase 19 — SELESAI 2026-08-05
+
+`tests/test_barge_in_adaptive.py` + `tests/test_voice_barge_in.py` (30 test)
+dibuktikan merah lebih dulu.
+
+Keputusan interupsi pindah dari callback audio ke modul murni
+`jarvis/core/barge_in.py` — bisa diuji tanpa perangkat audio sama sekali.
+
+**Ambangnya dibalik dari preseden, dan itu intinya.** Detektor tepuk
+(`wake.py`, FROZEN — dibaca, tidak disentuh) mencari transien: crest TINGGI,
+broadband. Suara manusia justru sebaliknya: berkelanjutan, crest RENDAH, energi
+terkonsentrasi di bawah 1 kHz. Primitif sama, keputusan berlawanan.
+
+Empat pengaman:
+
+1. **Noise floor adaptif** — kalibrasi 1,5 detik + EMA. Ambang = `noise_floor
+   × pengali`, bukan angka mati 0.14. Ruangan berisik konsisten pada level
+   0.18 (di atas ambang lama!) tidak memicu apa pun.
+2. **Pembeda suara vs bunyi** — crest factor menolak pintu/tepukan, rasio pita
+   suara menolak desis broadband.
+3. **Echo guard sepanjang ucapan**, bukan hanya 400 ms pertama. Ini cacat yang
+   membuat barge-in dimatikan sejak awal.
+4. **Sustain berturut-turut** 450 ms; satu jeda mengembalikan hitungan ke nol.
+
+Satu kenop: `voice.barge_in.sensitivity` = `low` | `medium` | `high`.
+
+**Lubang yang kutemukan pada rancanganku sendiri.** Versi pertama memakai
+worst-case: bila level playback tidak terukur, anggap volume penuh. Hasilnya
+ambang melonjak ke 0.635 dan **tidak ada tingkat suara wajar yang bisa
+memotong** — barge-in "menyala" tetapi mati dalam praktik, kegagalan yang sama
+dengan wajah berbeda. Terlihat hanya karena aku menjalankan matriks perilaku
+dengan config nyata, bukan karena ada test yang merah.
+
+Diperbaiki dengan **mengukur, bukan mengasumsikan**:
+`jarvis/integrations/voice_playback_level.py` menyadap potongan audio yang
+benar-benar diputar lewat seam `_play_audio` yang sudah terbukti (dipakai
+`whatsapp_voice`), dengan peluruhan 0,45 detik. Worst-case 1.0 kini hanya
+dipakai bila tap belum terpasang — echo yang tak terukur tetap lebih berbahaya
+daripada interupsi yang terlewat.
+
+Matriks perilaku dengan config nyata:
+
+```
+level suara |  Jarvis diam  |  Jarvis bicara keras
+      0.15  |  POTONG       |  diam
+      0.25  |  POTONG       |  diam
+      0.40  |  POTONG       |  diam
+      0.70  |  POTONG       |  diam
+```
+
+**Batas jujur:** selama Jarvis bicara keras TANPA jeda, suara volume normal
+tidak akan memotong — perlu lebih keras atau menunggu celah. Karena level
+meluruh dalam 0,45 detik dan TTS punya jeda antar potongan, celah itu sering
+ada dalam praktik. Diuji dengan sinyal sintetis; **belum diuji dengan suara
+Takeda di ruangan Takeda**, dan `sensitivity` adalah kenop untuk itu.
+
 ---
 
 ### S-7 — perbaikan test config (kecil)
@@ -1785,7 +1841,7 @@ Sama dengan siklus lalu, ditegaskan ulang karena temuan S-1 dan S-5:
 - [x] Batas iterasi memberi hasil parsial dan tidak menjanjikan resume yang tidak ada *(17)*
 - [x] Nilai iterasi di Settings adalah nilai yang benar-benar dipakai *(17)*
 - [x] Pencarian menampilkan sumber — dan mode berita memuat URL sama sekali *(18)*
-- [ ] Jarvis bisa dipotong bicara secara natural *(19)*
-- [ ] Kebisingan ruangan tidak memotong Jarvis *(19)*
-- [ ] `pytest tests/ -q` hijau penuh kembali *(S-7 + seluruh fase)*
+- [x] Jarvis bisa dipotong bicara secara natural *(19)*
+- [x] Kebisingan ruangan tidak memotong Jarvis *(19)*
+- [x] `pytest tests/ -q` hijau penuh kembali *(S-7 + seluruh fase)*
 - [x] Keputusan TLS diambil *(S-6 — diterima apa adanya, 2026-08-05)*

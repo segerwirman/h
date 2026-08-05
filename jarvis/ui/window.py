@@ -83,6 +83,29 @@ def camera_owns_stage(stage) -> bool:
         return False
 
 
+def _playback_level(win) -> float:
+    """Level audio Jarvis 0..1 saat ini, diukur bukan diasumsikan (§19).
+
+    Urutan: nilai eksplisit di window (untuk tes/seam mendatang) → tap
+    playback nyata → 1.0. Fallback terakhir sengaja worst-case: echo yang
+    tidak terukur akan memotong Jarvis sendiri, dan itulah cacat yang membuat
+    barge-in dimatikan sejak awal.
+    """
+    explicit = getattr(win, "_playback_level", None)
+    if explicit is not None:
+        return max(0.0, min(1.0, float(explicit)))
+    try:
+        from jarvis.integrations import voice_playback_level as tap
+
+        if not tap.is_installed():
+            # Belum dipasang ≠ Jarvis sedang diam. Menyamakannya mematikan
+            # echo guard diam-diam.
+            return 1.0
+        return max(0.0, min(1.0, float(tap.current_level())))
+    except Exception:                                        # noqa: BLE001
+        return 1.0
+
+
 def _agent_ask_active() -> bool:
     """MK50 — True selama agent native menunggu confirm/cancel dari user,
     sehingga kata 'confirm'/'cancel' yang diketik dirutekan ke BUS, bukan
@@ -2378,13 +2401,14 @@ class JarvisUI:
     # ESC interrupt path. Grace window + cooldown keep speaker echo from
     # retriggering (lightweight gate, not full echo cancellation).
     def _mic_meter(self) -> None:
-        bi = config.section("voice.barge_in")
-        enabled = bool(bi.get("enabled", True))
-        threshold = float(bi.get("rms_threshold", 0.14))
-        min_s = float(bi.get("min_ms", 280)) / 1000.0
-        cooldown_s = float(bi.get("cooldown_ms", 2000)) / 1000.0
-        grace_s = float(bi.get("tts_grace_ms", 400)) / 1000.0
-        state_ref = {"above_since": None, "last_fire": 0.0}
+        # §19 — keputusan interupsi pindah ke jarvis/core/barge_in.py:
+        # noise floor adaptif, pembeda suara-vs-transien, dan echo guard yang
+        # berlaku SEPANJANG ucapan. Gerbang RMS ambang tetap 0.14 yang lama
+        # itulah yang membuat barge-in harus dimatikan sejak awal.
+        from jarvis.core.barge_in import BargeInAnalyzer, BargeInConfig
+
+        analyzer = BargeInAnalyzer(BargeInConfig.from_config())
+        analyzer.start_calibration(time.monotonic())
 
         try:
             import numpy as np
@@ -2394,33 +2418,33 @@ class JarvisUI:
                 now = time.monotonic()
                 state = self._win._legacy_state
                 rms = float(np.sqrt(np.mean(indata ** 2)))
+                speaking = state == "SPEAKING"
                 if state == "LISTENING" and not self._win._muted:
                     self._win.orb.feed_amplitude(min(1.0, rms * 12))
-                    state_ref["above_since"] = None
-                elif state == "SPEAKING":
+                elif speaking:
                     import random
                     self._win.orb.feed_amplitude(random.uniform(0.35, 0.95))
-                    if not enabled or self._win._muted:
-                        return
-                    speaking_since = getattr(self._win, "_speaking_since", 0.0)
-                    if now - speaking_since < grace_s:      # TTS onset echo
-                        state_ref["above_since"] = None
-                        return
-                    if rms * 12 >= threshold * 12:          # user talking
-                        if state_ref["above_since"] is None:
-                            state_ref["above_since"] = now
-                        elif (now - state_ref["above_since"] >= min_s
-                              and now - state_ref["last_fire"] >= cooldown_s):
-                            state_ref["last_fire"] = now
-                            state_ref["above_since"] = None
-                            _logger.info("voice.barge_in", rms=round(rms, 3))
-                            self._win.write_log(
-                                "SYS: Interupsi suara terdeteksi.")
-                            self._win._do_interrupt()
-                    else:
-                        state_ref["above_since"] = None
-                else:
-                    state_ref["above_since"] = None
+
+                if self._win._muted:
+                    return
+                verdict = analyzer.process_block(
+                    indata, now, speaking=speaking,
+                    speaking_since=getattr(self._win, "_speaking_since", 0.0),
+                    # Level playback DIUKUR dari audio yang benar-benar
+                    # diputar (voice_playback_level tap). Mengasumsikan volume
+                    # penuh membuat ambang begitu tinggi sehingga tidak ada
+                    # yang bisa memotong — barge-in "menyala" tapi mati dalam
+                    # praktik. Worst-case 1.0 hanya dipakai bila tap belum
+                    # terpasang, karena echo yang tak terukur lebih berbahaya
+                    # daripada interupsi yang terlewat.
+                    playback_level=_playback_level(self._win),
+                )
+                if verdict.interrupt:
+                    _logger.info("voice.barge_in", rms=round(verdict.rms, 3),
+                                 threshold=round(verdict.threshold, 3),
+                                 noise_floor=round(verdict.noise_floor, 4))
+                    self._win.write_log("SYS: Interupsi suara terdeteksi.")
+                    self._win._do_interrupt()
 
             with sd.InputStream(callback=cb, channels=1, samplerate=16000,
                                 blocksize=1024):
