@@ -3,7 +3,9 @@
 **Dibuat:** 2026-08-04 · **Diperbarui:** 2026-08-05 (audit ulang menyeluruh — Siklus 2 ditambahkan)
 **Baseline:** HEAD `39cae8c` · FROZEN `094b696` (10 file, integritas OK)
 **Status dokumen:** Fase 0-12 SELESAI (12 = opsi (b), tanpa perubahan frozen). T1 dimitigasi — sisa tindakan di sisi endpoint.
-**SIKLUS 2 (2026-08-05): Fase 13-19 SELESAI — seluruh fase tuntas.** Lihat
+**SIKLUS 2 (2026-08-05): Fase 13-19 SELESAI.**
+**SIKLUS 3 (2026-08-05, sore): Fase 20-23 BELUM DIKERJAKAN** — empat
+temuan lapangan dari pemakaian nyata; lihat bagian SIKLUS 3 di akhir. Lihat
 bagian [Siklus 2](#siklus-2--audit-ulang-2026-08-05) di akhir dokumen.
 **Suite:** `pytest tests/ -q` → **2281 lulus, 0 gagal** · hijau juga dengan jaringan keluar diblokir · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
 FROZEN OK (10 file, baseline `094b696`).
@@ -1940,3 +1942,205 @@ Sama dengan siklus lalu, ditegaskan ulang karena temuan S-1 dan S-5:
 - [x] Kebisingan ruangan tidak memotong Jarvis *(19)*
 - [x] `pytest tests/ -q` hijau penuh kembali *(S-7 + seluruh fase)*
 - [x] Keputusan TLS diambil *(S-6 — diterima apa adanya, 2026-08-05)*
+
+---
+---
+
+# SIKLUS 3 — temuan lapangan (2026-08-05, sore)
+
+**Pemicu:** Takeda memakai Jarvis sungguhan setelah Siklus 2 dan menemukan
+empat hal yang tidak tersentuh audit sebelumnya. Semuanya ditemukan dengan
+MEMAKAI, bukan membaca kode — dan tiga di antaranya tidak akan pernah terlihat
+dari test.
+
+**Status: SEMUA BELUM DIKERJAKAN.**
+
+| Fase | Judul | Menutup | Status |
+|---|---|---|---|
+| 20 | `close_app` menyebut apa yang benar-benar ditutup | S-20 | ⬜ |
+| 21 | Jarvis melihat & mengendalikan Chrome milik Takeda | S-21 | ⬜ |
+| 22 | Interupsi suara terbukti hidup; test berhenti mencemari log | S-22 | ⬜ |
+| 23 | Rekomendasi membuka SUMBERNYA, bukan transkrip | S-23 | ⬜ |
+
+---
+
+## S-20 — `close_app` menutup aplikasi yang salah, lalu mengulang kata user
+
+Takeda: *"perintah untuk menutup browser, jarvis hanya memberikan klaim palsu
+kalau dia sudah berhasil menutup browser."*
+
+Diperiksa langsung terhadap proses yang benar-benar berjalan:
+
+```
+'browser'       -> 1 proses: Tabbit Browser.exe (pid 19844)
+'chrome'        -> 2 proses: chrome.exe 2108, chrome.exe 36080
+app_registry.resolve('browser') -> None
+```
+
+Kata "browser" **tidak menunjuk Chrome**. Pencocokan proses mendarat di
+**Tabbit Browser** — aplikasi lain sama sekali.
+
+Lalu pesannya, [close_app.py:219](actions/close_app.py#L219):
+
+```python
+f"{target.title()} ditutup."
+```
+
+`target` adalah **kata yang diucapkan user**, bukan yang benar-benar tertutup.
+User bilang "browser" -> dijawab "Browser ditutup." Nama proses yang sungguh
+ditutup ada di `closed=`, tetapi tidak pernah masuk kalimat.
+
+**Melaporkan permintaan, bukan hasil.** Penyakit S-1 di tempat baru: kali ini
+bukan model yang mengarang, melainkan kode kita sendiri yang menggemakan input.
+
+---
+
+## S-21 — Jarvis mengendalikan browser yang berbeda dari milik Takeda
+
+Takeda: *"perintah untuk pause youtube tapi jarvis tidak mengetahui jika
+browser ada banyak tab yang terbuka."*
+
+Bukan bug — keputusan desain yang bertabrakan dengan harapan.
+[browser.py:41-47](jarvis/agent/tools/browser.py#L41-L47), komentarnya sendiri:
+
+> *"Direktori profil Chrome khusus JARVIS (**terisolasi dari profil user**) …
+> tidak pernah bentrok profile-lock dengan Chrome user"*
+
+`browser_media`, `browser_tabs`, `browser_navigate` bekerja pada Chrome milik
+AGENT. YouTube Takeda ada di Chrome pribadinya (31 proses terpisah). Jadi
+"pause youtube" tidak gagal — Jarvis memeriksa browsernya sendiri yang kosong,
+dan jujur melaporkan tidak ada media.
+
+Isolasi itu punya alasan sah (lock profil, tab user tidak dirusak agent).
+Menghapusnya begitu saja akan mengembalikan masalah lama. Fase 21 harus
+menambah AKSES ke Chrome user tanpa membuang isolasi yang ada.
+
+---
+
+## S-22 — Tidak ada bukti barge-in pernah berjalan untuk suara sungguhan
+
+Takeda: *"voice interupt tidak berfungsi, saya tidak bisa menyela jarvis."*
+
+Log sempat tampak menjanjikan — `barge_in.triggered` 52 kali. Hampir
+disimpulkan "deteksi jalan, interupsinya yang gagal". Timestampnya:
+
+```
+00:49:20.416   00:49:20.444   00:49:20.468   00:49:20.580
+```
+
+Selisih **milidetik**. Itu bukan orang bicara — itu **pytest**. Suite menulis
+ke log produksi yang sama.
+
+Jadi: **nol bukti** barge-in pernah aktif untuk suara nyata, dan temuan kedua
+yang lebih luas — **log produksi tercemar test**, sehingga diagnosis runtime
+apa pun tidak bisa dipercaya sampai itu dipisah.
+
+Pembeda yang belum dijawab: **apakah ESC menghentikan ucapan Jarvis?**
+Ya -> jalur interupsi sehat, barge-in yang tidak memicu. Tidak -> masalahnya di
+jalur interupsi, dan barge-in sepeka apa pun tidak akan menolong.
+
+---
+
+## S-23 — Rekomendasi membuka transkrip user, bukan sumbernya
+
+Takeda: *"ketika jarvis memberi rekomendasi … memberikan opsi untuk menampilkan
+informasi itu di chrome, baik sumber itu berupa web, social media atau map.
+Bukan menampilkan apa yang saya ucapkan di chrome."*
+
+Bukti fisik dari judul jendela Chrome miliknya:
+
+```
+'kan saya restoran yang - Search - Google Chrome'
+```
+
+Itu pencarian Google atas **potongan transkrip** ("…kan saya restoran yang…").
+Mekanismenya [window.py:1112-1122](jarvis/ui/window.py#L1112-L1122):
+
+```python
+result = open_external_url(search_url(query))
+```
+
+`query` jatuh ke `c.slots.get("query", spoken)` — ucapan mentah — lalu dikirim
+ke browser sistem sebagai URL pencarian. Tidak ada tawaran, tidak ada sumber.
+
+Perhatikan bedanya dengan **Fase 18**: di sana sumber teratas dibuka di panel
+browser AGENT setelah `web_search`. Jalur yang dipakai Takeda sama sekali lain
+— intercept suara legacy -> `Intent.SEARCH_WEB` -> browser sistem. Fase 18
+tidak menyentuhnya sama sekali.
+
+---
+
+## Fase 20 — `close_app` menyebut apa yang benar-benar ditutup
+
+**Menutup:** S-20.
+
+1. Pesan sukses menyebut **proses yang sungguh ditutup** (`closed`), bukan kata
+   yang diminta. "Tabbit Browser ditutup" — bukan "Browser ditutup".
+2. Kata ambigu yang tidak diresolusi `app_registry` ("browser") dan target yang
+   cocok ke banyak proses -> **tanya**, jangan tebak. Jalur `STATUS_AMBIGUOUS`
+   sudah ada; yang kurang adalah menempuhnya untuk kasus ini.
+3. Kontrak bukti untuk aksi desktop, memakai mesin Fase 14: sukses hanya terbit
+   bila bukti tool menunjukkan proses target benar-benar hilang.
+4. "browser" dipetakan ke browser default user bila itu memang maksudnya —
+   diputuskan bersama Fase 21.
+
+**Test merah dulu:** menutup dengan nama ambigu -> bertanya, bukan menutup
+aplikasi acak; pesan sukses memuat nama proses nyata.
+
+---
+
+## Fase 21 — Jarvis melihat & mengendalikan Chrome milik Takeda
+
+**Menutup:** S-21. **Fase terbesar di siklus ini.**
+
+Isolasi profil agent **tidak dibuang** — ia menyelesaikan masalah nyata. Yang
+ditambah: kemampuan meng-*attach* ke Chrome user.
+
+1. Chrome user dijalankan dengan remote debugging port, atau Jarvis meluncurkan
+   ulang dengan port itu **atas persetujuan** (menutup Chrome user adalah aksi
+   yang harus diminta, bukan diambil).
+2. Tool baru yang eksplisit menyasar browser user — daftar tab, media, dan
+   navigasi — terpisah dari `browser_*` milik agent supaya tidak ada
+   kebingungan target.
+3. Prompt dan router harus tahu bedanya: "pause youtube" berarti browser USER;
+   riset multi-langkah tetap di browser agent.
+4. Batas jujur: bila port debug tidak tersedia, katakan **itu** — jangan
+   melaporkan "tidak ada media".
+
+**Test merah dulu:** perintah media saat browser user tak terjangkau -> pesan
+yang menyebut sebabnya, bukan "tidak ada video".
+
+---
+
+## Fase 22 — Interupsi suara terbukti hidup
+
+**Menutup:** S-22.
+
+1. **Pisahkan log test dari log produksi** lebih dulu. Selama keduanya
+   bercampur, tidak ada diagnosis runtime yang bisa dipercaya — termasuk
+   diagnosis fase ini sendiri.
+2. Jawab pembeda ESC, lalu perbaiki lapisan yang benar.
+3. Bila barge-in memang tidak memicu: kalibrasi di ruangan Takeda, bukan
+   menurunkan ambang membabi buta — kepekaan berlebihan adalah keluhan
+   aslinya.
+4. Bukti hidup: satu sesi nyata dengan `voice.barge_in` tercatat dari ucapan
+   Takeda, bukan dari pytest.
+
+---
+
+## Fase 23 — Rekomendasi membuka SUMBERNYA, bukan transkrip
+
+**Menutup:** S-23.
+
+1. Berhenti mengirim transkrip mentah ke browser sistem. Kalau tidak ada sumber
+   yang bisa dibuka, jangan buka apa pun.
+2. Sumber harus berasal dari **hasil tool**, bukan dari kata-kata user: URL
+   hasil `web_search`, tautan media sosial, atau lokasi Maps.
+3. **Bertipe** sesuai rekomendasi — untuk tempat makan, Google Maps adalah
+   sumber yang benar (lokasi, jam buka, rating), bukan halaman hasil pencarian.
+4. **Tawarkan, jangan langsung buka** — Takeda meminta "opsi". Satu tab untuk
+   sumber yang dipilih, bukan semua sekaligus.
+5. Dibuka di Chrome Takeda (butuh Fase 21) supaya ia benar-benar melihatnya.
+
+**Test merah dulu:** rekomendasi tempat -> tawaran memuat sumber bertipe
+(web/sosial/map); tidak ada jalur yang mengirim transkrip mentah sebagai kueri.
