@@ -136,12 +136,19 @@ def service(monkeypatch):
 
 
 def _wire(svc, page: FakePage, monkeypatch) -> None:
+    """Aksi panggilan suara langsung terlihat — menu tidak perlu dibuka.
+
+    S-18 memecah kontrol panggilan menjadi PEMBUKA MENU dan AKSI SUARA; yang
+    disadap di sini adalah aksinya.
+    """
     svc._page = page
     real_wait = ww._wait_visible
 
     def _wait_visible(target, selectors, timeout_ms: int = 8_000):
-        if selectors is ww._CALL_SELECTORS:
+        if selectors is ww._VOICE_CALL_SELECTORS:
             return _Button(target) if CALL_BUTTON in target.visible else None
+        if selectors is ww._CALL_MENU_SELECTORS:
+            return None
         return real_wait(target, selectors, timeout_ms)
 
     monkeypatch.setattr(ww, "_wait_visible", _wait_visible)
@@ -349,3 +356,211 @@ def test_call_selectors_do_not_grab_a_video_call():
         m = re.fullmatch(r'button\[aria-label([*^]?)="([^"]+)" i\]', selector)
         if m and m.group(1) == "*":
             assert "video" not in m.group(2).casefold()
+
+
+# ── S-18: "Telepon" adalah PEMBUKA MENU, bukan tombol panggil ─────────────
+
+def test_voice_call_action_is_distinct_from_the_menu_opener():
+    """Probe DOM sungguhan (2026-08-05, saat Takeda mengklik "Telepon"):
+
+        {"aria_label": "Telepon"}        <- pembuka menu
+        {"aria_label": "Telepon video"}
+        {"aria_label": "Telepon suara"}  <- aksi panggilan suara
+
+    Perbaikan S-16 mencocokkan "Telepon" persis, jadi `start_call` mengklik
+    PEMBUKA MENU lalu menunggu bukti panggilan yang tidak akan pernah datang.
+    Menu terbuka, panggilan tidak pernah dimulai \u2014 HP lawan bicara diam.
+    Terbukti di lapangan: "hp honbrew tidak berdering".
+
+    Dua kelompok selector harus terpisah, dan yang menelepon adalah aksinya.
+    """
+    from jarvis.integrations import whatsapp_web as ww
+
+    assert hasattr(ww, "_VOICE_CALL_SELECTORS")
+    assert hasattr(ww, "_CALL_MENU_SELECTORS")
+
+    joined = " ".join(ww._VOICE_CALL_SELECTORS).casefold()
+    assert "telepon suara" in joined, "label aksi sungguhan tidak dikenali"
+    assert "video" not in joined, "jangan pernah memilih panggilan video"
+
+
+def test_menu_opener_alone_is_never_treated_as_a_started_call(contacts,
+                                                              service,
+                                                              monkeypatch):
+    """Klik pembuka menu saja tidak boleh menghasilkan sukses."""
+    page = FakePage(READY | {'button[aria-label="Telepon" i]'})
+    service._page = page
+
+    real_wait = ww._wait_visible
+    clicks: list[str] = []
+
+    class _Opener:
+        def click(self):
+            clicks.append("menu")
+
+    def _wait_visible(target, selectors, timeout_ms: int = 8_000):
+        if selectors is ww._VOICE_CALL_SELECTORS:
+            return None                      # menu tidak pernah menampilkannya
+        if selectors is ww._CALL_MENU_SELECTORS:
+            return _Opener()
+        return real_wait(target, selectors, timeout_ms)
+
+    monkeypatch.setattr(ww, "_wait_visible", _wait_visible)
+
+    with pytest.raises(ww.WhatsAppError):
+        service.start_call("Ibu")
+
+    assert clicks == ["menu"], "menu dibuka, tetapi tidak ada panggilan"
+
+
+def test_call_flow_opens_the_menu_then_picks_voice(contacts, service,
+                                                   monkeypatch):
+    """Alur benar: buka menu, pilih "Telepon suara", baru buktikan."""
+    MENU = 'button[aria-label="Telepon" i]'
+    VOICE = 'button[aria-label="Telepon suara" i]'
+    clicks: list[str] = []
+
+    page = FakePage(READY | {MENU})
+    service._page = page
+
+    class _Click:
+        def __init__(self, label, on_click=None):
+            self.label = label
+            self._on_click = on_click
+
+        def click(self):
+            clicks.append(self.label)
+            if self._on_click:
+                self._on_click()
+
+    def _open_menu():
+        page.visible.add(VOICE)
+
+    def _start_call():
+        page.visible.add(HANGUP)
+
+    real_wait = ww._wait_visible
+
+    def _wait_visible(target, selectors, timeout_ms: int = 8_000):
+        if selectors is ww._CALL_MENU_SELECTORS:
+            return _Click("menu", _open_menu) if MENU in target.visible else None
+        if selectors is ww._VOICE_CALL_SELECTORS:
+            return _Click("voice", _start_call) if VOICE in target.visible else None
+        return real_wait(target, selectors, timeout_ms)
+
+    monkeypatch.setattr(ww, "_wait_visible", _wait_visible)
+
+    result = service.start_call("Ibu")
+
+    assert clicks == ["menu", "voice"], clicks
+    assert result["state"] in {"ringing", "in_call"}
+    assert result["proven"] is True
+
+
+def test_direct_voice_button_skips_the_menu(contacts, service, monkeypatch):
+    """Bila aksi suara sudah terlihat, jangan buka menu lebih dulu."""
+    VOICE = 'button[aria-label="Telepon suara" i]'
+    clicks: list[str] = []
+
+    page = FakePage(READY | {VOICE})
+    service._page = page
+
+    class _Click:
+        def __init__(self, label):
+            self.label = label
+
+        def click(self):
+            clicks.append(self.label)
+            page.visible.add(HANGUP)
+
+    real_wait = ww._wait_visible
+
+    def _wait_visible(target, selectors, timeout_ms: int = 8_000):
+        if selectors is ww._VOICE_CALL_SELECTORS:
+            return _Click("voice") if VOICE in target.visible else None
+        if selectors is ww._CALL_MENU_SELECTORS:
+            raise AssertionError("menu tidak perlu dibuka")
+        return real_wait(target, selectors, timeout_ms)
+
+    monkeypatch.setattr(ww, "_wait_visible", _wait_visible)
+
+    assert service.start_call("Ibu")["proven"] is True
+    assert clicks == ["voice"]
+
+
+# ── S-19: label bukti panggilan dari DOM sungguhan ────────────────────────
+
+_LIVE_CALL_LABELS = (
+    # Terekam probe linimasa 2026-08-05 saat panggilan Takeda BERDERING,
+    # detik ke-16 dan ke-17, pages=1 (overlay di halaman yang sama):
+    "Akhiri telepon",
+    "Kontrol telepon",
+    "Pindahkan ke jendela baru",
+    "Izinkan akses kamera untuk beralih ke video",
+)
+
+
+def _matches(selectors, label: str) -> bool:
+    import re
+
+    for selector in selectors:
+        m = re.fullmatch(r'(?:button)?\[aria-label([*^]?)="([^"]+)" i\]',
+                         selector)
+        if not m:
+            continue
+        op, value = m.groups()
+        if op == "*" and value.casefold() in label.casefold():
+            return True
+        if op == "" and value.casefold() == label.casefold():
+            return True
+    return False
+
+
+def test_hangup_selectors_match_the_real_live_call_label():
+    """S-19 — WhatsApp Indonesia memakai "telepon", bukan "panggilan".
+
+    `_HANGUP_SELECTORS` mencari "akhiri panggilan" / "end call" /
+    data-icon="call-end". DOM sungguhan saat panggilan hidup memberi
+    "Akhiri telepon". Tidak satu pun cocok, sehingga:
+
+      * `_prove_call_started` selalu gagal \u2192 panggilan yang BENAR-BENAR
+        berdering dilaporkan tidak terbukti;
+      * `_status_on_page` tidak pernah melaporkan `in_call`;
+      * `whatsapp_hangup` tidak pernah menemukan tombolnya \u2014 Jarvis tidak
+        bisa menutup panggilan yang ia mulai sendiri.
+    """
+    from jarvis.integrations import whatsapp_web as ww
+
+    assert _matches(ww._HANGUP_SELECTORS, "Akhiri telepon")
+    # Bahasa Inggris tetap didukung.
+    assert _matches(ww._HANGUP_SELECTORS, "End call")
+
+
+def test_call_proof_selectors_do_not_match_an_idle_chat():
+    """Bukti harus MEMBEDAKAN. Label yang selalu ada bukan bukti.
+
+    Ini yang menjaga agar melonggarkan selector tidak berubah menjadi
+    "selalu terbukti" \u2014 kegagalan arah sebaliknya dari S-1.
+    """
+    from jarvis.integrations import whatsapp_web as ww
+
+    idle_labels = ("Telepon", "Telepon suara", "Telepon video",
+                   "Pesan suara", "Cari", "Menu")
+    for label in idle_labels:
+        assert not _matches(ww._HANGUP_SELECTORS, label), label
+        assert not _matches(ww._RINGING_SELECTORS, label), label
+
+
+def test_ringing_selectors_recognise_the_live_call_controls():
+    from jarvis.integrations import whatsapp_web as ww
+
+    assert _matches(ww._RINGING_SELECTORS, "Kontrol telepon")
+
+
+def test_status_reports_in_call_from_the_real_label(service, monkeypatch):
+    """`_status_on_page` ikut pulih: label yang sama yang dipakainya."""
+    page = FakePage(READY | {'button[aria-label="Akhiri telepon" i]'})
+
+    status = ww.WhatsAppWebService._status_on_page(page)
+
+    assert status["state"] == "in_call"

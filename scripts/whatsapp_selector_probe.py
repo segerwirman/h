@@ -34,6 +34,8 @@ from jarvis.integrations import whatsapp_web as ww  # noqa: E402
 
 _GROUPS = {
     "ready": ww._READY_SELECTORS,
+    "call_menu": ww._CALL_MENU_SELECTORS,      # pembuka menu "Telepon"
+    "voice_action": ww._VOICE_CALL_SELECTORS,  # aksi "Telepon suara" (S-18)
     "call_button": ww._CALL_SELECTORS,
     "answer": ww._ANSWER_SELECTORS,
     "hangup": ww._HANGUP_SELECTORS,
@@ -70,6 +72,14 @@ def main() -> int:
         "--during-call", action="store_true",
         help="jalankan saat panggilan sungguhan sedang berlangsung")
     parser.add_argument(
+        "--wait-for-call", type=int, default=0, metavar="DETIK",
+        help="tunggu sampai UI panggilan muncul, lalu potret DOM-nya. "
+             "Jalankan ini DULU, baru mulai panggilan dari jendela WhatsApp")
+    parser.add_argument(
+        "--out", default="",
+        help="tulis hasil lengkap ke file JSON (jangan andalkan stdout, "
+             "yang bisa terpotong)")
+    parser.add_argument(
         "--contact", default="",
         help="buka chat kontak allowlist lewat NAVIGASI agar tombol panggilan "
              "terlihat; tidak pernah mengklik dan tidak pernah mengirim pesan")
@@ -101,6 +111,61 @@ def main() -> int:
             except Exception as exc:                         # noqa: BLE001
                 opened = f"gagal: {type(exc).__name__}: {str(exc)[:120]}"
 
+        waited = 0
+        timeline: list[dict] = []
+        if args.wait_for_call:
+            # Rekam LINIMASA, bukan satu potret. Versi pertama terpicu begitu
+            # MENU muncul lalu memotret 1,2 detik kemudian — sebelum overlay
+            # panggilan sempat ada, sehingga hangup/ringing selalu kosong.
+            # Menunggu "satu perubahan" salah: urutannya menu → lalu panggilan.
+            print(f"[probe] merekam {args.wait_for_call}s — silakan lakukan "
+                  f"panggilan lengkap sekarang", flush=True)
+            seen: set = set()
+            while waited < args.wait_for_call:
+                page.wait_for_timeout(1000)
+                waited += 1
+                try:
+                    current = page.evaluate(_CANDIDATE_JS)
+                    state = ww.WhatsAppWebService._status_on_page(page)["state"]
+                except Exception:                            # noqa: BLE001
+                    continue
+                labels = tuple(sorted(
+                    (item.get("aria_label") or item.get("data_icon") or "?")
+                    for item in current))
+                # Overlay panggilan WhatsApp bisa berada di JENDELA LAIN.
+                # Memindai halaman chat saja akan selalu bilang "tidak ada
+                # panggilan" walau selectornya benar.
+                pages = list(page.context.pages)
+                matched_now = {
+                    name: sorted({
+                        sel for target in pages for sel in sels
+                        if ww._first_visible(target, (sel,)) is not None
+                    })
+                    for name, sels in _GROUPS.items()
+                }
+                for target in pages:
+                    if target is page:
+                        continue
+                    try:
+                        extra = target.evaluate(_CANDIDATE_JS)
+                    except Exception:                        # noqa: BLE001
+                        continue
+                    current = list(current) + list(extra)
+                signature = (state, labels)
+                if signature in seen:
+                    continue
+                seen.add(signature)
+                timeline.append({
+                    "at_s": waited, "state": state,
+                    "labels": list(labels),
+                    "matched": {k: v for k, v in matched_now.items() if v},
+                })
+                timeline[-1]["pages"] = [str(t.url)[:80] for t in pages]
+                print(f"[probe] +{waited}s pages={len(pages)} state={state} "
+                      f"labels={len(labels)} "
+                      f"hangup={len(matched_now['hangup'])} "
+                      f"ringing={len(matched_now['ringing'])}", flush=True)
+
         matched = {
             name: [selector for selector in selectors
                    if ww._first_visible(page, (selector,)) is not None]
@@ -113,19 +178,29 @@ def main() -> int:
         return {
             "url": str(page.url),
             "chat_opened": opened,
+            "waited_s": waited,
+            "timeline": timeline,
             "status_state": ww.WhatsAppWebService._status_on_page(page)["state"],
             "matched": matched,
             "call_ui_candidates": candidates,
         }
 
-    result = service._call(probe, timeout=90)
-    print(json.dumps(result, indent=1, ensure_ascii=False))
+    result = service._call(
+        probe, timeout=120 + args.wait_for_call)
+    if args.out:
+        Path(args.out).write_text(
+            json.dumps(result, indent=1, ensure_ascii=False), encoding="utf-8")
+        print(f"[probe] hasil lengkap ditulis ke {args.out}")
+    else:
+        print(json.dumps(result, indent=1, ensure_ascii=False))
 
     matched = result["matched"]
     print("\n--- PENILAIAN ---")
     print(f"state         : {result['status_state']}")
-    print(f"tombol call   : {'COCOK' if matched['call_button'] else 'TIDAK COCOK'}")
-    if args.during_call:
+    print(f"pembuka menu  : {'COCOK' if matched['call_menu'] else 'TIDAK COCOK'}")
+    print(f"aksi suara    : {'COCOK' if matched['voice_action'] else 'TIDAK COCOK'}"
+          "   <- yang benar-benar menelepon (S-18)")
+    if args.during_call or args.wait_for_call:
         proven = bool(matched["hangup"] or matched["ringing"])
         print(f"bukti panggilan: {'COCOK' if proven else 'TIDAK COCOK'}"
               f"  (hangup={len(matched['hangup'])}, "
@@ -138,7 +213,7 @@ def main() -> int:
     else:
         print("bukti panggilan: tidak diuji — ulangi dengan --during-call "
               "saat panggilan sungguhan sedang berlangsung")
-    return 0 if matched["call_button"] else 1
+    return 0 if matched["voice_action"] else 1
 
 
 if __name__ == "__main__":

@@ -879,6 +879,91 @@ dan nilainya menunjuk provider yang terdaftar.
 
 ---
 
+### S-19 — Label bukti panggilan memakai kata yang salah — SELESAI ✅
+
+**Bukti DOM saat panggilan Takeda BENAR-BENAR berdering** (probe linimasa
+2026-08-05, detik ke-16 dan ke-17):
+
+```
+"Akhiri telepon"                              <- tombol putus
+"Kontrol telepon"                             <- kontrol panggilan
+"Pindahkan ke jendela baru"
+"Izinkan akses kamera untuk beralih ke video"
+pages = 1                                     <- overlay di halaman yang SAMA
+```
+
+`_HANGUP_SELECTORS` mencari `"akhiri panggilan"`, `"end call"`,
+`data-icon="call-end"`. **WhatsApp Indonesia konsisten memakai "telepon",
+bukan "panggilan".** Tidak satu pun cocok. Tiga akibat sekaligus:
+
+* `_prove_call_started` selalu gagal — panggilan yang benar-benar berdering
+  dilaporkan tidak terbukti;
+* `_status_on_page` tidak pernah melaporkan `in_call`;
+* **`whatsapp_hangup` tidak pernah menemukan tombolnya** — Jarvis tidak bisa
+  menutup panggilan yang ia mulai sendiri.
+
+Yang terakhir belum pernah terlihat karena panggilannya memang tidak pernah
+dimulai (S-18). Ia akan muncul sebagai bug berikutnya begitu S-18 diperbaiki.
+
+Hipotesis "overlay di jendela terpisah" **salah** — `pages=1`. Bagus sudah
+dicek: probe kini memindai semua halaman context, jadi kalau kelak WhatsApp
+memindahkannya (tombol "Pindahkan ke jendela baru" ada), kita akan tahu.
+
+Yang dijaga: `test_call_proof_selectors_do_not_match_an_idle_chat` memastikan
+label yang selalu ada ("Telepon", "Telepon suara") **tidak** dianggap bukti.
+Bukti yang selalu benar bukan bukti — itu kegagalan arah sebaliknya dari S-1.
+
+---
+
+### S-18 — "Telepon" adalah pembuka menu, bukan tombol panggil — SELESAI ✅
+
+Takeda menelepon lewat Jarvis; gagal dengan *"whatsapp_call tidak menghasilkan
+keadaan panggilan yang terbukti"*. Satu fakta darinya memutus diagnosis:
+**"hp honbrew tidak berdering"**. Berarti bukan sekadar bukti yang meleset —
+panggilannya memang tidak pernah dimulai.
+
+Probe saat tombol itu diklik:
+
+```
+{"aria_label": "Telepon"}        <- PEMBUKA MENU
+{"aria_label": "Telepon video"}
+{"aria_label": "Telepon suara"}  <- aksi panggilan suara
+```
+
+**Perbaikan S-16 justru menutupi ini.** Ia mencocokkan `"Telepon"` persis dan
+melaporkan `call_button: COCOK`, sehingga alur yang masih putus tampak beres.
+Jarvis mengklik pembuka menu lalu menunggu bukti yang tak akan pernah datang.
+
+Alur benar sekarang: coba aksi suara langsung → bila tidak ada, buka menu →
+cari `"Telepon suara"` → klik → baru buktikan. Bila menu terbuka tetapi
+pilihan suara tidak ada, **berhenti dan melapor gagal** — menebak elemen lain
+berisiko memulai panggilan VIDEO tanpa diminta.
+
+---
+
+### S-17 — Profil Chrome tertinggal mengunci WhatsApp Web — TERBUKA
+
+Probe selesai normal, tetapi jendela Chrome-nya **tetap hidup**. `atexit` di
+`whatsapp_web` memanggil `stop()`, jadi seharusnya tertutup — artinya
+`launch_persistent_context(channel="chrome")` melahirkan Chrome yang lepas dari
+kendali Playwright.
+
+Akibat nyata di luar sesi debugging ini: **JARVIS tidak bisa memulai WhatsApp
+Web bila ada sisa instance profil yang sama**, dengan pesan yang sama sekali
+tidak menyebut profil terkunci:
+
+```
+BrowserType.launch_persistent_context: Opening in existing browser session.
+This usually means that the profile is already in use by another instance.
+```
+
+Jadi satu crash atau penutupan paksa membuat panggilan berikutnya gagal dengan
+sebab yang menyesatkan. **Belum diperbaiki.** Perbaikan yang tepat: deteksi
+lock profil sebelum launch dan laporkan sebabnya secara spesifik, atau bersihkan
+sisa proses profil sendiri sebelum mencoba.
+
+---
+
 ### S-16 — Selector tombol panggilan meleset dari DOM sungguhan — SELESAI ✅
 
 **Bukti DOM pertama yang benar-benar `live-proven`**, bukan fixture. Probe
@@ -903,7 +988,17 @@ Diperbaiki dengan cocok **persis**, bukan substring — "Telepon" muncul juga di
 dalam label lain, dan substring "panggilan" akan ikut menangkap tombol
 panggilan VIDEO. Diverifikasi ulang lewat probe: `call_button: COCOK`.
 
-**Yang MASIH belum tervalidasi:** `_HANGUP_SELECTORS`, `_ANSWER_SELECTORS`,
+**KOREKSI (2026-08-05, beberapa jam kemudian).** Kesimpulan di atas
+**terlalu percaya diri**. Probe memang menemukan `aria-label="Telepon"` di DOM
+asli, tetapi aku menyimpulkan itu tombol panggil — padahal ia PEMBUKA MENU
+(lihat S-18). `call_button: COCOK` yang kulaporkan justru menutupi alur yang
+masih putus. Yang membuktikannya bukan probe, melainkan satu kalimat Takeda:
+*"hp honbrew tidak berdering"*.
+
+Pelajarannya: label `live-proven` menuntut bukti bahwa **hasil yang diinginkan
+terjadi**, bukan sekadar bahwa selector cocok dengan sesuatu di halaman.
+
+**Yang saat itu belum tervalidasi:** `_HANGUP_SELECTORS`, `_ANSWER_SELECTORS`,
 dan `_RINGING_SELECTORS`. Ketiganya hanya muncul saat panggilan berlangsung,
 jadi butuh satu panggilan sungguhan. Konsekuensinya jujur dan sudah dirancang:
 bila meleset, Fase 13 melaporkan keadaan **TIDAK DIKETAHUI** dan menyuruh

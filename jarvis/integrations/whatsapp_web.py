@@ -251,25 +251,31 @@ _COMPOSER_SELECTORS = (
     '[contenteditable="true"][aria-label*="type a message" i]',
     '[contenteditable="true"][aria-label*="ketik pesan" i]',
 )
-_CALL_SELECTORS = (
-    # S-16 — DOM WhatsApp Web sungguhan (probe read-only 2026-08-05, akun
-    # Takeda, locale Indonesia) hanya menampilkan SATU tombol panggilan:
-    #     {"aria_label": "Telepon", "data_icon": "", "title": "", "tag": "button"}
-    # Selector lama mencari "voice call" / "panggilan suara" dan tidak ada yang
-    # cocok, sehingga start_call selalu gagal di "Tombol panggilan suara tidak
-    # ditemukan" — panggilan tidak pernah benar-benar dimulai.
-    #
-    # Cocok PERSIS, bukan substring: "Telepon" sebagai substring juga ada di
-    # label lain (mis. "Panggilan telepon masuk"), dan substring "panggilan"
-    # akan ikut menangkap tombol panggilan VIDEO.
+# S-18 — "Telepon" adalah PEMBUKA MENU, bukan tombol yang menelepon.
+# Probe DOM sungguhan (2026-08-05) saat tombol itu diklik menampilkan:
+#     {"aria_label": "Telepon"}        <- pembuka menu
+#     {"aria_label": "Telepon video"}
+#     {"aria_label": "Telepon suara"}  <- aksi panggilan suara
+# S-16 mencocokkan "Telepon" persis, jadi start_call mengklik pembuka menu
+# lalu menunggu bukti panggilan yang tidak akan pernah datang. Terbukti di
+# lapangan: HP lawan bicara tidak berdering sama sekali.
+_CALL_MENU_SELECTORS = (
     'button[aria-label="Telepon" i]',
     'button[aria-label="Call" i]',
-    'button[aria-label*="voice call" i]',
+)
+# Aksi yang BENAR-BENAR menelepon. Tidak pernah memuat "video": salah pilih di
+# sini berarti memulai panggilan video tanpa diminta.
+_VOICE_CALL_SELECTORS = (
+    'button[aria-label="Telepon suara" i]',
+    'button[aria-label="Voice call" i]',
     'button[aria-label*="panggilan suara" i]',
-    'button[title*="voice call" i]',
     'button[title*="panggilan suara" i]',
+    'button[title*="voice call" i]',
     '[data-icon="audio-call"]',
 )
+# Nama lama dipertahankan sebagai gabungan keduanya untuk pemanggil yang hanya
+# ingin tahu "adakah kontrol panggilan di halaman ini" (mis. harness WA0).
+_CALL_SELECTORS = _VOICE_CALL_SELECTORS + _CALL_MENU_SELECTORS
 _ANSWER_SELECTORS = (
     'button[aria-label*="answer" i]',
     'button[aria-label*="jawab" i]',
@@ -277,6 +283,16 @@ _ANSWER_SELECTORS = (
     '[data-icon="call-accept"]',
 )
 _HANGUP_SELECTORS = (
+    # S-19 — label DOM sungguhan saat panggilan Takeda BERDERING (probe
+    # linimasa 2026-08-05, detik ke-16, pages=1 — overlay ada di halaman yang
+    # sama, bukan jendela terpisah):
+    #     "Akhiri telepon", "Kontrol telepon", "Pindahkan ke jendela baru"
+    # WhatsApp Indonesia konsisten memakai "telepon", BUKAN "panggilan".
+    # Selector lama mencari "akhiri panggilan" dan tidak pernah cocok, sehingga
+    # panggilan yang benar-benar berdering dilaporkan tidak terbukti, status
+    # tak pernah `in_call`, dan whatsapp_hangup tak pernah menemukan tombolnya.
+    'button[aria-label="Akhiri telepon" i]',
+    'button[aria-label*="akhiri telepon" i]',
     'button[aria-label*="end call" i]',
     'button[aria-label*="akhiri panggilan" i]',
     'button[aria-label*="hang up" i]',
@@ -286,6 +302,12 @@ _HANGUP_SELECTORS = (
 # sebelum tersambung. Salah satu dari dua kelompok ini adalah bukti sah bahwa
 # panggilan benar-benar dimulai; klik tombol saja BUKAN bukti (S-1).
 _RINGING_SELECTORS = (
+    # S-19 — "Kontrol telepon" muncul bersama overlay panggilan dan TIDAK ada
+    # di chat diam, jadi ia membedakan. Label menu ("Telepon", "Telepon suara")
+    # sengaja tidak dipakai: keduanya selalu ada, dan bukti yang selalu benar
+    # bukan bukti — itu kegagalan arah sebaliknya dari S-1.
+    '[aria-label="Kontrol telepon" i]',
+    '[aria-label*="kontrol telepon" i]',
     '[aria-label*="calling" i]',
     '[aria-label*="memanggil" i]',
     '[aria-label*="ringing" i]',
@@ -612,11 +634,28 @@ class WhatsAppWebService:
 
         def operation(page):
             self._open_chat(page, contact)
-            button = _wait_visible(page, _CALL_SELECTORS)
+            # Aksi panggilan suara kadang langsung terlihat; kadang tersembunyi
+            # di balik menu "Telepon". Coba yang langsung dulu supaya tidak
+            # membuka menu tanpa perlu (S-18).
+            button = _wait_visible(page, _VOICE_CALL_SELECTORS, timeout_ms=2_000)
             if button is None:
+                opener = _wait_visible(page, _CALL_MENU_SELECTORS)
+                if opener is None:
+                    raise WhatsAppError(
+                        "Kontrol panggilan tidak ditemukan. Fitur calling "
+                        "mungkin belum tersedia pada akun/rollout WhatsApp Web "
+                        "ini."
+                    )
+                opener.click()
+                page.wait_for_timeout(600)
+                button = _wait_visible(page, _VOICE_CALL_SELECTORS,
+                                       timeout_ms=5_000)
+            if button is None:
+                # Menu terbuka tetapi pilihan suara tidak ada. Berhenti di sini:
+                # menebak elemen lain berisiko memulai panggilan VIDEO.
                 raise WhatsAppError(
-                    "Tombol panggilan suara tidak ditemukan. Fitur calling "
-                    "mungkin belum tersedia pada akun/rollout WhatsApp Web ini."
+                    "Menu panggilan terbuka tetapi pilihan panggilan suara "
+                    "tidak ditemukan. Tidak ada panggilan yang dimulai."
                 )
             button.click()
             state = self._prove_call_started(page)
