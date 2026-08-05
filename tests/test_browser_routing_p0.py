@@ -45,10 +45,32 @@ def win():
 
 @pytest.fixture()
 def opened(monkeypatch):
-    """Tangkap webbrowser.open — tidak pernah membuka browser nyata."""
+    """Tangkap pembukaan URL eksternal — tidak pernah membuka browser nyata.
+
+    ``MainWindow.open_url`` memakai ``jarvis.core.native_actions.
+    open_external_url``, dan di Windows fungsi itu memanggil ``os.startfile``,
+    BUKAN ``webbrowser.open``. Menambal ``webbrowser.open`` saja karena itu
+    tidak menangkap apa pun — dan lebih buruk, membuat suite benar-benar
+    meluncurkan browser default. Terverifikasi 2026-08-04:
+    ``os.startfile('https://example.com')`` sungguh terpanggil saat test jalan.
+
+    Tiga lapis ditambal sekaligus supaya tidak ada jalur yang lolos di
+    platform mana pun.
+    """
     import webbrowser
+
+    from jarvis.core import native_actions
+
     urls: list[str] = []
+
+    def _capture(url, *a, **k):
+        urls.append(url)
+        return native_actions.NativeActionResult(True, "test-capture")
+
+    monkeypatch.setattr(native_actions, "open_external_url", _capture)
     monkeypatch.setattr(webbrowser, "open", lambda url, **k: urls.append(url))
+    monkeypatch.setattr(os, "startfile", lambda t, *a, **k: urls.append(t),
+                        raising=False)
     return urls
 
 
@@ -96,10 +118,11 @@ def test_stage_has_no_browser_panels(win):
 
 
 def test_stage_registers_vision_info_home(win):
-    # "tasks" ditambahkan AUDIT §8.5 (Task Deck). Kontrak intinya tetap:
-    # tidak ada panel browser di ContentStage — dijaga tes di atas.
+    # "tasks" ditambahkan AUDIT §8.5 (Task Deck); "studio" oleh Content Studio
+    # (Studio A-D). Kontrak intinya tetap: tidak ada panel browser di
+    # ContentStage — dijaga tes di atas.
     assert win.stage.registered_names == frozenset(
-        {"vision", "info", "home", "tasks"})
+        {"vision", "info", "home", "tasks", "studio"})
 
 
 def test_home_click_uses_loading_until_panel_ready(win, monkeypatch):
@@ -147,9 +170,35 @@ def test_voice_url_command_opens_system_browser(win, opened):
     assert opened and opened[-1].startswith("https://example.com")
 
 
-def test_voice_search_command_opens_system_browser(win, opened):
+def test_voice_search_no_longer_dumps_the_query_into_the_browser(win, opened):
+    """§23 — kontrak lama DICABUT dengan sengaja.
+
+    Test ini dulu mengunci "pencarian suara membuka browser sistem dengan
+    kuerinya". Di lapangan itu berarti transkrip mentah Takeda muncul sebagai
+    hasil pencarian Google:
+
+        'kan saya restoran yang - Search - Google Chrome'
+
+    Yang tampil di layar adalah kalimatnya sendiri, bukan jawaban. Pencarian
+    kini dijalankan lewat tool `web_search` yang menghasilkan sumber nyata
+    (web, media sosial, peta), lalu sumber itu yang ditawarkan.
+
+    Yang TIDAK berubah dan tetap dikunci di bawah: membuka URL yang jelas
+    ("buka example.com") tetap lewat browser sistem — di sana tidak ada
+    transkrip yang dipantulkan, hanya alamat yang user sebut sendiri.
+    """
+    # Jalur pencarian nyata menjalankan tool `web_search` di thread — jaringan
+    # sungguhan, dan sentuhan Qt setelah window dibongkar. Yang diuji di sini
+    # adalah ROUTING-nya, jadi pekerjaannya ditambal.
+    routed: list[tuple] = []
+    win._run_web_lookup = lambda query, *, mode, label: routed.append(
+        (query, mode))
+
     win._voice_intercept("cari berita teknologi hari ini")
-    assert opened and "berita" in opened[-1]
+
+    assert not opened, (
+        "pencarian tidak boleh lagi meluncurkan browser dengan kueri mentah")
+    assert routed, "pencarian tetap harus dijalankan, hanya lewat jalur sumber"
 
 
 def test_typed_and_voice_url_take_identical_route(win, opened):

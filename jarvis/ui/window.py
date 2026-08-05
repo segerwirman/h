@@ -1110,16 +1110,19 @@ class MainWindow(QMainWindow):
                          name=f"google-light-{tool_name}").start()
 
     def run_search(self, query: str) -> None:
-        """MK50 §7 — tanpa panel browser: pencarian ringan dibuka di browser
-        sistem; alur web bertujuan berjalan lewat agent (browser_* tools)."""
-        from jarvis.core.native_actions import open_external_url
+        """§23 — cari sungguhan, lalu tampilkan SUMBERNYA.
 
-        result = open_external_url(search_url(query))
-        if result.ok:
-            self.write_log(f"SYS: Mencari '{query}' di browser sistem …")
-        else:
-            self.write_log(
-                f"ERR: browser sistem gagal dibuka — {result.detail}")
+        Bentuk lama mengirim ``search_url(query)`` ke browser sistem, dan
+        ``query`` kerap jatuh ke transkrip mentah. Yang muncul di layar Takeda
+        adalah kalimatnya sendiri:
+
+            'kan saya restoran yang - Search - Google Chrome'
+
+        Itu memantulkan ucapan, bukan menjawabnya. Sekarang pencarian dijalankan
+        lewat tool ``web_search`` yang menghasilkan sumber nyata (web, media
+        sosial, peta), dan sumber itulah yang ditawarkan untuk dibuka.
+        """
+        self._run_web_lookup(query, mode="text", label="Informasi")
 
     def _run_web_lookup(self, query: str, *, mode: str, label: str) -> None:
         """Shared UI worker untuk berita/informasi; tool menentukan fallback."""

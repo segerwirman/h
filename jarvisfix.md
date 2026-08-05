@@ -4,7 +4,7 @@
 **Baseline:** HEAD `39cae8c` · FROZEN `094b696` (10 file, integritas OK)
 **Status dokumen:** Fase 0-12 SELESAI (12 = opsi (b), tanpa perubahan frozen). T1 dimitigasi — sisa tindakan di sisi endpoint.
 **SIKLUS 2 (2026-08-05): Fase 13-19 SELESAI.**
-**SIKLUS 3 (2026-08-05, sore): Fase 20-21 SELESAI. Fase 22-23 belum** — empat
+**SIKLUS 3 (2026-08-05, sore): Fase 20-21, 23 SELESAI. Sisa Fase 22** — empat
 temuan lapangan dari pemakaian nyata; lihat bagian SIKLUS 3 di akhir. Lihat
 bagian [Siklus 2](#siklus-2--audit-ulang-2026-08-05) di akhir dokumen.
 **Suite:** `pytest tests/ -q` → **2281 lulus, 0 gagal** · hijau juga dengan jaringan keluar diblokir · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
@@ -1960,7 +1960,7 @@ dari test.
 | 20 | `close_app` menyebut apa yang benar-benar ditutup | S-20 | ✅ **SELESAI** 2026-08-05 |
 | 21 | Jarvis melihat & mengendalikan Chrome milik Takeda | S-21 | ✅ **SELESAI** 2026-08-05 |
 | 22 | Interupsi suara terbukti hidup; test berhenti mencemari log | S-22 | ⬜ |
-| 23 | Rekomendasi membuka SUMBERNYA, bukan transkrip | S-23 | ⬜ |
+| 23 | Rekomendasi membuka SUMBERNYA, bukan transkrip | S-23 | ✅ **SELESAI** 2026-08-05 |
 
 ---
 
@@ -2239,3 +2239,58 @@ tab kerjanya adalah aksi yang harus diminta, bukan diambil diam-diam.
 
 **Test merah dulu:** rekomendasi tempat -> tawaran memuat sumber bertipe
 (web/sosial/map); tidak ada jalur yang mengirim transkrip mentah sebagai kueri.
+
+### Hasil Fase 23 — SELESAI 2026-08-05
+
+`tests/test_recommendation_sources.py` (27 test) dibuktikan merah lebih dulu.
+
+`jarvis/agent/sources.py` baru. Aturannya satu kalimat: **setiap URL dibangun
+dari HASIL TOOL, tidak pernah dari kata-kata user.** Tanpa hasil, tidak ada
+yang dibuka — diam lebih jujur daripada memantulkan ucapan ke layar.
+
+* Sumber **bertipe** dari host, bukan tebakan kata: `map` / `social` / `web`.
+* Permintaan tempat mendahulukan peta. Bila hasil tool tidak memuat baris
+  Maps, satu sumber peta **disintesis dari nama tempat pada judul hasil** —
+  tetap dari hasil tool, bukan dari kalimat user.
+* **Tawaran, bukan aksi.** Takeda meminta "opsi": `offer_text()` bertanya,
+  tidak membuka.
+* Dibuka di **Chrome Takeda** lewat Fase 21; bila tak terjangkau, sebabnya
+  yang disebut.
+
+Perilaku nyata:
+
+```
+'carikan saya restoran yang enak di dekat sini'
+   tempat? True  | urutan: map, web, social
+   "Mau saya buka peta lokasinya, halaman resminya, atau media sosialnya
+    di Chrome Anda?"
+
+'cari resep warung bu tini'
+   tempat? False | urutan: web, social
+```
+
+Baris kedua itu koreksi terhadap versi pertamaku: regex tempat menangkap
+"warung" pada permintaan RESEP, sehingga peta didahulukan padahal yang dicari
+konten. Kata benda konten (resep, harga, menu, review) kini membatalkan
+pembacaan tempat — kecuali ada penanda kedekatan, yang selalu berarti lokasi.
+
+**Kontrak P0 lama dicabut dengan alasan tertulis.**
+`test_voice_search_command_opens_system_browser` mengunci "pencarian suara
+membuka browser sistem dengan kuerinya" — persis perilaku yang menghasilkan
+`'kan saya restoran yang - Search - Google Chrome'`. Diganti, dan alasannya
+ditulis di tempatnya. Yang **tidak** berubah: membuka URL yang jelas ("buka
+example.com") tetap lewat browser sistem, karena di sana tidak ada transkrip
+yang dipantulkan.
+
+**Crash yang KUBUAT SENDIRI, lalu kutemukan.** Setelah `run_search` dialihkan
+ke `_run_web_lookup`, suite mulai crash `Windows fatal exception: access
+violation` di `jarvis/ui/stage.py`. Sebabnya perubahanku: test routing kini
+menjalankan thread `web_search` dengan **jaringan sungguhan**, dan thread itu
+menyentuh objek Qt setelah window dibongkar. Sekaligus merusak jaminan
+"suite tidak butuh jaringan" yang baru dibuktikan di S-15. Diperbaiki dengan
+menambal pekerjaannya di test routing — yang diuji di sana memang ROUTING,
+bukan pengambilan data.
+
+Diverifikasi **3 run berturut dengan socket keluar diblokir**: 2348 lulus,
+nol crash. Terlihat hanya karena suite dijalankan ulang setelah hijau, bukan
+karena ada test yang merah.
