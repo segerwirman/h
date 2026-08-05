@@ -4,7 +4,7 @@
 **Baseline:** HEAD `39cae8c` · FROZEN `094b696` (10 file, integritas OK)
 **Status dokumen:** Fase 0-12 SELESAI (12 = opsi (b), tanpa perubahan frozen). T1 dimitigasi — sisa tindakan di sisi endpoint.
 **SIKLUS 2 (2026-08-05): Fase 13-19 SELESAI.**
-**SIKLUS 3 (2026-08-05, sore): Fase 20-21, 23 SELESAI. Sisa Fase 22** — empat
+**SIKLUS 3 (2026-08-05, sore): Fase 20-21, 23 SELESAI. Fase 22 SEBAGIAN** — empat
 temuan lapangan dari pemakaian nyata; lihat bagian SIKLUS 3 di akhir. Lihat
 bagian [Siklus 2](#siklus-2--audit-ulang-2026-08-05) di akhir dokumen.
 **Suite:** `pytest tests/ -q` → **2281 lulus, 0 gagal** · hijau juga dengan jaringan keluar diblokir · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
@@ -1959,7 +1959,7 @@ dari test.
 |---|---|---|---|
 | 20 | `close_app` menyebut apa yang benar-benar ditutup | S-20 | ✅ **SELESAI** 2026-08-05 |
 | 21 | Jarvis melihat & mengendalikan Chrome milik Takeda | S-21 | ✅ **SELESAI** 2026-08-05 |
-| 22 | Interupsi suara terbukti hidup; test berhenti mencemari log | S-22 | ⬜ |
+| 22 | Interupsi suara terbukti hidup; test berhenti mencemari log | S-22 | ⚠ **SEBAGIAN** — log & diagnostik selesai; bukti hidup menunggu sesi nyata |
 | 23 | Rekomendasi membuka SUMBERNYA, bukan transkrip | S-23 | ✅ **SELESAI** 2026-08-05 |
 
 ---
@@ -2220,6 +2220,60 @@ tab kerjanya adalah aksi yang harus diminta, bukan diambil diam-diam.
    aslinya.
 4. Bukti hidup: satu sesi nyata dengan `voice.barge_in` tercatat dari ucapan
    Takeda, bukan dari pytest.
+
+### Hasil Fase 22 — SEBAGIAN 2026-08-05
+
+`tests/test_log_isolation_and_barge_diag.py` (10 test) dibuktikan merah dulu.
+
+**1. Log dipisah — SELESAI.** `log.is_test_run()` + `logging.test_file`.
+Dibuktikan dengan menjalankan suite dan mengukur kedua berkas:
+
+```
+jarvis-test.log : 183 KB  <- 29 entri barge_in, semuanya milik pytest
+jarvis.log      : tumbuh 15 KB, dan itu dari JARVIS yang sedang berjalan
+```
+
+Sejak sekarang `barge_in.triggered` di `jarvis.log` pasti berasal dari ucapan
+sungguhan.
+
+**2. Rantai interupsi dikunci — SELESAI.** Diperiksa di kode, bukan ditebak:
+`main.py:641` `ui.set_state("SPEAKING")` → facade → `_apply_state`; `main.py:572`
+`ui.on_interrupt = self.interrupt` → facade setter → `_win.on_interrupt` →
+`_do_interrupt`. Dua test mengunci keduanya, termasuk urutan yang tidak boleh
+dibalik: **memotong ucapan menang atas menutup panel.**
+
+**3. Diagnostik agar sesi nyata menjawab sendiri — SELESAI.** Barge-in dulu
+hanya mencatat saat MEMICU, sehingga "tidak pernah memicu" dan "tidak pernah
+jalan" sama-sama terlihat sunyi. Sekarang ada `mic_meter.started` saat stream
+terbuka, dan `barge_in.diagnostics` tiap 20 detik selama Jarvis bicara:
+`noise_floor`, `threshold`, `blocks_while_speaking`,
+`peak_rms_while_speaking`, `triggers`.
+
+**4. Bukti hidup — BELUM.** Ini yang membuat fase ini *sebagian*.
+
+Dua kali dalam fase ini kesimpulan hampir diambil dari **ketiadaan** di log:
+
+* `mic_meter.unavailable` ×5 sempat terbaca sebagai "mic meter mati" — semuanya
+  bertanggal **2026-08-04** dengan sebab `No module named 'sounddevice'`, sudah
+  lewat. Sesi hari ini bersih dan `barge_in.calibrated` terbit
+  (`noise_floor: 0.0039`), jadi mic meter memang hidup.
+* Nol baris berisi `"SPEAKING"` sempat terbaca sebagai "Jarvis tidak pernah
+  masuk state bicara" — padahal `set_state` memang **tidak menulis log sama
+  sekali**. Grep itu tidak membuktikan apa pun.
+
+Keduanya kesalahan yang sama bentuknya: **sunyi bukan bukti.** Karena itu
+pekerjaan fase ini diarahkan ke membuat sunyi menjadi mustahil, bukan
+menurunkan ambang berdasarkan tebakan.
+
+**Yang dibutuhkan untuk menutupnya:** jalankan ulang JARVIS (agar diagnostik
+termuat), bicara menimpa Jarvis saat ia bicara, lalu baca `jarvis.log`:
+
+* tidak ada `mic_meter.started` → thread mic tidak jalan;
+* ada, tetapi `blocks_while_speaking` 0 → state SPEAKING tidak pernah tercapai;
+* ada blok, `peak_rms_while_speaking` **di bawah** `threshold` → ambang terlalu
+  tinggi untuk ruangan Takeda; putar `sensitivity` ke `high`;
+* di atas ambang tetapi `triggers` 0 → penolakan crest/pita suara yang perlu
+  disetel.
 
 ---
 

@@ -49,6 +49,10 @@ class BargeInConfig:
     max_crest: float = 6.0                # di atas ini = transien, bukan ucapan
     min_voice_band_ratio: float = 0.55    # energi < 1 kHz terhadap total
     sample_rate: int = 16000
+    # §22 — jarak antar catatan diagnostik saat Jarvis bicara. "Tidak pernah
+    # memicu" dan "tidak pernah jalan" sama-sama sunyi di log; angka berkala
+    # inilah yang membedakannya pada sesi nyata.
+    diagnostics_every_s: float = 20.0
 
     def __post_init__(self) -> None:
         if self.sensitivity not in SENSITIVITIES:
@@ -84,6 +88,7 @@ class BargeInConfig:
             echo_multiplier=_num("echo_multiplier", 8.0, float),
             max_crest=_num("max_crest", 6.0, float),
             min_voice_band_ratio=_num("min_voice_band_ratio", 0.55, float),
+            diagnostics_every_s=_num("diagnostics_every_s", 20.0, float),
         )
 
 
@@ -105,10 +110,40 @@ class BargeInAnalyzer:
     _calib: list = field(default_factory=list)
     _cooldown_until: float = 0.0
     _last_block_at: float = 0.0
+    _blocks_speaking: int = 0
+    _peak_rms_speaking: float = 0.0
+    _triggers: int = 0
+    _last_diag_at: float = 0.0
 
     def start_calibration(self, now: float) -> None:
         self._calibrating_until = now + max(0.1, self.cfg.calibration_s)
         self._calib = []
+
+    def diagnostics(self) -> dict:
+        """Angka yang menjawab "kenapa tidak memicu?" dari log sesi nyata."""
+        try:
+            return {
+                "enabled": bool(self.cfg.enabled),
+                "sensitivity": self.cfg.sensitivity,
+                "noise_floor": round(self.noise_floor, 4),
+                "threshold": round(self.threshold(), 4),
+                "blocks_while_speaking": self._blocks_speaking,
+                "peak_rms_while_speaking": round(self._peak_rms_speaking, 4),
+                "triggers": self._triggers,
+            }
+        except Exception:                                    # noqa: BLE001
+            return {"enabled": False, "triggers": 0,
+                    "blocks_while_speaking": 0,
+                    "peak_rms_while_speaking": 0.0}
+
+    def _note_speaking(self, rms: float, now: float) -> None:
+        self._blocks_speaking += 1
+        self._peak_rms_speaking = max(self._peak_rms_speaking, rms)
+        every = float(self.cfg.diagnostics_every_s or 0.0)
+        if every <= 0 or now - self._last_diag_at < every:
+            return
+        self._last_diag_at = now
+        _logger.info("barge_in.diagnostics", **self.diagnostics())
 
     def threshold(self, playback_level: float = 0.0) -> float:
         """Ambang RMS saat ini — relatif terhadap kebisingan ruangan.
@@ -171,6 +206,7 @@ class BargeInAnalyzer:
             self._learn(rms)
             self.sustained_s = 0.0
             return BargeInVerdict(False, "not_speaking", rms, self.noise_floor)
+        self._note_speaking(rms, now)
         if now < self._cooldown_until:
             return BargeInVerdict(False, "cooldown", rms, self.noise_floor)
         if speaking_since and (now - speaking_since) * 1000.0 < self.cfg.tts_grace_ms:
@@ -209,6 +245,7 @@ class BargeInAnalyzer:
                                   threshold)
 
         self.sustained_s = 0.0
+        self._triggers += 1
         self._cooldown_until = now + self.cfg.cooldown_ms / 1000.0
         _logger.info("barge_in.triggered", rms=round(rms, 3),
                      threshold=round(threshold, 3))

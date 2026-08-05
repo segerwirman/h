@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from jarvis.core import config
@@ -29,6 +30,29 @@ def _bus_processor(logger, method_name, event_dict):
     return event_dict
 
 
+def is_test_run() -> bool:
+    """Apakah proses ini dijalankan oleh pytest?
+
+    S-22: suite menulis ke log produksi yang sama, sehingga
+    ``barge_in.triggered`` dari test tidak bisa dibedakan dari ucapan user.
+    Diagnosis runtime jadi tebakan — dan sempat hampir menyesatkan kesimpulan
+    seluruh fase. Deteksi lewat modul yang benar-benar dimuat, bukan variabel
+    lingkungan yang bisa terbawa ke proses anak.
+    """
+    import sys
+
+    return "pytest" in sys.modules or "PYTEST_CURRENT_TEST" in os.environ
+
+
+def active_log_path():
+    """Berkas log yang akan ditulis proses ini."""
+    log_dir = config.resolve_path(config.get("logging.dir", "logs"))
+    name = str(config.get("logging.file", "jarvis.log"))
+    if is_test_run():
+        name = str(config.get("logging.test_file", "jarvis-test.log"))
+    return log_dir / name
+
+
 def setup() -> None:
     global _configured
     if _configured:
@@ -37,7 +61,7 @@ def setup() -> None:
 
     log_dir = config.resolve_path(config.get("logging.dir", "logs"))
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / config.get("logging.file", "jarvis.log")
+    log_file = active_log_path()
     level = getattr(logging, config.get("logging.level", "INFO"), logging.INFO)
 
     handler = logging.FileHandler(log_file, encoding="utf-8")

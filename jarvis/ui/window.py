@@ -2451,6 +2451,10 @@ class JarvisUI:
 
             with sd.InputStream(callback=cb, channels=1, samplerate=16000,
                                 blocksize=1024):
+                # §22 — penanda "mic meter HIDUP". Tanpa ini, thread yang mati
+                # dan barge-in yang tidak pernah memicu sama-sama terlihat
+                # sunyi di log, dan sunyi tidak membedakan apa pun.
+                _logger.info("mic_meter.started", **analyzer.diagnostics())
                 while not self._mic_meter_stop.wait(0.2):
                     pass
         except Exception as e:

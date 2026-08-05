@@ -496,6 +496,10 @@ voice:                           # Mark L Change 4 — barge-in interrupt
     echo_multiplier: 8            # kenaikan ambang selama Jarvis bicara
     max_crest: 6.0                # di atas ini = transien (pintu/tepukan)
     min_voice_band_ratio: 0.55    # energi <1 kHz; menolak desis broadband
+    diagnostics_every_s: 20       # §22 — catat noise floor/ambang/rms
+                                  # puncak berkala saat Jarvis bicara, agar
+                                  # 'tidak memicu' bisa dibedakan dari
+                                  # 'tidak jalan' pada sesi nyata
   playback:
     # Perbaikan 'kosakata terpotong' saat suara: beri grace lebih panjang
     # sebelum menutup giliran + drain buffer sebelum stream ditutup.
@@ -620,6 +624,11 @@ nlp:
     read_only: true
 
 logging:
+  # §22 — pytest menulis ke berkas TERPISAH. Sebelumnya suite dan
+  # runtime berbagi jarvis.log, sehingga barge_in.triggered dari test
+  # tak bisa dibedakan dari ucapan user dan hampir menyesatkan
+  # kesimpulan seluruh fase.
+  test_file: jarvis-test.log
   dir: "logs"
   file: "jarvis.log"
   level: "INFO"
