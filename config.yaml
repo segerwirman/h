@@ -832,6 +832,14 @@ agent:
     # Satu tab per pencarian, bukan satu per hasil. Nilai tak dikenal jatuh
     # ke `on_request`.
     open_sources: on_request
+  memory:
+    # §24 — recall semantik diberi TENGGAT. Terukur: memory_store.search
+    # 3250 ms dingin / 422 ms hangat, hampir seluruhnya embedding — round trip
+    # jaringan SEBELUM model ditanya sama sekali. Lewat tenggat ini, giliran
+    # memakai pencarian keyword (FTS5) yang sepenuhnya lokal.
+    embed_deadline_s: 0.4
+  latency:
+    enabled: true               # rincian latensi per tahap ke log
   tool_selection:
     enabled: true                # deterministic shortlist for clear tasks
     max_tools: 28                # cukup untuk browser+CUA tanpa fallback full registry

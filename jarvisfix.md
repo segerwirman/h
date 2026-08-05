@@ -2348,3 +2348,208 @@ bukan pengambilan data.
 Diverifikasi **3 run berturut dengan socket keluar diblokir**: 2348 lulus,
 nol crash. Terlihat hanya karena suite dijalankan ulang setelah hijau, bukan
 karena ada test yang merah.
+
+---
+---
+
+# SIKLUS 4 — eksekusi instan tanpa kehilangan kecerdasan (2026-08-06)
+
+**Pemicu:** ide Takeda — *"bagaimana caranya agar jarvis bisa secara instant
+mengeksekusi perintah dan tetap pintar mengetahui apa jenis perintahnya."*
+
+## Ke mana waktunya pergi sekarang
+
+Terukur di mesin Takeda, 2026-08-05:
+
+```
+LLM berat, chat mentah        3,6 s
+LLM berat + schema tool       1,3 s
+agent loop tanpa tool         2,5 s   (1 iterasi)
+agent loop dengan tool        7,0 s   (2 iterasi; web_search 3,4 s)
+sub-agent delegate            3,0 s
+router deterministik          ~0 ms   <- SUDAH instan
+ACK                           <1 ms   <- SUDAH instan
+```
+
+**Router sudah instan.** Jarvis sudah tahu jenis perintah tanpa LLM untuk
+perintah yang jelas. Yang lambat adalah EKSEKUSI — sebagian besar berupa
+menunggu model memutuskan hal yang sebenarnya sudah bisa ditebak.
+
+## Gagasan inti
+
+Bagi lane berdasarkan **seberapa mahal kalau salah**, bukan berdasarkan
+kerumitan.
+
+| Sifat | Contoh | Boleh instan? |
+|---|---|---|
+| Reversible sepenuhnya | pause, volume, buka tab, baca | **ya — jalankan dulu** |
+| Terlihat tetapi bisa dibatalkan | buka aplikasi, navigasi | ya, dengan jejak |
+| Tidak bisa ditarik kembali | telepon, kirim pesan, hapus | tidak — verifikasi dulu |
+
+Perintah reversible tidak perlu menunggu model sama sekali. Itu sebagian besar
+pemakaian harian, dan di situlah "instan" benar-benar terasa.
+
+| Fase | Judul | Status |
+|---|---|---|
+| 24 | Ukur dulu: rincian latensi per tahap | ✅ **SELESAI** 2026-08-06 |
+| 25 | Memori perintah TERVERIFIKASI | ⬜ |
+| 26 | Routing berbasis embedding, lokal | ⬜ |
+| 27 | Eksekusi spekulatif untuk aksi reversible | ⬜ |
+| 28 | Satu antrean bicara | ⬜ |
+| 29 | Sesi model hangat | ⬜ |
+
+**Urutan yang disarankan: 24 → 28 → 25 → 26 → 27 → 29.**
+24 lebih dulu karena tanpa rincian latensi, sisanya menebak — sesi ini sudah
+dua kali membuktikan tebakan arsitektur bisa meleset total (S-13 dikira
+pustaka native, ternyata thread bocor; S-22 dikira ambang, ternyata echo guard
+sendiri). 28 berikutnya karena paling murah dan paling terasa.
+
+---
+
+## Fase 24 — Ukur dulu, jangan tebak
+
+Belum ada rincian latensi per tahap. Stempel waktu yang dibutuhkan: transkrip
+final → router → pemilihan tool → panggilan LLM pertama → tool pertama →
+ucapan pertama.
+
+Tanpa ini, Fase 25-29 mengoptimalkan bagian yang belum tentu lambat.
+
+### Hasil Fase 24 — SELESAI 2026-08-06
+
+`jarvis/core/latency.py` + `tests/test_latency_breakdown.py` (15 test), merah
+lebih dulu. Penanda dipasang di `dispatch` (buka saat ACK — titik user mulai
+menunggu) dan `loop` (`setup`, `first_llm`, `first_tool`).
+
+**Penanda pertama menyesatkan, dan pengukuran sendiri yang menunjukkannya.**
+Versi awal hanya menandai satu titik sebelum panggilan model, sehingga
+"persiapan" dan "durasi LLM" tercampur jadi satu angka yang tidak bisa
+ditindaklanjuti. Dipecah menjadi `setup` dan `first_llm`.
+
+Hasil pertama:
+
+```
+tanpa tool  | total 8,19s | setup 3,75s | first_llm 4,42s
+dengan tool | total 5,64s | setup 0,47s | first_llm 1,86s | first_tool 1,78s
+```
+
+**Setup 3,75 detik SEBELUM model dipanggil sama sekali.** Bongkar isinya:
+
+```
+memory_store.search    3250 ms dingin,  422 ms hangat   <- pelakunya
+registry.schemas        328 ms dingin,   46 ms hangat
+persona / skills          ~0 ms
+```
+
+`memory_store.search` memanggil embedding — **round trip jaringan ke Gemini
+pada setiap giliran, sebelum model ditanya**.
+
+**Ini membantah asumsi roadmap Siklus 4 sendiri.** Rencana menempatkan
+panggilan LLM sebagai biaya dominan dan menaruh embedding lokal di Fase 26.
+Pengukuran menunjukkan recall memori yang mendominasi giliran pertama. Persis
+alasan Fase 24 didahulukan — dan alasan ketiga dalam siklus ini di mana tebakan
+arsitektur meleset (setelah S-13 dan S-22).
+
+**Perbaikan langsung yang mengikuti bukti:** recall semantik diberi TENGGAT
+(`agent.memory.embed_deadline_s`, default 0,4 s). Lewat tenggat, giliran
+memakai pencarian keyword FTS5 yang sepenuhnya lokal dan memang sudah ada
+sebagai fallback. Permintaan yang telat tidak dibatalkan — hasilnya diabaikan,
+dan tidak pernah menahan giliran.
+
+```
+SEBELUM | setup 3,75s
+SESUDAH | setup 1,08s
+```
+
+Jawaban yang sedikit kurang kaya jauh lebih baik daripada menunggu tiga detik
+sebelum Jarvis mulai berpikir.
+
+**Akibat bagi urutan Siklus 4:** embedding lokal (Fase 26) naik peringkat —
+ia bukan hanya soal routing, melainkan berada di jalur kritis SETIAP giliran.
+`registry.schemas` 328 ms dingin memperkuat Fase 29.
+
+**Yang BELUM terukur:** rentang transkrip suara → dispatch. Penanda saat ini
+dibuka di ACK, sedangkan waktu antara Takeda selesai bicara dan ACK terbit
+masih gelap. Itu pekerjaan berikutnya bila "instan" masih terasa kurang setelah
+Fase 28.
+
+---
+
+## Fase 25 — Memori perintah TERVERIFIKASI
+
+Perintah yang **terbukti** berhasil (memakai kontrak bukti Fase 14) disimpan:
+ucapan ternormalisasi → tool + argumen. Perintah sama besok dieksekusi tanpa
+LLM sama sekali.
+
+Bergantung pada pekerjaan yang sudah selesai: hanya yang buktinya sah yang
+disimpan, sehingga cache tidak pernah mengabadikan klaim palsu.
+`memory_store` + embedding 768-dim hidup lagi sejak Fase 13.
+
+**Batas keras:** aksi yang tidak bisa ditarik kembali TIDAK boleh dijalankan
+dari kemiripan. "telepon Honbrew" boleh; "telepon Honbru" yang mirip tidak
+boleh langsung jalan dari cache.
+
+---
+
+## Fase 26 — Routing berbasis embedding, lokal
+
+Perintah yang tidak cocok regex kini jatuh ke LLM. Ganti dengan tetangga
+terdekat atas perintah yang pernah dipakai, memakai model embedding **lokal**
+(ONNX MiniLM, ~20 ms) — bukan jaringan, karena jaringan justru yang sedang
+dihindari.
+
+Sekaligus menjawab keluhan lapangan: pemilihan tool belajar dari pemakaian
+Takeda, bukan dari regex yang harus ditulis satu per satu.
+
+---
+
+## Fase 27 — Eksekusi spekulatif untuk aksi reversible
+
+Jalankan jalur deterministik **segera**, tanyakan model **paralel**. Bila model
+tidak setuju sebelum aksi selesai, batalkan. Aksi tak-tertarik tetap menunggu
+kesepakatan.
+
+Inilah yang membuat "instan tapi tetap pintar" mungkin — bukan memilih salah
+satu di antara keduanya.
+
+---
+
+## Fase 28 — Satu antrean bicara
+
+Keluhan lapangan Takeda: *"suara tumpang tindih dan saling memotong membuat
+saya bingung apa yang sedang dikerjakan."*
+
+ACK, narator progres, dan hasil akhir bisa berbunyi bersamaan. Satu antrean
+dengan prioritas; yang lebih baru membatalkan yang basi. ACK menyebut RENCANA
+yang terurai ("Menelepon Honbrew…") sehingga Takeda bisa mengoreksi sebelum
+aksinya berjalan.
+
+Ini juga pekerjaan latensi: yang perlu instan adalah UMPAN BALIKNYA, bukan
+pekerjaannya.
+
+---
+
+## Fase 29 — Sesi model hangat
+
+90 schema tool dikirim ulang tiap panggilan. Shortlist sudah ada; tambahkan
+cache serialisasi + prompt caching, dan pertahankan sesi per lane.
+
+---
+
+## Yang sebaiknya TIDAK dilakukan
+
+* **Jangan melonggarkan konfirmasi demi kecepatan.** Tujuh fase dihabiskan
+  untuk membuat klaim Jarvis jujur. Cepat tetapi berbohong lebih buruk
+  daripada lambat.
+* **Jangan cache aksi tak-tertarik berdasarkan kemiripan.**
+* **Jangan kejar instan di lane berat.** Riset multi-langkah memang lambat;
+  yang perlu instan adalah umpan baliknya.
+
+## Tuas terbesar yang bukan kode
+
+Endpoint `custom` di `http://43.167.18.81` — tiap panggilan melewati internet
+ke IP pihak ketiga; chat mentah 3,6 detik. **Model lokal untuk lane ringan**
+(klasifikasi, ACK, kompresi) memangkas lebih banyak latensi daripada seluruh
+Fase 25-29 digabung, sekaligus menutup S-6 yang diterima apa adanya.
+
+Keputusan perangkat keras, bukan kode — tetapi bila tujuannya "instan", itu
+tuas terbesar yang tersedia.

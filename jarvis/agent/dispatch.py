@@ -12,7 +12,7 @@ import threading
 import time
 from typing import Any
 
-from jarvis.core import config, log
+from jarvis.core import config, latency, log
 from jarvis.core.bus import BUS
 from jarvis.agent.interaction import detect_language, render_ack
 from jarvis.agent.task_contracts import PreparedAgentTask, ToolEvidence, prepare_task
@@ -353,6 +353,9 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
         acknowledgement = compose_ack(task)
     except Exception:  # noqa: BLE001 - acknowledgement must never block work
         acknowledgement = str(config.get("agent.ack_phrase", "Baik, saya kerjakan."))
+    # §24 — pengukuran dibuka di ACK, bukan di awal fungsi: ACK adalah titik
+    # user mulai menunggu, dan itulah latensi yang ia rasakan.
+    latency.start(session.id, task=task)
     _safe_callback(on_ack, acknowledgement)
     BUS.publish("agent.task.started", task=task, session=session.id)
 
@@ -425,6 +428,7 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
             REGISTRY.finish(bg_task.id, error=err)
             _safe_callback(on_error, err)
         finally:
+            latency.finish(session.id)
             # Selalu lepas slot + resource, apa pun yang terjadi — kalau tidak,
             # satu crash membekukan seluruh antrean.
             REGISTRY.release_slot(bg_task)

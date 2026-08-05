@@ -15,7 +15,7 @@ import platform
 from dataclasses import dataclass
 from pathlib import Path
 
-from jarvis.core import config, log
+from jarvis.core import config, latency, log
 from jarvis.agent import context as ctx
 from jarvis.agent import llm_client, memory_store, model_routing, registry, \
     skills
@@ -225,7 +225,14 @@ async def run(task: str, adapter: Adapter | None = None,
             return RunResult(ok=False, text=final_text, iterations=iterations,
                              session_id=session.id)
 
+        # §24 — dua penanda, bukan satu: "setup" adalah segala yang terjadi
+        # SEBELUM model dipanggil (persona, memory search + embedding, schema
+        # tool), dan "first_llm" adalah durasi panggilan itu sendiri.
+        # Satu penanda saja membuat keduanya tercampur dan tidak bisa
+        # ditindaklanjuti.
+        latency.mark(session.id, "setup")
         resp = await asyncio.to_thread(cl.chat, messages, tool_schemas)
+        latency.mark(session.id, "first_llm")
         # §3.1 — rantai fallback berat: 402/kredit habis/timeout (retry
         # transient internal llm_client sudah tandas) → provider berikutnya.
         while (not resp.ok and model_profile == "heavy"
@@ -278,6 +285,7 @@ async def run(task: str, adapter: Adapter | None = None,
 
         results = await _execute_calls(resp.tool_calls, adapter, session,
                                        context, bg_task)
+        latency.mark(session.id, "first_tool")
         for tc, res in zip(resp.tool_calls, results):
             messages.append({"role": "tool", "tool_call_id": tc.id,
                              "content": res.for_llm()})

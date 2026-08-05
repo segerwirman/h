@@ -326,9 +326,49 @@ def get_reflective(min_importance: float = 0.6, limit: int = 12, *,
 
 # ── retrieval hybrid (§4.3) ───────────────────────────────────────────────
 
+def _embed_within(query: str, deadline_s: float):
+    """Embedding dengan TENGGAT. ``None`` bila terlambat (Fase 24).
+
+    Terukur: ``search`` memakan 3250 ms dingin dan 422 ms hangat, hampir
+    seluruhnya embedding — round trip jaringan SEBELUM model ditanya sama
+    sekali. Pencarian keyword (FTS5) sepenuhnya lokal dan sudah ada, jadi
+    giliran yang terlambat memakainya saja.
+
+    Permintaan yang telat TIDAK dibatalkan (tidak bisa), tetapi hasilnya
+    diabaikan dan tidak pernah menahan giliran ini.
+    """
+    if deadline_s <= 0:
+        return _embed([query])
+    result: dict = {}
+    done = threading.Event()
+
+    def _worker() -> None:
+        try:
+            result["vecs"] = _embed([query])
+        except Exception:                                    # noqa: BLE001
+            result["vecs"] = None
+        finally:
+            done.set()
+
+    threading.Thread(target=_worker, daemon=True,
+                     name="memory-embed").start()
+    if not done.wait(max(0.01, float(deadline_s))):
+        _logger.info("memory.embed_deadline", deadline_s=round(deadline_s, 2))
+        return None
+    return result.get("vecs")
+
+
+def _embed_deadline() -> float:
+    try:
+        return float(config.get("agent.memory.embed_deadline_s", 0.4))
+    except (TypeError, ValueError):
+        return 0.4
+
+
 def search(query: str, mtype: str | None = None, limit: int = 8,
            max_tokens: int = 800, *, scope: str | None = None,
-           owner: str | None = None) -> list[dict]:
+           owner: str | None = None,
+           embed_deadline_s: float | None = None) -> list[dict]:
     init_db()
     if scope is not None and scope not in SCOPES:
         return []
@@ -374,7 +414,9 @@ def search(query: str, mtype: str | None = None, limit: int = 8,
                     kw_score[r["rowid"]] = 1.0
 
     q_vec = None
-    vecs = _embed([query]) if query.strip() else None
+    deadline = (_embed_deadline() if embed_deadline_s is None
+                else float(embed_deadline_s))
+    vecs = _embed_within(query, deadline) if query.strip() else None
     if vecs:
         q_vec = vecs[0]
 
