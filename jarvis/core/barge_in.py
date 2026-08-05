@@ -45,7 +45,11 @@ class BargeInConfig:
     calibration_s: float = 1.5
     noise_alpha: float = 0.05
     min_abs_rms: float = 0.02             # lantai mutlak; ruangan sunyi total
-    echo_multiplier: float = 8.0          # kenaikan ambang saat Jarvis bicara
+    # S-24 — batas ATAS kenaikan ambang saat Jarvis bicara. Bukan lagi pengali
+    # yang selalu dipakai: echo sebenarnya DIPELAJARI dari mikrofon.
+    echo_multiplier: float = 8.0
+    echo_margin: float = 2.5              # ambang = echo terukur × ini
+    echo_alpha: float = 0.08              # EMA echo floor saat Jarvis bicara
     max_crest: float = 6.0                # di atas ini = transien, bukan ucapan
     min_voice_band_ratio: float = 0.55    # energi < 1 kHz terhadap total
     sample_rate: int = 16000
@@ -86,6 +90,8 @@ class BargeInConfig:
             noise_alpha=_num("noise_alpha", 0.05, float),
             min_abs_rms=_num("min_abs_rms", 0.02, float),
             echo_multiplier=_num("echo_multiplier", 8.0, float),
+            echo_margin=_num("echo_margin", 2.5, float),
+            echo_alpha=_num("echo_alpha", 0.08, float),
             max_crest=_num("max_crest", 6.0, float),
             min_voice_band_ratio=_num("min_voice_band_ratio", 0.55, float),
             diagnostics_every_s=_num("diagnostics_every_s", 20.0, float),
@@ -110,6 +116,8 @@ class BargeInAnalyzer:
     _calib: list = field(default_factory=list)
     _cooldown_until: float = 0.0
     _last_block_at: float = 0.0
+    echo_floor: float = 0.0
+    _rejects: dict = field(default_factory=dict)
     _blocks_speaking: int = 0
     _peak_rms_speaking: float = 0.0
     _triggers: int = 0
@@ -130,11 +138,13 @@ class BargeInAnalyzer:
                 "blocks_while_speaking": self._blocks_speaking,
                 "peak_rms_while_speaking": round(self._peak_rms_speaking, 4),
                 "triggers": self._triggers,
+                "echo_floor": round(self.echo_floor, 4),
+                "rejects": dict(self._rejects),
             }
         except Exception:                                    # noqa: BLE001
             return {"enabled": False, "triggers": 0,
                     "blocks_while_speaking": 0,
-                    "peak_rms_while_speaking": 0.0}
+                    "peak_rms_while_speaking": 0.0, "rejects": {}}
 
     def _note_speaking(self, rms: float, now: float) -> None:
         self._blocks_speaking += 1
@@ -146,15 +156,34 @@ class BargeInAnalyzer:
         _logger.info("barge_in.diagnostics", **self.diagnostics())
 
     def threshold(self, playback_level: float = 0.0) -> float:
-        """Ambang RMS saat ini — relatif terhadap kebisingan ruangan.
+        """Ambang RMS saat ini — relatif terhadap ruangan DAN echo terukur.
 
-        Naik sebanding dengan seberapa keras Jarvis sedang berbunyi, sepanjang
-        ucapan, bukan hanya di 400 ms pertama.
+        S-24: bentuk lama mengalikan ambang dengan ``echo_multiplier`` (8x)
+        sebanding level playback. Angka itu dipilih agar test echo lolos, bukan
+        dari pengukuran, dan ia mengandaikan mikrofon mendengar Jarvis sekeras
+        user. Di lapangan hasilnya ambang ~0.24 saat Jarvis bicara keras — di
+        atas RMS ucapan normal, sehingga barge-in tidak pernah memicu meski
+        suara Takeda 18x di atas ambang dasar.
+
+        Sekarang echo DIPELAJARI dari mikrofon itu sendiri, persis seperti
+        noise floor: blok yang tidak lolos ambang dianggap "hanya echo + ruangan"
+        dan menaikkan ``echo_floor`` pelan-pelan. Ambang saat bicara = echo
+        terukur x ``echo_margin``, dibatasi ``echo_multiplier`` agar satu
+        lonjakan tidak mengunci barge-in.
         """
         base = max(self.noise_floor * self.cfg.threshold_multiplier,
                    self.cfg.min_abs_rms)
         level = max(0.0, min(1.0, float(playback_level or 0.0)))
-        return base * (1.0 + level * (self.cfg.echo_multiplier - 1.0))
+        if level <= 0.0:
+            return base
+        ceiling = base * self.cfg.echo_multiplier
+        if self.echo_floor <= 0.0:
+            # Echo belum pernah terukur — konservatif, TETAPI tetap sebanding
+            # level: ekor ucapan yang nyaris senyap tidak menghasilkan echo
+            # yang perlu ditakuti, dan menaikkan ambang penuh di situ berarti
+            # user kalah justru saat paling wajar menyela.
+            return base * (1.0 + level * (self.cfg.echo_multiplier - 1.0))
+        return max(base, min(self.echo_floor * self.cfg.echo_margin, ceiling))
 
     def process_block(self, samples, now: float, *, speaking: bool = False,
                       speaking_since: float = 0.0,
@@ -210,22 +239,29 @@ class BargeInAnalyzer:
         if now < self._cooldown_until:
             return BargeInVerdict(False, "cooldown", rms, self.noise_floor)
         if speaking_since and (now - speaking_since) * 1000.0 < self.cfg.tts_grace_ms:
+            # S-24 — jendela ini bukan sekadar "abaikan". Jarvis baru mulai
+            # bicara dan user hampir pasti belum, jadi apa yang terdengar di
+            # mikrofon SEKARANG adalah echo + ruangan. Di sinilah echo diukur,
+            # bukan ditebak lewat pengali.
+            self._learn_echo(rms)
             self.sustained_s = 0.0
-            return BargeInVerdict(False, "tts_onset", rms, self.noise_floor)
+            return self._reject("tts_onset", rms, 0.0)
 
         threshold = self.threshold(playback_level)
         if rms < threshold:
             self._learn(rms)
+            if playback_level > 0.0:
+                # Blok di bawah ambang saat Jarvis bicara = echo + ruangan.
+                # Inilah bahan belajar echo floor.
+                self._learn_echo(rms)
             self.sustained_s = 0.0
-            return BargeInVerdict(False, "below_threshold", rms,
-                                  self.noise_floor, threshold)
+            return self._reject("below_threshold", rms, threshold)
 
         # Transien (tepukan, pintu, ketukan) punya crest tinggi. Ucapan tidak.
         crest = peak / (rms + 1e-9)
         if crest > self.cfg.max_crest:
             self.sustained_s = 0.0
-            return BargeInVerdict(False, f"transient crest={crest:.1f}", rms,
-                                  self.noise_floor, threshold)
+            return self._reject("transient", rms, threshold)
 
         # Ucapan memusatkan energi di bawah ~1 kHz; desis broadband tidak.
         mag = np.abs(np.fft.rfft(x))
@@ -234,15 +270,13 @@ class BargeInAnalyzer:
         voice_ratio = float(np.sum(mag[:cut])) / total
         if voice_ratio < self.cfg.min_voice_band_ratio:
             self.sustained_s = 0.0
-            return BargeInVerdict(False, f"broadband ratio={voice_ratio:.2f}",
-                                  rms, self.noise_floor, threshold)
+            return self._reject("broadband", rms, threshold)
 
         # Harus BERTURUT-TURUT: satu blok keras bukan interupsi, dan jeda
         # mengembalikan hitungan ke nol.
         self.sustained_s += dt
         if self.sustained_s * 1000.0 < self.cfg.min_ms:
-            return BargeInVerdict(False, "sustaining", rms, self.noise_floor,
-                                  threshold)
+            return self._reject("sustaining", rms, threshold)
 
         self.sustained_s = 0.0
         self._triggers += 1
@@ -250,6 +284,25 @@ class BargeInAnalyzer:
         _logger.info("barge_in.triggered", rms=round(rms, 3),
                      threshold=round(threshold, 3))
         return BargeInVerdict(True, "speech", rms, self.noise_floor, threshold)
+
+    def _reject(self, reason: str, rms: float, threshold: float
+                ) -> BargeInVerdict:
+        self._rejects[reason] = self._rejects.get(reason, 0) + 1
+        return BargeInVerdict(False, reason, rms, self.noise_floor, threshold)
+
+    def _learn_echo(self, rms: float) -> None:
+        """Turun cepat, naik pelan — floor mengikuti bagian yang SENYAP.
+
+        Ucapan user mengangkat RMS di atas floor; jeda antar kata menjatuhkannya
+        kembali ke level echo. Dengan begitu bicara panjang tidak perlahan
+        mengangkat floor sampai barge-in mati sendiri.
+        """
+        value = max(float(rms), 1e-4)
+        if self.echo_floor <= 0.0 or value < self.echo_floor:
+            self.echo_floor = value
+            return
+        a = max(0.0, min(1.0, self.cfg.echo_alpha))
+        self.echo_floor = (1 - a) * self.echo_floor + a * value
 
     def _learn(self, rms: float) -> None:
         a = max(0.0, min(1.0, self.cfg.noise_alpha))

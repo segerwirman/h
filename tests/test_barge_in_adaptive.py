@@ -150,9 +150,13 @@ def test_echo_is_guarded_for_the_whole_utterance_not_just_the_onset():
     now = _calibrate(analyzer, _hiss(0.01, seed=10))
     echo = _voice(0.30)
 
+    # Jarvis MULAI bicara: jendela grace mengukur echo-nya (S-24).
+    _feed(analyzer, echo, now, 5, speaking=True, speaking_since=now,
+          playback_level=0.9)
+
     # Jauh setelah jendela grace, tetapi Jarvis masih bicara keras.
     hit, _ = _feed(analyzer, echo, now + 5.0, 40,
-                   speaking=True, playback_level=0.9)
+                   speaking=True, speaking_since=now, playback_level=0.9)
     assert hit is None, "echo speaker tidak boleh memotong Jarvis sendiri"
 
 
@@ -281,7 +285,7 @@ def test_measured_playback_level_lets_barge_in_actually_work():
     now = _calibrate(analyzer, _hiss(0.02, seed=30))
 
     loud, _ = _feed(analyzer, _voice(0.35), now, 40,
-                    speaking=True, playback_level=1.0)
+                    speaking=True, speaking_since=now, playback_level=1.0)
     assert loud is None, "saat Jarvis berbunyi keras, echo tidak boleh menang"
 
     analyzer2 = barge_in.BargeInAnalyzer(BargeInConfig.from_config())
@@ -315,3 +319,77 @@ def test_playback_level_tap_never_raises_on_junk():
     for value in (None, b"", b"\x01", "bukan bytes"):
         vpl.note_chunk(value)
     vpl.reset()
+
+
+# ── S-24: echo guard yang DIUKUR, bukan dikali angka tebakan ──────────────
+
+def _speechlike(level: float, n: int = BLOCK, seed: int = 0) -> np.ndarray:
+    """Lebih mirip suara manusia daripada nada 4-harmonik.
+
+    Nada uji lama hampir seluruhnya di bawah 1 kHz (rasio pita 0.95) dan
+    ber-crest rendah, sehingga LOLOS semua pembeda dengan mudah. Ucapan
+    sungguhan jauh lebih lebar spektrumnya — dan itulah kenapa test lama
+    memberi rasa aman palsu.
+    """
+    rng = np.random.default_rng(seed)
+    t = np.arange(n) / SR
+    wave = (np.sin(2 * math.pi * 130 * t) * 0.9
+            + np.sin(2 * math.pi * 700 * t) * 0.5
+            + np.sin(2 * math.pi * 1800 * t) * 0.25
+            + np.sin(2 * math.pi * 3000 * t) * 0.12
+            + rng.normal(0, 0.06, n))
+    wave *= 0.6 + 0.4 * np.sin(2 * math.pi * 4 * t)
+    wave = wave / (np.max(np.abs(wave)) + 1e-9)
+    return (wave * level * 32768).astype(np.int16)
+
+
+def test_real_speech_interrupts_while_jarvis_is_speaking_loudly():
+    """Kegagalan lapangan yang terukur (S-24).
+
+    Log sesi nyata: blocks_while_speaking 2028, peak_rms 0.551, threshold
+    0.0296 — suara Takeda 18x di atas ambang dasar — dan triggers 0.
+    Penyebabnya echo_multiplier 8x: saat Jarvis bicara keras, ambang melonjak
+    di atas RMS ucapan normal. Angka itu dipilih agar test echo lolos, bukan
+    dari pengukuran.
+    """
+    analyzer = _analyzer()
+    now = _calibrate(analyzer, _hiss(0.01, seed=40))
+
+    # Jarvis bicara lebih dulu; echo-nya terukur di jendela grace.
+    _feed(analyzer, _speechlike(0.20, seed=46), now, 5, speaking=True,
+          speaking_since=now, playback_level=0.9)
+    now += 5 * BLOCK_S
+
+    hit, _ = _feed(analyzer, _speechlike(0.55, seed=41), now, 40,
+                   speaking=True, speaking_since=now - 5.0, playback_level=0.9)
+
+    assert hit is not None, "ucapan nyata harus bisa memotong Jarvis"
+
+
+def test_steady_echo_still_does_not_interrupt():
+    """Pengaman yang membuat barge-in layak dinyalakan tidak boleh hilang."""
+    analyzer = _analyzer()
+    now = _calibrate(analyzer, _hiss(0.01, seed=42))
+    echo = _speechlike(0.28, seed=43)
+
+    # Echo mantap: level yang sama berulang-ulang, tanpa lonjakan.
+    hit, _ = _feed(analyzer, echo, now, 60, speaking=True,
+                   speaking_since=now, playback_level=0.9)
+
+    assert hit is None, "echo yang stabil tidak boleh memotong Jarvis sendiri"
+
+
+def test_diagnostics_name_the_reason_blocks_are_rejected():
+    """Berhenti menebak antara ambang, crest, dan pita suara.
+
+    Tiga kandidat penyebab pernah dipertimbangkan sekaligus; hanya simulasi
+    yang memutuskannya. Log harus bisa memutuskannya sendiri lain kali.
+    """
+    analyzer = _analyzer()
+    now = _calibrate(analyzer, _hiss(0.01, seed=44))
+    _feed(analyzer, _hiss(0.005, seed=45), now, 10, speaking=True)
+
+    rejects = analyzer.diagnostics().get("rejects")
+
+    assert isinstance(rejects, dict)
+    assert rejects.get("below_threshold", 0) > 0
