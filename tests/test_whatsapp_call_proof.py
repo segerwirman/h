@@ -329,8 +329,10 @@ def test_call_selectors_match_the_real_indonesian_label():
 
     def _matches(label: str) -> bool:
         for selector in ww._CALL_SELECTORS:
+            # S-28 mengikat selector ke `#main`; parser ikut menyesuaikan.
             m = re.fullmatch(
-                r'button\[aria-label([*^]?)="([^"]+)" i\]', selector)
+                r'(?:#main )?button\[aria-label([*^]?)="([^"]+)" i\]',
+                selector)
             if not m:
                 continue
             op, value = m.groups()
@@ -353,7 +355,8 @@ def test_call_selectors_do_not_grab_a_video_call():
     from jarvis.integrations import whatsapp_web as ww
 
     for selector in ww._CALL_SELECTORS:
-        m = re.fullmatch(r'button\[aria-label([*^]?)="([^"]+)" i\]', selector)
+        m = re.fullmatch(r'(?:#main )?button\[aria-label([*^]?)="([^"]+)" i\]',
+                         selector)
         if m and m.group(1) == "*":
             assert "video" not in m.group(2).casefold()
 
@@ -659,3 +662,37 @@ def test_a_missing_voice_option_records_what_was_visible(contacts, service,
 
     assert any("voice_option_missing" in str(item.get("event", ""))
                for item in seen), seen
+
+
+# ── S-28: "Telepon" yang diklik ternyata TAB SIDEBAR, bukan tombol chat ───
+
+def test_call_controls_are_scoped_to_the_open_conversation():
+    """Log `whatsapp.voice_option_missing` (2026-08-05 22:03) menyebutkan
+    label yang terlihat saat kegagalan:
+
+        Chat, Telepon, Status, Saluran, Komunitas, Meta AI, Media, Anda,
+        Panel telepon (tersembunyi), Telepon baru, Cari nama atau nomor,
+        Daftar chat, ...
+
+    Itu seluruhnya RAIL NAVIGASI KIRI. Tidak ada satu pun kontrol header chat.
+    Jadi `button[aria-label="Telepon"]` yang dicocokkan S-16 adalah **tab
+    Telepon di sidebar**, bukan tombol panggilan di dalam percakapan —
+    mengkliknya berpindah ke daftar panggilan, tempat "Telepon suara" memang
+    tidak ada.
+
+    Selector kontrol panggilan karena itu harus terikat pada percakapan yang
+    terbuka (`#main`), bukan pada seluruh halaman.
+    """
+    from jarvis.integrations import whatsapp_web as ww
+
+    for selector in ww._CALL_MENU_SELECTORS + ww._VOICE_CALL_SELECTORS:
+        assert selector.startswith("#main"), selector
+
+
+def test_sidebar_calls_tab_is_no_longer_matched():
+    """Tab sidebar berada di luar #main, jadi ia tidak lagi terjangkau."""
+    from jarvis.integrations import whatsapp_web as ww
+
+    page = FakePage(READY | {'button[aria-label="Telepon" i]'})
+
+    assert ww._first_visible(page, ww._CALL_MENU_SELECTORS) is None

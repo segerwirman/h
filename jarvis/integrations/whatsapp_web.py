@@ -259,19 +259,26 @@ _COMPOSER_SELECTORS = (
 # S-16 mencocokkan "Telepon" persis, jadi start_call mengklik pembuka menu
 # lalu menunggu bukti panggilan yang tidak akan pernah datang. Terbukti di
 # lapangan: HP lawan bicara tidak berdering sama sekali.
+# S-28 — SEMUA kontrol panggilan diikat ke percakapan yang terbuka (`#main`).
+# Log `whatsapp.voice_option_missing` menunjukkan label yang terlihat saat
+# gagal seluruhnya milik rail navigasi kiri: "Chat, Telepon, Status, Saluran,
+# Komunitas, Meta AI, ... Daftar chat". Artinya `button[aria-label="Telepon"]`
+# yang dicocokkan S-16 adalah TAB TELEPON DI SIDEBAR, bukan tombol panggilan
+# di dalam chat — mengkliknya berpindah ke daftar panggilan, tempat "Telepon
+# suara" memang tidak pernah ada.
 _CALL_MENU_SELECTORS = (
-    'button[aria-label="Telepon" i]',
-    'button[aria-label="Call" i]',
+    '#main button[aria-label="Telepon" i]',
+    '#main button[aria-label="Call" i]',
 )
 # Aksi yang BENAR-BENAR menelepon. Tidak pernah memuat "video": salah pilih di
 # sini berarti memulai panggilan video tanpa diminta.
 _VOICE_CALL_SELECTORS = (
-    'button[aria-label="Telepon suara" i]',
-    'button[aria-label="Voice call" i]',
-    'button[aria-label*="panggilan suara" i]',
-    'button[title*="panggilan suara" i]',
-    'button[title*="voice call" i]',
-    '[data-icon="audio-call"]',
+    '#main button[aria-label="Telepon suara" i]',
+    '#main button[aria-label="Voice call" i]',
+    '#main button[aria-label*="panggilan suara" i]',
+    '#main button[title*="panggilan suara" i]',
+    '#main button[title*="voice call" i]',
+    '#main [data-icon="audio-call"]',
 )
 # Nama lama dipertahankan sebagai gabungan keduanya untuk pemanggil yang hanya
 # ingin tahu "adakah kontrol panggilan di halaman ini" (mis. harness WA0).

@@ -188,6 +188,54 @@ def _click(x=None, y=None, button: str = "left", clicks: int = 1) -> str:
     return f"Clicked at current position [{button}]"
 
 
+# S-27 — kombinasi yang MENUTUP jendela. Alt+F4 mendarat di jendela yang
+# sedang fokus, dan setelah user bicara ke Jarvis jendela itu sering Jarvis
+# sendiri. `process_guard` sudah menjaga close_app dan shutdown_jarvis; jalur
+# hotkey mentah ini yang tertinggal terbuka.
+_WINDOW_CLOSING_COMBOS = (
+    frozenset({"alt", "f4"}),
+    frozenset({"cmd", "q"}),
+    frozenset({"command", "q"}),
+)
+
+
+def _focused_window_is_jarvis() -> bool:
+    """Apakah jendela yang sedang fokus milik Jarvis sendiri?"""
+    import pygetwindow as gw
+
+    from jarvis.core import process_guard
+
+    window = gw.getActiveWindow()
+    title = str(getattr(window, "title", "") or "")
+    return bool(process_guard.refers_to_jarvis(title)
+                or process_guard.is_protected_name(title))
+
+
+def _refuse_self_close(keys) -> str:
+    """Tolak kombinasi penutup jendela saat Jarvis yang sedang fokus.
+
+    Ini soal SASARAN, bukan larangan menutup jendela: kalau yang fokus bukan
+    Jarvis, hotkey diteruskan apa adanya.
+    """
+    combo = frozenset(str(k).strip().casefold() for k in (keys or []))
+    if combo not in _WINDOW_CLOSING_COMBOS:
+        return ""
+    try:
+        focused_is_self = _focused_window_is_jarvis()
+    except Exception:                                        # noqa: BLE001
+        # Tidak tahu = jangan lakukan. Salah di sini menutup Jarvis, dan itu
+        # tidak bisa dibatalkan dari dalam.
+        return ("Saya tidak bisa memastikan jendela mana yang sedang fokus, "
+                "jadi saya tidak menekan kombinasi penutup jendela. Sebutkan "
+                "nama aplikasinya dan saya tutup lewat close_app.")
+    if not focused_is_self:
+        return ""
+    return ("Jendela yang sedang fokus adalah saya sendiri, jadi saya tidak "
+            "menekan kombinasi itu — ia akan menutup Jarvis. Sebutkan nama "
+            "aplikasi yang ingin ditutup dan saya pakai close_app; kalau memang "
+            "ingin saya berhenti, katakan 'matikan dirimu'.")
+
+
 def _hotkey(*keys) -> str:
     _require_pyautogui()
     pyautogui.hotkey(*keys)
@@ -462,6 +510,9 @@ def computer_control(
         if action == "hotkey":
             raw  = params.get("keys", "")
             keys = [k.strip() for k in raw.split("+")] if isinstance(raw, str) else raw
+            refusal = _refuse_self_close(keys)
+            if refusal:
+                return refusal
             return _hotkey(*keys)
 
         if action == "press":
