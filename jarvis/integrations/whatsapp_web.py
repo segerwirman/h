@@ -236,6 +236,10 @@ def _wait_visible(page, selectors: tuple[str, ...], timeout_ms: int = 8_000):
     return None
 
 
+# Percakapan yang benar-benar terbuka. Tanpa ini, "tidak ada tombol panggilan"
+# dan "tidak ada chat sama sekali" terlihat sama — dan yang kedua salah
+# dituduhkan ke rollout akun (S-29).
+_CONVERSATION_SELECTORS = ("#main",)
 _READY_SELECTORS = (
     "#pane-side",
     '[aria-label*="chat list" i]',
@@ -694,14 +698,32 @@ class WhatsAppWebService:
             # Aksi panggilan suara kadang langsung terlihat; kadang tersembunyi
             # di balik menu "Telepon". Coba yang langsung dulu supaya tidak
             # membuka menu tanpa perlu (S-18).
+            # S-29 — pastikan percakapannya BENAR-BENAR terbuka sebelum
+            # menyimpulkan apa pun tentang kontrol panggilan. Log 22:28
+            # menyalahkan rollout akun, padahal label yang terlihat saat itu
+            # seluruhnya keadaan kosong ("Obrolan baru", "Daftar chat"):
+            # chatnya tidak pernah terbuka.
+            if _wait_visible(page, _CONVERSATION_SELECTORS,
+                             timeout_ms=8_000) is None:
+                _logger.warning("whatsapp.chat_not_open",
+                                contact=contact.name,
+                                visible=_visible_call_controls(page)[:400])
+                raise WhatsAppError(
+                    f"Percakapan dengan {contact.name} tidak terbuka di "
+                    "WhatsApp Web, jadi tidak ada tombol panggilan yang bisa "
+                    "ditekan. Nomornya mungkin tidak terdaftar di WhatsApp, "
+                    "atau halaman gagal membuka chat itu."
+                )
             button = _wait_visible(page, _VOICE_CALL_SELECTORS, timeout_ms=2_000)
             if button is None:
                 opener = _wait_visible(page, _CALL_MENU_SELECTORS)
                 if opener is None:
+                    _logger.warning("whatsapp.call_controls_missing",
+                                    visible=_visible_call_controls(page)[:400])
                     raise WhatsAppError(
-                        "Kontrol panggilan tidak ditemukan. Fitur calling "
-                        "mungkin belum tersedia pada akun/rollout WhatsApp Web "
-                        "ini."
+                        "Kontrol panggilan tidak ditemukan di dalam percakapan. "
+                        "Fitur calling mungkin belum tersedia pada akun/rollout "
+                        "WhatsApp Web ini."
                     )
                 opener.click()
                 page.wait_for_timeout(600)

@@ -77,6 +77,9 @@ class _Button:
 
 
 READY = {"#pane-side"}
+# S-29 — aplikasi siap TIDAK sama dengan percakapan terbuka. Sebagian besar
+# tes panggilan memodelkan chat yang sudah terbuka, jadi mereka memakai ini.
+IN_CHAT = READY | {"#main"}
 CALL_BUTTON = 'button[aria-label*="voice call" i]'
 HANGUP = 'button[aria-label*="end call" i]'
 
@@ -156,7 +159,7 @@ def _wire(svc, page: FakePage, monkeypatch) -> None:
 
 def test_call_fails_when_page_never_shows_a_call(contacts, service, monkeypatch):
     """Tombol diklik tetapi panggilan tidak pernah muncul → GAGAL, bukan sukses."""
-    page = FakePage(READY | {CALL_BUTTON})     # klik tidak mengubah apa pun
+    page = FakePage(IN_CHAT | {CALL_BUTTON})     # klik tidak mengubah apa pun
     _wire(service, page, monkeypatch)
 
     with pytest.raises(ww.WhatsAppError) as excinfo:
@@ -173,7 +176,7 @@ def test_call_succeeds_only_with_visible_call_state(contacts, service,
     def _on_click(page: FakePage) -> None:
         page.visible.add(HANGUP)
 
-    page = FakePage(READY | {CALL_BUTTON}, on_call_click=_on_click)
+    page = FakePage(IN_CHAT | {CALL_BUTTON}, on_call_click=_on_click)
     _wire(service, page, monkeypatch)
 
     result = service.start_call("Ibu")
@@ -197,7 +200,7 @@ def test_failure_message_claims_only_what_is_knowable(contacts, service,
     Yang tersisa dan jujur: nyatakan bahwa keadaannya TIDAK DIKETAHUI, dan
     suruh user memeriksa jendelanya sendiri.
     """
-    page = FakePage(READY | {CALL_BUTTON})
+    page = FakePage(IN_CHAT | {CALL_BUTTON})
     _wire(service, page, monkeypatch)
 
     with pytest.raises(ww.WhatsAppError) as excinfo:
@@ -213,7 +216,7 @@ def test_failure_message_claims_only_what_is_knowable(contacts, service,
 def test_call_never_reports_the_unproven_calling_state(contacts, service,
                                                        monkeypatch):
     """State 'calling' lama tidak boleh terbit dari klik semata."""
-    page = FakePage(READY | {CALL_BUTTON})
+    page = FakePage(IN_CHAT | {CALL_BUTTON})
     _wire(service, page, monkeypatch)
 
     with pytest.raises(ww.WhatsAppError):
@@ -391,7 +394,7 @@ def test_menu_opener_alone_is_never_treated_as_a_started_call(contacts,
                                                               service,
                                                               monkeypatch):
     """Klik pembuka menu saja tidak boleh menghasilkan sukses."""
-    page = FakePage(READY | {'button[aria-label="Telepon" i]'})
+    page = FakePage(IN_CHAT | {'button[aria-label="Telepon" i]'})
     service._page = page
 
     real_wait = ww._wait_visible
@@ -423,7 +426,7 @@ def test_call_flow_opens_the_menu_then_picks_voice(contacts, service,
     VOICE = 'button[aria-label="Telepon suara" i]'
     clicks: list[str] = []
 
-    page = FakePage(READY | {MENU})
+    page = FakePage(IN_CHAT | {MENU})
     service._page = page
 
     class _Click:
@@ -465,7 +468,7 @@ def test_direct_voice_button_skips_the_menu(contacts, service, monkeypatch):
     VOICE = 'button[aria-label="Telepon suara" i]'
     clicks: list[str] = []
 
-    page = FakePage(READY | {VOICE})
+    page = FakePage(IN_CHAT | {VOICE})
     service._page = page
 
     class _Click:
@@ -634,7 +637,7 @@ def test_a_missing_voice_option_records_what_was_visible(contacts, service,
     MENU = 'button[aria-label="Telepon" i]'
     seen: list = []
 
-    page = FakePage(READY | {MENU})
+    page = FakePage(IN_CHAT | {MENU})
     page.evaluate = lambda _script: [{"aria_label": "Telepon video"}]
     service._page = page
 
@@ -693,6 +696,68 @@ def test_sidebar_calls_tab_is_no_longer_matched():
     """Tab sidebar berada di luar #main, jadi ia tidak lagi terjangkau."""
     from jarvis.integrations import whatsapp_web as ww
 
-    page = FakePage(READY | {'button[aria-label="Telepon" i]'})
+    page = FakePage(IN_CHAT | {'button[aria-label="Telepon" i]'})
 
     assert ww._first_visible(page, ww._CALL_MENU_SELECTORS) is None
+
+
+# ── S-29: percakapan tidak pernah terbuka, tetapi yang disalahkan akun ────
+
+def test_a_chat_that_never_opened_is_reported_as_such(contacts, service,
+                                                      monkeypatch):
+    """Log 2026-08-05 22:28:
+
+        "Kontrol panggilan tidak ditemukan. Fitur calling mungkin belum
+         tersedia pada akun/rollout WhatsApp Web ini."
+
+    Sementara label yang terekam saat gagal seluruhnya keadaan KOSONG:
+    "Cari atau mulai obrolan baru", "Obrolan baru", "Daftar chat". Tidak ada
+    percakapan yang terbuka sama sekali.
+
+    Menyalahkan rollout akun untuk keadaan itu adalah klaim yang tidak
+    diketahui \u2014 penyakit S-1 lagi, kali ini di kalimat error. Yang benar:
+    katakan percakapannya tidak terbuka.
+    """
+    page = FakePage(READY)          # siap, tetapi tanpa #main
+    service._page = page
+
+    with pytest.raises(ww.WhatsAppError) as excinfo:
+        service.start_call("Ibu")
+
+    message = str(excinfo.value).casefold()
+    assert "percakapan" in message or "chat" in message
+    assert "rollout" not in message, (
+        "jangan menyalahkan akun untuk chat yang tidak terbuka")
+
+
+def test_an_open_chat_without_call_controls_still_says_rollout(contacts,
+                                                               service,
+                                                               monkeypatch):
+    """Kalau percakapan MEMANG terbuka dan kontrolnya tetap tidak ada,
+    dugaan rollout barulah masuk akal."""
+    page = FakePage(READY | {"#main"})
+    service._page = page
+
+    with pytest.raises(ww.WhatsAppError) as excinfo:
+        service.start_call("Ibu")
+
+    assert "rollout" in str(excinfo.value).casefold()
+
+
+def test_failure_records_whether_a_conversation_was_open(contacts, service,
+                                                         monkeypatch):
+    """Dua keadaan yang berbeda harus terlihat berbeda di log."""
+    seen: list = []
+    monkeypatch.setattr(
+        ww._logger, "warning",
+        lambda event, **kw: seen.append({"event": event, **kw}))
+
+    page = FakePage(READY)
+    page.evaluate = lambda _script: ["Obrolan baru", "Daftar chat"]
+    service._page = page
+
+    with pytest.raises(ww.WhatsAppError):
+        service.start_call("Ibu")
+
+    assert any(item.get("event") == "whatsapp.chat_not_open"
+               for item in seen), seen
