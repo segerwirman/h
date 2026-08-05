@@ -46,6 +46,9 @@ _TOOL_NAMES = frozenset({
     "whatsapp_hangup",
     "whatsapp_status",
     "voice_briefing",
+    "user_browser_tabs",
+    "user_browser_media",
+    "user_browser_status",
 })
 
 
@@ -349,6 +352,40 @@ _DECLARATIONS = [
         },
     },
     {
+        "name": "user_browser_tabs",
+        "description": (
+            "Daftar tab yang sedang terbuka di Chrome MILIK USER. Pakai ini "
+            "untuk tahu apa yang sedang user buka; browser_tabs hanya melihat "
+            "browser agent yang terpisah."
+        ),
+        "parameters": {"type": "OBJECT", "properties": {}},
+    },
+    {
+        "name": "user_browser_media",
+        "description": (
+            "Pause/play/mute video atau audio yang sedang diputar di Chrome "
+            "MILIK USER. Inilah yang dipakai untuk 'pause youtube'. Jarvis "
+            "mencari sendiri tab yang memutar."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "action": {"type": "STRING",
+                           "description": "status | play | pause | toggle | "
+                                          "mute | unmute"},
+            },
+            "required": ["action"],
+        },
+    },
+    {
+        "name": "user_browser_status",
+        "description": (
+            "Periksa apakah Jarvis bisa melihat Chrome milik user, berikut "
+            "sebabnya bila tidak. Read-only."
+        ),
+        "parameters": {"type": "OBJECT", "properties": {}},
+    },
+    {
         "name": "whatsapp_hangup",
         "description": "Akhiri panggilan WhatsApp yang sedang aktif.",
         "parameters": {"type": "OBJECT", "properties": {}},
@@ -388,7 +425,12 @@ _RULES = """
 - Menutup panel kamera -> camera_close; cek kesiapan native -> capability_status. Keduanya tidak capture/upload frame.
 - Jangan panggil camera_open, vision_analyze, send_message legacy, computer_control, atau screen_process dari jalur cepat sampai safety gate terkait selesai.
 - Jangan mengaku berhasil sebelum hasil tool menyatakan sukses.
-- Pause/play/volume/skip iklan pada video aktif -> browser_media.
+- Video/musik yang sedang diputar USER di browsernya sendiri (mis. "pause
+  youtube") -> user_browser_media. Tab yang sedang user buka -> user_browser_tabs.
+  DUA BROWSER BERBEDA: browser_media/browser_tabs hanya melihat browser agent
+  yang terisolasi, jadi memakainya untuk video user akan melaporkan "tidak ada
+  media" padahal videonya jalan (§21).
+- Pause/play/volume/skip iklan pada video di BROWSER AGENT -> browser_media.
 - Tutup/pindah/daftar tab browser agent -> browser_close_tab,
   browser_switch_tab, atau browser_tabs.
 - Akhiri panggilan WhatsApp aktif -> whatsapp_hangup.

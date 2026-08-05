@@ -56,6 +56,12 @@ TOOL_GROUPS: tuple[ToolGroup, ...] = (
               "terminal, process", ("terminal",)),
     ToolGroup("browser_automation", "Browser Automation",
               "navigate, click, type, scroll", ("browser",)),
+    # §21 — grup TERPISAH dari browser agent. Dua browser berbeda, dan user
+    # harus bisa mematikan akses ke browsernya sendiri tanpa ikut mematikan
+    # otomasi browser agent.
+    ToolGroup("user_browser", "Chrome Milik Anda",
+              "lihat tab dan kendalikan media di browser yang Anda pakai",
+              ("user_browser",)),
     ToolGroup("computer_use", "Computer Use",
               "desktop control", ("computer",)),
     ToolGroup("desktop_safe", "Desktop Safe",

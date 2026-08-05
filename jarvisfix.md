@@ -4,7 +4,7 @@
 **Baseline:** HEAD `39cae8c` · FROZEN `094b696` (10 file, integritas OK)
 **Status dokumen:** Fase 0-12 SELESAI (12 = opsi (b), tanpa perubahan frozen). T1 dimitigasi — sisa tindakan di sisi endpoint.
 **SIKLUS 2 (2026-08-05): Fase 13-19 SELESAI.**
-**SIKLUS 3 (2026-08-05, sore): Fase 20 SELESAI. Fase 21-23 belum** — empat
+**SIKLUS 3 (2026-08-05, sore): Fase 20-21 SELESAI. Fase 22-23 belum** — empat
 temuan lapangan dari pemakaian nyata; lihat bagian SIKLUS 3 di akhir. Lihat
 bagian [Siklus 2](#siklus-2--audit-ulang-2026-08-05) di akhir dokumen.
 **Suite:** `pytest tests/ -q` → **2281 lulus, 0 gagal** · hijau juga dengan jaringan keluar diblokir · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
@@ -1958,7 +1958,7 @@ dari test.
 | Fase | Judul | Menutup | Status |
 |---|---|---|---|
 | 20 | `close_app` menyebut apa yang benar-benar ditutup | S-20 | ✅ **SELESAI** 2026-08-05 |
-| 21 | Jarvis melihat & mengendalikan Chrome milik Takeda | S-21 | ⬜ |
+| 21 | Jarvis melihat & mengendalikan Chrome milik Takeda | S-21 | ✅ **SELESAI** 2026-08-05 |
 | 22 | Interupsi suara terbukti hidup; test berhenti mencemari log | S-22 | ⬜ |
 | 23 | Rekomendasi membuka SUMBERNYA, bukan transkrip | S-23 | ⬜ |
 
@@ -2144,6 +2144,66 @@ ditambah: kemampuan meng-*attach* ke Chrome user.
 
 **Test merah dulu:** perintah media saat browser user tak terjangkau -> pesan
 yang menyebut sebabnya, bukan "tidak ada video".
+
+### Hasil Fase 21 — SELESAI 2026-08-05
+
+`tests/test_user_browser.py` (19 test) dibuktikan merah lebih dulu.
+
+**Kendala keras yang membentuk seluruh fase.** Diperiksa di mesin Takeda:
+
+```
+port 9222 terbuka : False
+remote-debugging  : TIDAK ADA
+```
+
+Chrome yang **sudah berjalan tidak bisa di-attach belakangan** — ia harus
+dimulai dengan `--remote-debugging-port`. Ini fakta teknis, bukan pilihan
+desain. Jadi Jarvis hanya punya dua jalur jujur: memakai port bila ada, atau
+mengatakan port itu tidak ada.
+
+**Isolasi browser agent TIDAK dibuang.** Ia menyelesaikan masalah nyata (lock
+profil, tab user tidak dirusak agent). Yang ditambah jalur kedua:
+
+* `jarvis/integrations/user_browser.py` — attach CDP per operasi. Koneksi
+  berumur panjang akan basi begitu user menutup Chrome; attach murah karena
+  tidak meluncurkan browser.
+* Tool terpisah: `user_browser_status`, `user_browser_tabs`,
+  `user_browser_media`, `user_browser_open`. **Dua browser, dua nama tool** —
+  menyatukannya membuat target ambigu, dan target ambigu adalah cara tercepat
+  kembali ke "pause youtube" yang memeriksa browser yang salah.
+* Grup toolgroup sendiri, sehingga Takeda bisa mematikan akses ke browsernya
+  tanpa ikut mematikan otomasi browser agent.
+* Aturan lane suara menyebut perbedaannya eksplisit.
+
+**Yang paling penting: dua kegagalan yang BERBEDA.** Diverifikasi terhadap
+Chrome nyata tanpa port:
+
+```
+Saya tidak bisa melihat Chrome Anda: tidak ada yang menjawab di
+remote-debugging-port 9222. Chrome yang sudah berjalan tidak bisa
+disambungkan belakangan — ia harus dijalankan dengan
+--remote-debugging-port=9222. Ini BUKAN berarti tidak ada video yang
+sedang diputar; saya memang belum bisa melihatnya.
+```
+
+Dikunci `test_media_without_a_port_does_not_claim_there_is_no_video`:
+"tak terjangkau" dan "tidak ada yang memutar" wajib menghasilkan alasan yang
+berbeda. Menyamakannya membuat Jarvis menyatakan fakta tentang browser yang
+tidak pernah ia lihat — S-1 lagi.
+
+**Dua cacat di tes buatanku sendiri**, keduanya membuat test lulus/gagal tanpa
+arti: fake merekam skrip JS alih-alih aksinya (dan `_MEDIA_JS` memuat kata
+"pause" di badannya, sehingga assertion selalu gagal), dan pemeriksaan substring
+"tidak ada video" justru menabrak kalimat yang *menyangkal* klaim itu. Diganti
+dengan membandingkan dua alasan kegagalan secara langsung.
+
+**Guard yang bekerja:** `test_toolgroups_usage` menangkap empat tool baru yang
+belum terpetakan ke grup mana pun. Itu test lama yang persis dibuat untuk ini.
+
+**BELUM AKTIF sampai Takeda menjalankan Chrome dengan port debug.** Sampai itu,
+setiap perintah media/tab akan menjelaskan sebabnya, bukan berbohong.
+`user_browser.auto_relaunch` sengaja TIDAK dibuat: menutup Chrome user berisi
+tab kerjanya adalah aksi yang harus diminta, bukan diambil diam-diam.
 
 ---
 

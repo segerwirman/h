@@ -383,6 +383,14 @@ router:
     twitter: "https://x.com"
     reddit: "https://www.reddit.com"
 
+# §21 — akses ke Chrome milik user, TERPISAH dari browser agent.
+# Chrome yang sudah berjalan tidak bisa disambungkan belakangan; ia harus
+# dijalankan dengan --remote-debugging-port=<port> di bawah ini. Bila port
+# tidak menjawab, Jarvis mengatakan ITU — bukan "tidak ada video".
+user_browser:
+  enabled: true
+  debug_port: 9222
+
 whatsapp_web:
   enabled: true
   url: "https://web.whatsapp.com"
