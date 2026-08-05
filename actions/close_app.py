@@ -59,7 +59,7 @@ def _matches(name: str) -> list:
     match = app_registry.resolve(query)
     targets = {query}
     if match is not None:
-        targets.add(match.key)
+        targets.add(app_registry.normalize(match.key))
 
     out = []
     for app in app_registry.list_running():
@@ -71,6 +71,32 @@ def _matches(name: str) -> list:
         if hit:
             out.append(app)
     return out
+
+
+def _names_the_app(name: str, apps: list) -> bool:
+    """Apakah permintaan ini benar-benar MENYEBUT aplikasi yang ditemukan?
+
+    S-20: "browser" tidak dikenal ``app_registry`` dan hanya cocok sebagai
+    SUBSTRING dari "Tabbit Browser". Perlakuan lama menganggapnya kepastian
+    dan menutup aplikasi yang tidak pernah diminta user, lalu melaporkannya
+    memakai kata user sehingga terdengar seperti keberhasilan.
+
+    Kuat bila: registry memetakan namanya ke sebuah aplikasi, ATAU nama proses
+    salah satu kandidat sama persis dengan yang diminta.
+    """
+    from jarvis.core import app_registry
+
+    query = app_registry.normalize(name)
+    if not query:
+        return False
+    if app_registry.resolve(query) is not None:
+        return True
+    for app in apps:
+        key = app_registry.normalize(
+            str(getattr(app, "name", "")).rsplit(".", 1)[0])
+        if key and key == query:
+            return True
+    return False
 
 
 def _graceful(app) -> bool:
@@ -162,6 +188,18 @@ def close_app(name: str, force: bool = False, all_windows: bool = False,
             False, STATUS_NOT_RUNNING,
             f"{target.title()} sepertinya tidak sedang berjalan.")
 
+    # S-20 — tebakan longgar bukan kepastian. Nama yang tidak dikenal registry
+    # dan hanya cocok sebagai substring bisa mendarat di aplikasi yang sama
+    # sekali lain ("browser" -> Tabbit Browser). Sebutkan apa yang ditemukan,
+    # lalu tanya; jangan menutup milik user atas dasar tebakan.
+    if not _names_the_app(target, found):
+        labels = [str(a.window_title or a.name) for a in found[:4]]
+        return CloseOutcome(
+            False, STATUS_AMBIGUOUS,
+            f"'{target}' tidak saya kenali sebagai nama aplikasi. Yang cocok: "
+            f"{', '.join(labels)}. Tutup yang mana?",
+            candidates=labels)
+
     distinct = {app.pid for app in found}
     if len(distinct) > 1 and not all_windows:
         titles = [f"{a.window_title or a.name}" for a in found[:4]]
@@ -216,8 +254,12 @@ def close_app(name: str, force: bool = False, all_windows: bool = False,
                             f"Gagal menutup {', '.join(survivors)}.",
                             closed=closed, candidates=survivors)
 
-    return CloseOutcome(True, STATUS_CLOSED,
-                        f"{target.title()} ditutup.", closed=closed)
+    # S-20 — sebut yang BENAR-BENAR tertutup, bukan kata yang diucapkan user.
+    # Bentuk lama `f"{target.title()} ditutup."` menggemakan permintaan,
+    # sehingga menutup aplikasi yang salah tetap terdengar seperti keberhasilan.
+    names = ", ".join(dict.fromkeys(closed)) or target.title()
+    return CloseOutcome(True, STATUS_CLOSED, f"{names} ditutup.",
+                        closed=closed)
 
 
 def close_app_action(parameters: dict | None = None, response=None,

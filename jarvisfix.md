@@ -4,7 +4,7 @@
 **Baseline:** HEAD `39cae8c` · FROZEN `094b696` (10 file, integritas OK)
 **Status dokumen:** Fase 0-12 SELESAI (12 = opsi (b), tanpa perubahan frozen). T1 dimitigasi — sisa tindakan di sisi endpoint.
 **SIKLUS 2 (2026-08-05): Fase 13-19 SELESAI.**
-**SIKLUS 3 (2026-08-05, sore): Fase 20-23 BELUM DIKERJAKAN** — empat
+**SIKLUS 3 (2026-08-05, sore): Fase 20 SELESAI. Fase 21-23 belum** — empat
 temuan lapangan dari pemakaian nyata; lihat bagian SIKLUS 3 di akhir. Lihat
 bagian [Siklus 2](#siklus-2--audit-ulang-2026-08-05) di akhir dokumen.
 **Suite:** `pytest tests/ -q` → **2281 lulus, 0 gagal** · hijau juga dengan jaringan keluar diblokir · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
@@ -1957,7 +1957,7 @@ dari test.
 
 | Fase | Judul | Menutup | Status |
 |---|---|---|---|
-| 20 | `close_app` menyebut apa yang benar-benar ditutup | S-20 | ⬜ |
+| 20 | `close_app` menyebut apa yang benar-benar ditutup | S-20 | ✅ **SELESAI** 2026-08-05 |
 | 21 | Jarvis melihat & mengendalikan Chrome milik Takeda | S-21 | ⬜ |
 | 22 | Interupsi suara terbukti hidup; test berhenti mencemari log | S-22 | ⬜ |
 | 23 | Rekomendasi membuka SUMBERNYA, bukan transkrip | S-23 | ⬜ |
@@ -2086,6 +2086,41 @@ tidak menyentuhnya sama sekali.
 
 **Test merah dulu:** menutup dengan nama ambigu -> bertanya, bukan menutup
 aplikasi acak; pesan sukses memuat nama proses nyata.
+
+### Hasil Fase 20 — SELESAI 2026-08-05
+
+`tests/test_close_app_honesty.py` (12 test) dibuktikan merah lebih dulu.
+
+**Cacat 1 — tebakan longgar diperlakukan sebagai kepastian.** `_names_the_app()`
+baru: permintaan dianggap MENYEBUT aplikasi hanya bila `app_registry` memetakan
+namanya, ATAU nama proses kandidat sama persis. Selain itu Jarvis menyebutkan
+apa yang ia temukan lalu **bertanya** — tidak menutup milik user atas dasar
+substring.
+
+**Cacat 2 — pesan menggemakan permintaan.** `f"{target.title()} ditutup."`
+diganti dengan nama yang benar-benar tertutup dari daftar `closed`. Bila
+Jarvis menutup Tabbit Browser, ia mengatakan **Tabbit Browser**, bukan
+"Browser".
+
+Diverifikasi terhadap proses yang benar-benar berjalan di mesin Takeda:
+
+```
+'browser'        -> 1 cocok, menyebut-aplikasi=False  ['Tabbit Browser.exe']  BERTANYA
+'tabbit browser' -> 1 cocok, menyebut-aplikasi=True                           tutup
+'notepad'        -> 2 cocok (notepad++ & Notepad)                             BERTANYA
+```
+
+Kasus persis yang menghasilkan klaim palsu kini berhenti dan bertanya.
+
+**Seam lama dipertahankan.** Versi pertama mengganti `_matches()` dengan
+`_matches_scored()` dan memecahkan empat test di `test_process_guard.py` yang
+menambal `_matches`. Diperbaiki dengan menjaga `_matches()` apa adanya dan
+menaruh penilaian kualitas di fungsi terpisah — mengubah empat test yang sehat
+demi kenyamanan refactor adalah arah yang salah.
+
+**Yang TIDAK dikerjakan di fase ini** (butuh Fase 21): memetakan "browser" ke
+browser default user. Sampai itu ada, "tutup browser" akan bertanya — jujur,
+tetapi belum yang Takeda inginkan.
 
 ---
 
