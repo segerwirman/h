@@ -29,7 +29,10 @@ HINT_TEXT: dict[str, str] = {
     "vision": "Panel Visi (F6)",
     "upload": "Unggah Berkas (F3)",
     "spotify": "Spotify",
+    "studio": "Content Studio",
     "home": "Smart Home",
+    # awareness dipensiunkan dari ikon default (UI U1) tetapi tetap didukung
+    # lewat opt-in config.yaml, jadi hint-nya sengaja dipertahankan.
     "awareness": "Kesadaran Layar",
     "focus_mode": "Mode Fokus (F7)",
     "palette": "Tema",

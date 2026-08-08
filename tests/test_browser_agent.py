@@ -96,9 +96,60 @@ def test_explicit_external_browser_phrase_sets_external_flag():
 
 
 def test_unrelated_open_commands_do_not_hit_browser_agent_intent():
+    """Kontrak inti sesuai nama test: "buka <sesuatu>" TIDAK boleh menjadi
+    OPEN_BROWSER_AGENT. Sengaja tidak meng-assert OPEN_URL/OPEN_APP di sini —
+    pilihan itu bergantung pada aplikasi yang terpasang di mesin penguji
+    (lihat test berikutnya, yang men-stub registry agar deterministik)."""
     r = IntentRouter()
-    assert r.classify("buka youtube").intent is Intent.OPEN_URL
-    assert r.classify("buka spotify").intent is Intent.OPEN_APP
+    for phrase in ("buka youtube", "buka spotify", "buka example.com"):
+        assert r.classify(phrase).intent is not Intent.OPEN_BROWSER_AGENT, phrase
+
+
+@pytest.mark.parametrize("app_installed,expected", [
+    (False, Intent.OPEN_URL),      # hanya situs terkenal   → langsung buka
+    (True, Intent.CLARIFY),        # situs DAN aplikasi     → tanya dulu
+])
+def test_buka_situs_terkenal_bergantung_aplikasi_terpasang(
+        monkeypatch, app_installed, expected):
+    """Aturan router.py:417 — ambiguitas nyata ditanyakan, tidak ditebak.
+
+    CLARIFY sengaja ditambahkan untuk memperbaiki bug "JARVIS menebak dan
+    menebaknya salah" (komentar router.py:418). Perilakunya bergantung pada
+    ``app_registry.resolve``, jadi registry DI-STUB di sini: tanpa itu hasil
+    test berubah-ubah mengikuti isi Start Menu mesin penguji — di mesin
+    pengembangan 2026-08-04 ``resolve('youtube')`` mengembalikan entri
+    Start Menu 'YouTube', sehingga test lama gagal di sana tetapi lulus di
+    mesin lain.
+    """
+    from jarvis.core import app_registry
+
+    class _Match:
+        name = "YouTube"
+        source = "start_menu"
+
+    monkeypatch.setattr(app_registry, "resolve",
+                        lambda _n: _Match() if app_installed else None)
+    monkeypatch.setattr(app_registry, "preference_for", lambda _n: None)
+
+    c = IntentRouter().classify("buka youtube")
+    assert c.intent is expected
+    if expected is Intent.CLARIFY:
+        assert c.slots["options"] == ["aplikasi", "browser"]
+        assert "youtube" in c.slots["url"]
+
+
+def test_buka_aplikasi_murni_tetap_open_app(monkeypatch):
+    """Aplikasi terpasang tanpa situs terkenal senama → OPEN_APP, tanpa tanya."""
+    from jarvis.core import app_registry
+
+    class _Match:
+        name = "Notepad"
+        source = "start_apps"
+
+    monkeypatch.setattr(app_registry, "resolve", lambda _n: _Match())
+    monkeypatch.setattr(app_registry, "preference_for", lambda _n: None)
+
+    assert IntentRouter().classify("buka notepad").intent is Intent.OPEN_APP
 
 
 # ── view lifecycle ────────────────────────────────────────────────────────
@@ -236,9 +287,25 @@ def win(monkeypatch, tmp_path):
 
 
 def test_explicit_external_phrase_opens_os_browser_only_then(win, monkeypatch):
-    launched = []
+    """``open_browser_agent`` memakai ``native_actions.open_external_url``
+    (window.py:1901), yang di Windows memanggil ``os.startfile`` — BUKAN
+    ``webbrowser.open``. Menambal webbrowser saja tidak menangkap apa pun DAN
+    membiarkan test benar-benar meluncurkan browser. Tambal ketiga lapisnya."""
+    import os
     import webbrowser
-    monkeypatch.setattr(webbrowser, "open", lambda url: launched.append(url))
+
+    from jarvis.core import native_actions
+
+    launched = []
+
+    def _capture(url, *a, **k):
+        launched.append(url)
+        return native_actions.NativeActionResult(True, "test-capture")
+
+    monkeypatch.setattr(native_actions, "open_external_url", _capture)
+    monkeypatch.setattr(webbrowser, "open", lambda url, **k: launched.append(url))
+    monkeypatch.setattr(os, "startfile", lambda t, *a, **k: launched.append(t),
+                        raising=False)
     win.handle_command("open browser agent in external browser")
     assert len(launched) == 1
     assert win._browser_agent is None                    # embedded untouched

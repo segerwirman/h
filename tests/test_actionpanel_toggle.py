@@ -6,9 +6,24 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("JARVIS_NO_MIC_METER", "1")
 
+from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QApplication
 
 _APP = None
+
+
+def _payload() -> QPixmap:
+    """Payload vision yang SAH — jangan pakai ``object()``.
+
+    ``VisionPanel.paintEvent`` memanggil ``self._pix.transformed(...)``.
+    Saat panel ditutup, ``ContentStage.hide_all()`` memasang
+    ``QGraphicsOpacityEffect`` dan menganimasikannya, yang memaksa repaint
+    sungguhan ke buffer offscreen. Dengan ``_pix = object()`` paintEvent
+    meledak DI DALAM callback paint Qt — di sana exception Python tidak bisa
+    dipropagasikan, sehingga proses mati 0xC0000409 dan membawa seluruh
+    sesi pytest. QPixmap asli membuat has_payload tetap True tanpa jebakan itu.
+    """
+    return QPixmap(64, 48)
 
 
 def _window():
@@ -24,8 +39,7 @@ def _window():
 
 def test_vision_toggle_menutup_panel_yang_sama_dan_memadamkan_icon():
     win = _window()
-    # payload dipalsukan agar begin_loading langsung bisa ACTIVE.
-    win.vision_panel._pix = object()
+    win.vision_panel._pix = _payload()
     win.toggle_vision_panel()
     assert win.stage.current == "vision"
     assert win.action_panel._camera_button._active is True
@@ -37,7 +51,7 @@ def test_vision_toggle_menutup_panel_yang_sama_dan_memadamkan_icon():
 
 def test_panel_stage_berpindah_dan_highlight_vision_padam():
     win = _window()
-    win.vision_panel._pix = object()
+    win.vision_panel._pix = _payload()
     win.toggle_vision_panel()
     assert win.stage.current == "vision"
 
@@ -73,7 +87,7 @@ def test_escape_saat_bicara_interrupt_tanpa_menutup_panel():
 
 def test_rapid_vision_toggle_akhirnya_empty_tanpa_panel_sisa():
     win = _window()
-    win.vision_panel._pix = object()
+    win.vision_panel._pix = _payload()
     for _ in range(4):
         win.toggle_vision_panel()
         win.toggle_vision_panel()

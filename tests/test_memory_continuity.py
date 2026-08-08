@@ -139,8 +139,15 @@ def test_subagent_inherits_bounded_parent_conversation_context(monkeypatch):
 
     assert result.ok is True
     assert "Tugas sebelumnya: bandingkan framework agent" in captured["task"]
-    assert captured["context"].source == "telegram"
+    # Batas otoritas subagent — ExecutionContext.for_child (execution_context.py:34).
+    # Asal-usul BERUBAH jadi "delegation" supaya aturan apa pun yang memberi hak
+    # berdasarkan kanal remote tidak ikut diwarisi anak. Yang diwarisi justru
+    # PERTANGGUNGJAWABANNYA: actor_id tetap sama. Toolset "desktop_safe" dicabut.
+    # Mengembalikan source ke "telegram" berarti subagent memperoleh kembali hak
+    # kanal remote — jangan diubah tanpa mengaudit setiap pembaca context.source.
+    assert captured["context"].source == "delegation"
     assert captured["context"].actor_id == "actor-a"
+    assert "desktop_safe" not in captured["context"].toolsets
 
 
 def test_voice_context_tracks_active_task_until_success():

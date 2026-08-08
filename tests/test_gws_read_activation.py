@@ -6,8 +6,35 @@ until the monitoring vertical exists.
 """
 from __future__ import annotations
 
+import pytest
 
-def test_gws_read_tools_have_explicit_descriptors_and_remote_read_schema(monkeypatch):
+
+@pytest.fixture()
+def restored_registry_cache():
+    """Buang cache registry setelah discovery dengan scope Google PALSU.
+
+    ``registry.all_tools(refresh=True)`` di bawah berjalan saat
+    ``has_read_scope`` ditambal True, sehingga tool Gmail/Calendar masuk cache
+    modul sebagai tersedia. ``monkeypatch`` memulihkan fungsinya, TETAPI tidak
+    cache-nya — jadi test berikutnya melihat Google Calendar seolah aktif.
+
+    Terbukti: ``test_mk50_routing_seams::
+    test_telegram_tool_backed_t1_degrades_honestly_without_agent`` lulus
+    sendirian tetapi gagal di suite penuh (ditemukan lewat bisect biner
+    2026-08-04). Refresh sekali lagi tanpa tambalan mengembalikan state nyata.
+
+    URUTAN PARAMETER PENTING: fixture ini harus diminta SEBELUM ``monkeypatch``
+    supaya ia di-setup lebih dulu dan karenanya di-teardown BELAKANGAN. Bila
+    dibalik, refresh berjalan selagi tambalan masih aktif dan justru menyimpan
+    ulang state palsu yang sama.
+    """
+    yield
+    from jarvis.agent import registry
+    registry.all_tools(refresh=True)
+
+
+def test_gws_read_tools_have_explicit_descriptors_and_remote_read_schema(
+        restored_registry_cache, monkeypatch):
     from jarvis.integrations import google_auth
     monkeypatch.setattr(google_auth, "has_read_scope", lambda api: True)
     monkeypatch.setattr(google_auth, "has_write_scope", lambda api: False)

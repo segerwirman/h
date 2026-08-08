@@ -120,11 +120,22 @@ di `config.yaml` — file itu ikut ter-commit.
 
 ## Menjalankan
 
+`python -m jarvis.main` adalah **satu-satunya entry point yang didukung**, dan
+satu-satunya yang dipaketkan (`pyproject.toml` → `jarvis = "jarvis.main:main"`).
+
 ```bash
 python -m jarvis.main               # asisten penuh: suara + UI + visi
 python -m jarvis.main --no-voice    # UI/NLP saja, tanpa sesi Gemini Live
 python -m jarvis.main --orb-test    # uji state machine orb, harness keyboard
 ```
+
+> **Jalur legacy TIDAK didukung.** Menjalankan skrip `main.py` secara langsung
+> masih mungkin secara teknis, tetapi jalur itu memakai facade UI lama di
+> `ui.py` — berkas FROZEN yang masih memuat `wait_for_api_key` **tanpa batas
+> waktu** (`ui.py:2588`). Bila API key belum diisi, thread pipeline menggantung
+> selamanya: `on_text_command` tak pernah ter-bind, JARVIS diam total untuk
+> suara MAUPUN teks, dan proses tidak bisa keluar bersih. Perbaikan Fase 5
+> hanya masuk ke `jarvis/ui/window.py` karena `ui.py` frozen.
 
 Diagnostik:
 
@@ -571,7 +582,8 @@ Sudah masuk `.gitignore`: `.env*`, `config/api_keys.json`,
 
 ```
 jarvis/
-  main.py              entry point — python -m jarvis.main
+  main.py              SATU-SATUNYA entry point — python -m jarvis.main
+                       (skrip main.py di root = legacy, tidak didukung)
   ui/                  orb · stage · overlays · actionpanel · theme · window
   core/                bus · router · boot · config · llm · log · state
                        memory · wake · secrets_store · command_palette
