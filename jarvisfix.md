@@ -3147,3 +3147,145 @@ jumlah ulangan yang bisa membuktikan ia hilang selamanya. Yang bisa
 dinyatakan: penyebabnya — tenggat waktu tetap — sudah tidak ada lagi di kode.
 
 ---
+
+---
+
+# AUDIT MENYELURUH — 2026-08-08
+
+Diukur, bukan dibaca sekilas. Setiap angka di bawah berasal dari perintah yang
+dijalankan terhadap repo ini pada tanggal tersebut.
+
+## Yang sudah kokoh (dinyatakan supaya tidak diperbaiki tanpa perlu)
+
+| | ukuran |
+|---|---|
+| suite | **2593 lulus**, satu proses, 132 detik |
+| rasio uji:kode | 41.518 : 79.314 baris = **0,52** |
+| CI | ada — ruff, uji di windows-latest, `frozen-integrity` |
+| rahasia | keyring OS → DPAPI → Fernet di `~/.jarvis`; **seluruhnya di luar workspace** |
+| rahasia di riwayat git | **tidak pernah** — `.gitignore` benar sejak awal |
+| sandbox berkas | menahan **8 dari 8** percobaan traversal (`../..`, UNC `//?/`, path absolut, campuran) |
+| thread | **0** dibuat tanpa `daemon=` eksplisit |
+| penanda utang di kode | **1 TODO** di 415 berkas — utangnya tercatat di dokumen ini, bukan berserak |
+
+## Celah
+
+### S-32 — 199 kegagalan ditelan diam-diam
+
+`except ...: pass|continue` di 415 berkas sumber. Rinciannya:
+
+| jenis | jumlah | |
+|---|---|---|
+| **lain** | 97 (48%) | bukan pembersihan, bukan impor opsional — kegagalan sungguhan yang hilang |
+| **IO/jaringan** | 72 (36%) | justru tempat kegagalan paling mungkin dan paling perlu dilaporkan |
+| pembersihan | 26 (13%) | sebagian besar sah |
+| impor opsional | 3 (1%) | sah |
+
+**Ini akar yang sama dengan hampir setiap bug lapangan Siklus 2–5.** S-1
+(klaim panggilan palsu), S-13 (thread bocor), S-22 (barge-in yang tak pernah
+memicu), T4 (browser tertanam mati) — semuanya bermula dari kegagalan yang
+tidak mengeluarkan suara. Tiap fase memperbaikinya satu per satu; 199 sisanya
+menunggu giliran.
+
+### S-33 — dua tumpukan hidup berdampingan
+
+| | baris | pengimpor |
+|---|---|---|
+| `ui.py` (FROZEN) | 2.622 | **1** |
+| `jarvis/ui/window.py` | 2.703 | **18** |
+| `main.py` (FROZEN) | 1.877 | — |
+| `jarvis/main.py` | 392 | — |
+
+Nama kelas yang sama di kedua UI: `JarvisUI`, `MainWindow`, `_RootShim`. Nama
+fungsi yang sama: 30. Jadi ~4.500 baris FROZEN sebagian besar sudah
+digantikan, tetapi tetap dijaga manifest dan tetap menjadi sasaran seam.
+
+### S-34 — 15 seam runtime menambal berkas FROZEN 1.877 baris
+
+`jarvis/main.py` memanggil `.install(legacy)` **15 kali**; 14 modul
+`voice_*`/`whatsapp_voice` menambal `main.py` saat runtime. Perilaku pipeline
+suara karena itu tersebar di 15 berkas yang memodifikasi satu berkas yang
+tidak boleh diubah langsung.
+
+FROZEN dulu adalah alat **stabilisasi** dan berhasil. Sekarang ia sudah
+menjadi biaya: S-13, S-15, dan S-27 semuanya hidup di lapisan seam ini, dan
+semuanya butuh berjam-jam untuk dilacak justru karena perilakunya tidak ada di
+tempat kodenya berada.
+
+### S-35 — log tanpa rotasi, padahal log adalah kanal bukti
+
+`logs/jarvis.log`: **41,0 MB / 199.981 baris** sejak 2026-07-10 — sekitar
+1,5 MB per hari, tanpa batas. Tidak ada `RotatingFileHandler` di mana pun.
+
+Ini bukan sekadar kebersihan disk. Seluruh dokumen ini bersandar pada log
+sebagai bukti (§22 memisahkan log uji justru untuk itu). Kanal bukti yang
+tumbuh tanpa batas akan berhenti bisa dibaca tepat ketika paling dibutuhkan.
+
+### S-36 — batas paling berbahaya justru tanpa penjaga
+
+35 modul tidak pernah disebut satu pun uji. Di antaranya, yang **aktif** di
+registry saat ini:
+
+| tool | modul | konfirmasi |
+|---|---|---|
+| `execute_code` | `code_exec` | tidak (sandbox subprocess) |
+| `file_write`, `file_patch`, `file_read`, `file_search`, `file_list` | `file_ops` | hanya bila di LUAR sandbox |
+| `cron_create/update/delete/run/pause/resume/list` | `cron_tools` | hanya `delete` |
+| `task_start/cancel/status/result` | `task_tools` | tidak |
+
+Rancangannya benar — probe membuktikan sandbox menahan 8 dari 8. Tetapi
+`_inside_sandbox` adalah satu fungsi yang berdiri di antara agent dan seluruh
+disk Takeda, dan **tidak ada satu pun uji yang menjaganya besok**. Yang benar
+hari ini tanpa uji hanyalah yang belum sempat rusak.
+
+### S-37 — config melebar melampaui kodenya
+
+`config.yaml`: 1.011 baris, **617 kunci**. Kode membaca 297 (+28 section, +5
+prefiks dinamis). Setelah prefiks dinamis diperhitungkan: **52 kunci mati**,
+dan **36 kunci dibaca tanpa pernah dideklarasikan**. Keduanya berbahaya dengan
+cara berbeda — yang mati membuat orang menyetel hal yang tidak berpengaruh,
+yang tak dideklarasikan membuat perilaku bergantung pada default tersembunyi.
+
+### S-38 — 69 uji belum pernah di-commit
+
+10 berkas uji tak terlacak (semuanya **lulus**: 69 uji), 1 modul sumber tak
+terlacak (`jarvis/live/whatsapp_hardware_harness.py`), dan 19 berkas
+termodifikasi menggantung.
+
+## Saran kematangan — berurut menurut daya ungkit
+
+1. **Jadikan diam mustahil (S-32).** Ganti `except: pass` dengan satu helper
+   `swallow(event, **konteks)` yang SELALU mencatat, lalu tambahkan aturan
+   ruff yang melarang bentuk lamanya di direktori inti. Ini menutup akar yang
+   sama yang sudah dikejar sebelas fase, sekali jalan, dan bisa ditegakkan
+   mesin alih-alih ingatan.
+
+2. **Selesaikan migrasi FROZEN (S-33, S-34).** Angkat `jarvis/ui/window.py` +
+   `jarvis/main.py` sebagai satu-satunya tumpukan, lipat 15 seam menjadi kode
+   biasa, arsipkan `ui.py`/`main.py`. FROZEN sudah menyelesaikan tugasnya;
+   mempertahankannya sekarang berarti membayar biaya perlindungan untuk kode
+   yang tidak lagi dilindungi. Lakukan sebagai fase tersendiri dengan manifest
+   diperbarui secara sadar — bukan sebagai efek samping.
+
+3. **Rotasi log + pisahkan kanal bukti (S-35).** `RotatingFileHandler` dengan
+   retensi, dan pisahkan audit JSONL yang harus awet dari log cerewet yang
+   boleh dibuang.
+
+4. **Uji batas sandbox lebih dulu, baru modul lain (S-36).** Delapan kasus
+   yang sudah diprobe hari ini pantas menjadi uji permanen, ditambah symlink
+   dan nama pendek 8.3 Windows.
+
+5. **Jadikan drift config sebuah uji (S-37).** `config.validate()` sudah ada —
+   perluas agar gagal ketika ada kunci mati atau kunci tak dideklarasikan.
+
+6. **Commit yang menggantung (S-38).** 69 uji yang lulus tetapi tidak
+   tersimpan sama nilainya dengan nol uji bila mesinnya berganti.
+
+7. **Pecah `jarvis/ui/window.py`** (2.703 baris, 157 fungsi, 17 thread). Ia
+   kini memegang loop mic, dispatch perintah, antrean bicara, dan panel
+   sekaligus.
+
+8. **Tabel status `live-proven`.** Kosakata buktinya sudah ada
+   (`source-present` … `live-proven`); yang belum ada adalah satu tempat untuk
+   melihat fitur mana yang benar-benar terbukti di lapangan. Saat ini
+   jawabannya tersebar di lima siklus.
