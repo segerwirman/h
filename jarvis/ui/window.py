@@ -1952,6 +1952,12 @@ class MainWindow(QMainWindow):
         self._set_vision_visible(visible)
 
     def _set_vision_visible(self, visible: bool) -> None:
+        # S-30 — siapa pun yang membuka/menutup kamera harus menyebut namanya.
+        # Log sesi Takeda hanya memuat vision.process_started dan vision.status,
+        # nol peristiwa panel, sehingga "siapa yang menutup kamera" harus
+        # dilacak lewat kode. Sunyi tidak membedakan apa pun (pelajaran Fase 22).
+        _logger.info("vision.panel", visible=bool(visible),
+                     stage=str(getattr(self.stage, "current", "") or ""))
         if visible:
             if self.vision is not None and not self.vision.alive:
                 self.vision.start()
@@ -2250,7 +2256,15 @@ class MainWindow(QMainWindow):
         memotong ucapan adalah alasan utama tombol ini ada.
         """
         speaking = self._legacy_state in ("SPEAKING", "TRANSCRIBING")
-        if not speaking and self.stage.current:
+        # S-30 — kamera BUKAN panel biasa. Ia perangkat fisik yang dinyalakan
+        # user secara eksplisit, dengan LED menyala. Menutupnya sebagai efek
+        # samping interupsi adalah mengambil keputusan yang tidak pernah
+        # diminta — dan sejak barge-in benar-benar memicu (S-24/S-25) jalur ini
+        # hidup: user bicara menimpa Jarvis, lalu saat _do_interrupt berjalan
+        # Jarvis kerap SUDAH selesai bicara, sehingga cabang "tutup panel" yang
+        # diambil. Menutup kamera tetap bisa lewat perintah eksplisit.
+        if (not speaking and self.stage.current
+                and self.stage.current != "vision"):
             # ESC adalah close panel, bukan navigasi mundur tersembunyi. Riwayat
             # dibersihkan bersama toggle agar klik/ESC setelah panel switch tidak
             # mendarat pada panel lama secara membingungkan.
