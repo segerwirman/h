@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 import types
 
 from jarvis.integrations import voice_playback_fix
@@ -80,6 +81,22 @@ def test_install_gagal_aman_tanpa_sounddevice():
     assert voice_playback_fix.install(mod) is False
 
 
+async def _wait_until(predicate, *, timeout_s: float, poll_s: float = 0.005):
+    """Tunggu sampai ``predicate()`` benar. ``False`` bila kehabisan waktu.
+
+    Batas waktunya dibuat longgar dengan sengaja: uji ini memeriksa bahwa
+    ekornya tidak hilang, bukan seberapa cepat mesinnya. Menunggu keadaan
+    membuat hasilnya tidak lagi bergantung pada beban mesin — sesuatu yang
+    tidak pernah bisa dicapai oleh angka tidur berapa pun.
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        await asyncio.sleep(poll_s)
+    return predicate()
+
+
 def test_play_audio_mengeluarkan_semua_chunk_dan_drain(monkeypatch):
     # grace kecil + poll kecil agar test cepat & deterministik
     monkeypatch.setattr(voice_playback_fix.config, "get",
@@ -95,7 +112,18 @@ def test_play_audio_mengeluarkan_semua_chunk_dan_drain(monkeypatch):
         await live.audio_in_queue.put(b"CD" * 4)
         live._turn_done_event.set()
         task = asyncio.create_task(live._play_audio())
-        await asyncio.sleep(0.15)
+        # §34 (T8) — tunggu KEADAAN yang ditunggu, bukan tidur tetap.
+        # Bentuk lama tidur 0.15 s dengan tail_grace 0.02 s, dan di mesin yang
+        # sedang menjalankan seluruh suite itu bisa tidak cukup: test ini
+        # pernah gagal SATU kali di bawah beban lalu lulus 5x sendirian.
+        # Menaikkan angka tidurnya hanya menggeser ambangnya; yang menghapus
+        # keretanannya adalah menunggu giliran benar-benar ditutup. Batas
+        # waktunya longgar karena yang diuji BUKAN kecepatannya.
+        closed = await _wait_until(
+            lambda: bool(live.speaking) and live.speaking[-1] is False,
+            timeout_s=10.0)
+        assert closed, ("giliran tidak pernah ditutup dalam 10 detik — ini "
+                        "kegagalan sungguhan, bukan mesin yang lambat")
         task.cancel()
         try:
             await task

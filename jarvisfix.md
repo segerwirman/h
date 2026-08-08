@@ -3122,3 +3122,28 @@ terbebani suite penuh, 0,15 detik bisa tidak cukup.
 
 Menaikkan angka tidurnya hanya menggeser ambangnya. Yang benar adalah menunggu
 KEADAAN yang ditunggu, dengan batas waktu longgar.
+
+### Hasil Fase 34 — SELESAI 2026-08-08
+
+`_wait_until(predicate, timeout_s=10)` menggantikan `asyncio.sleep(0.15)`.
+Yang ditunggu adalah giliran benar-benar ditutup (`live.speaking[-1] is
+False`), bukan berlalunya waktu. Batas waktunya longgar dengan sengaja: uji
+ini memeriksa bahwa ekor audionya tidak hilang, **bukan** seberapa cepat
+mesinnya.
+
+Dan bila batas itu benar-benar habis, uji gagal dengan kalimat yang
+membedakannya dari mesin yang lambat — sebuah `assert` terpisah sebelum
+`task.cancel()`. Tanpa itu, kehabisan waktu akan lolos diam-diam sebagai
+"lulus", yang justru mengubah tes rapuh menjadi tes buta.
+
+Menunggu keadaan juga membuatnya **lebih cepat**, bukan lebih lambat: berkas
+ini kini selesai ~0,38 detik, karena tidak ada lagi yang menunggu 0,15 detik
+penuh setelah pekerjaannya sudah selesai. 5 ulangan berturut-turut lulus,
+ditambah suite penuh.
+
+**Bukti:** 2593 lulus seluruh suite, ruff bersih, FROZEN utuh. **Batas
+jujurnya:** kegagalan aslinya muncul SATU kali di bawah beban, jadi tidak ada
+jumlah ulangan yang bisa membuktikan ia hilang selamanya. Yang bisa
+dinyatakan: penyebabnya — tenggat waktu tetap — sudah tidak ada lagi di kode.
+
+---
