@@ -2491,6 +2491,61 @@ disimpan, sehingga cache tidak pernah mengabadikan klaim palsu.
 dari kemiripan. "telepon Honbrew" boleh; "telepon Honbru" yang mirip tidak
 boleh langsung jalan dari cache.
 
+### Hasil Fase 25 — SELESAI 2026-08-08
+
+**Batas kerasnya dipenuhi lewat kunci pencocokan, bukan lewat daftar
+pengecualian.** Kunci replay adalah aliran token ternormalisasi
+(`local_embed.tokens`, dibangun di Fase 26), bukan skor kemiripan. Kesopanan
+dan imbuhan boleh berbeda — "tolong bukakan kameranya" *adalah* "buka kamera" —
+tetapi setiap kata isi harus sama persis. Karena itu "telepon Honbru" tidak
+pernah menjawab rencana "telepon Honbrew", dan "buka kamera depan" bukan "buka
+kamera". Tidak ada daftar aksi-berbahaya yang harus dipelihara; satu huruf yang
+berbeda sudah cukup untuk membatalkan replay.
+
+Yang dikerjakan:
+
+* `jarvis/agent/command_plan.py` — tabel SQLite, maks 200 baris, maks 3 langkah.
+* `Session.record_plan` + pemanggilan di `registry._log_call`. **Ini perlu
+  kanal sendiri:** `record_tool` DAN `record_evidence` sama-sama menerima
+  argumen yang sudah lewat `_audit_args`. Membonceng salah satunya berarti
+  menyimpan rencana berisi nilai bertopeng lalu mengeksekusinya besok —
+  kegagalan yang tidak akan pernah terlihat sampai ia terjadi.
+* `dispatch._replay_plan` — dicoba sebelum `agent_loop.run`.
+
+**Tiga hal yang sengaja tidak boleh disimpan**, masing-masing dengan ujinya:
+
+| Ditolak | Alasan |
+|---|---|
+| rencana yang argumennya berubah saat diaudit | menjalankan nilai bertopeng lebih buruk daripada tidak menyimpan |
+| hasil lebih dari 200 karakter | modelnya sedang MERANGKAI jawaban, bukan bertindak — merangkai tidak bisa diulang |
+| kalimat hasil kemarin | bisa memuat fakta kemarin ("cuacanya 30 derajat"); yang diucapkan harus hasil run hari ini |
+
+**Replay tetap lewat `registry.execute`.** Konfirmasi, policy, dan audit
+berlaku persis sama. Ada uji yang menolak bila `_replay_plan` sampai membawa
+tanda "sudah disetujui". Tujuh fase dihabiskan membuat klaim Jarvis jujur;
+kecepatan tidak dibeli dengan melewati satu pun dari itu.
+
+**Kasus yang paling mudah salah, dan bagaimana ditanganinya.** Bila langkah
+gagal, jawabannya berbeda tergantung *di mana*:
+
+* gagal di langkah **pertama** — belum ada yang terjadi, aman diserahkan ke
+  model, rencananya dibuang;
+* gagal di **tengah** — langkah sebelumnya SUDAH berjalan. Mengulang lewat
+  model berarti mengerjakannya dua kali, jadi Jarvis berhenti dan mengatakan
+  apa adanya: langkah mana yang gagal, kenapa, dan bahwa sisanya tidak diulang.
+
+**Satu cacat rancanganku ditangkap suite, bukan oleh uji fase ini.**
+`_collect_plan` menuntut sesi punya `record_plan`, sehingga `_FakeSession`
+milik `test_phase2_browser_lease` menjatuhkan tiga tes. `registry` sudah
+memakai kanal itu secara defensif dan dispatch seharusnya sama: belajar itu
+kenyamanan, dan kenyamanan tidak boleh menjatuhkan tugas yang seharusnya
+berjalan. Ada uji regresinya sekarang.
+
+**Bukti:** `focused-tested` — 24 uji di `tests/test_command_plan.py`, 2496
+lulus seluruh suite, ruff bersih, FROZEN utuh. **Belum `live-proven`:**
+rencananya kosong sampai Takeda memakai Jarvis sungguhan, dan giliran pertama
+sebuah perintah selalu lewat model.
+
 ---
 
 ## Fase 26 — Routing berbasis embedding, lokal

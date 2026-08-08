@@ -19,6 +19,11 @@ from jarvis.agent.task_contracts import PreparedAgentTask, ToolEvidence, prepare
 
 _logger = log.get("agent.dispatch")
 
+#: Hasil yang lebih panjang berarti modelnya sedang MERANGKAI
+#: jawaban, bukan sekadar bertindak — dan merangkai tidak bisa
+#: diulang dari cache.
+MAX_SPOKEN_CHARS = 200
+
 _active_lock = threading.Lock()
 _active: dict[str, "TaskHandle"] = {}
 
@@ -202,6 +207,107 @@ def _verified_success(prepared: PreparedAgentTask,
     return contract.success_text(evidence)
 
 
+def _spoken_result(result) -> str:
+    """Kalimat pendek dari hasil RUN INI. Kosong bila modelnya masih diperlukan."""
+    display = str(getattr(result, "display", "") or "").strip()
+    if display:
+        return display[:MAX_SPOKEN_CHARS]
+    content = getattr(result, "content", None)
+    if isinstance(content, str):
+        text = content.strip()
+        if text and len(text) <= MAX_SPOKEN_CHARS:
+            return text
+    return ""
+
+
+def _collect_plan(session, steps: list[dict]) -> None:
+    """Kumpulkan langkah yang BERHASIL dengan argumen aslinya (§25).
+
+    Hanya langkah ``ok`` yang dicatat: rencananya adalah apa yang berhasil,
+    bukan catatan percobaan model yang gagal di tengah jalan.
+
+    Sesi tanpa kanal ini cukup tidak belajar apa-apa. Menuntutnya ada berarti
+    satu fitur kenyamanan menjatuhkan tugas yang seharusnya berjalan.
+    """
+    original = getattr(session, "record_plan", None)
+    if not callable(original):
+        return
+
+    def _record(name: str, args: dict, res) -> None:
+        original(name, args, res)
+        if getattr(res, "ok", False):
+            steps.append({"tool": name, "args": dict(args or {}),
+                          "display": _spoken_result(res)})
+
+    session.record_plan = _record
+
+
+async def _replay_plan(task: str, *, adapter, session, context, allowed):
+    """Jalankan rencana yang sudah terbukti. ``None`` = tetap pakai model.
+
+    Lewat ``registry.execute`` dengan sengaja: konfirmasi, policy, dan audit
+    tetap berlaku. Tujuh fase dihabiskan membuat klaim Jarvis jujur, dan
+    kecepatan tidak dibeli dengan melewati satu pun dari itu.
+    """
+    from jarvis.agent import command_plan, registry
+    from jarvis.agent.loop import RunResult
+
+    steps = command_plan.recall(task)
+    if not steps:
+        return None
+    names = [step["tool"] for step in steps]
+    if allowed is not None and any(name not in allowed for name in names):
+        return None
+    if any(registry.get(name) is None for name in names):
+        _logger.info("agent.replay.tool_missing", task=task[:80], tools=names)
+        command_plan.forget(task)
+        return None
+
+    spoken = ""
+    for index, step in enumerate(steps):
+        result = await registry.execute(step["tool"], dict(step["args"]),
+                                        adapter=adapter, session=session,
+                                        context=context)
+        if not getattr(result, "ok", False):
+            error = str(getattr(result, "error", "") or "gagal")
+            _logger.info("agent.replay.step_failed", tool=step["tool"],
+                         index=index, error=error[:160])
+            command_plan.forget(task)
+            if index == 0:
+                # Belum ada yang terjadi — aman menyerahkannya ke model.
+                return None
+            # Langkah sebelumnya SUDAH berjalan. Mengulang lewat model berarti
+            # mengerjakannya dua kali; katakan apa adanya.
+            return RunResult(
+                ok=False,
+                text=(f"Berhenti di langkah {index + 1} ({step['tool']}): "
+                      f"{error}. Langkah sebelumnya sudah terlanjur berjalan, "
+                      f"jadi tidak saya ulang."),
+                session_id=session.id)
+        spoken = _spoken_result(result) or spoken
+
+    if not spoken:
+        command_plan.forget(task)
+        return None
+    latency.mark(session.id, "replay")
+    _logger.info("agent.replay.done", task=task[:80], tools=names)
+    return RunResult(ok=True, text=spoken, session_id=session.id)
+
+
+def _learn_plan(task: str, steps: list[dict], replayed: bool) -> None:
+    """Simpan rencananya — atau segarkan yang sudah ada bila ini replay."""
+    try:
+        from jarvis.agent import command_plan
+
+        if replayed:
+            command_plan.touch(task)
+            return
+        if steps:
+            command_plan.remember(task, steps)
+    except Exception as exc:                                # noqa: BLE001
+        _logger.warning("agent.dispatch.plan_learn_failed", error=str(exc)[:120])
+
+
 def _learn_command(task: str, session) -> None:
     """Catat perintah + tool yang BENAR-BENAR berhasil dijalankan (§26).
 
@@ -362,6 +468,8 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
             handle.bg_task = bg_task
 
     evidence: list[ToolEvidence] = []
+    plan_steps: list[dict] = []
+    _collect_plan(session, plan_steps)
     run_adapter = adapter
     if prepared.contracted:
         _observe_session(session, evidence)
@@ -396,15 +504,29 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
             return
         REGISTRY.mark_running(bg_task.id)
         try:
+            replayed = False
+
+            async def _execute():
+                nonlocal replayed
+                # §25 — perintah yang PERSIS sama dan sudah terbukti berhasil
+                # dijalankan langsung, tanpa satu pun panggilan model.
+                shortcut = await _replay_plan(
+                    task, adapter=run_adapter, session=session,
+                    context=context, allowed=effective_tools)
+                if shortcut is not None:
+                    replayed = True
+                    return shortcut
+                return await agent_loop.run(
+                    prepared.execution_prompt,
+                    adapter=run_adapter, session=session,
+                    allowed_tools=effective_tools,
+                    max_iterations=int(config.get(
+                        "agent.interactive_max_iterations", 12)),
+                    model_profile="heavy", context=context,
+                    bg_task=bg_task)
+
             result = asyncio.run(asyncio.wait_for(
-                agent_loop.run(prepared.execution_prompt,
-                               adapter=run_adapter, session=session,
-                               allowed_tools=effective_tools,
-                               max_iterations=int(config.get(
-                                   "agent.interactive_max_iterations", 12)),
-                               model_profile="heavy", context=context,
-                               bg_task=bg_task),
-                timeout=hard_timeout))
+                _execute(), timeout=hard_timeout))
             elapsed = round(time.monotonic() - t0, 1)
             if result.ok:
                 text = result.text
@@ -430,6 +552,7 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
                 # palsu — dan sekaligus tidak pernah lebih longgar daripada
                 # kontraknya.
                 _learn_command(task, session)
+                _learn_plan(task, plan_steps, replayed)
                 _logger.info("agent.dispatch.done", elapsed_s=elapsed,
                              session=result.session_id)
                 BUS.publish("agent.task.done", task=task, text=text,

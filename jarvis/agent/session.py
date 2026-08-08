@@ -125,6 +125,19 @@ class Session:
         memori selama satu run saja — tidak pernah ditulis ke disk atau log.
         """
 
+    def record_plan(self, name: str, args: dict, res) -> None:
+        """Kanal rencana — argumen ASLI, hanya di memori (§25).
+
+        ``record_tool`` dan ``record_evidence`` keduanya menerima argumen yang
+        sudah diredaksi ``registry._audit_args``, dan itu benar untuk audit.
+        Tetapi rencana yang akan DIJALANKAN ULANG besok tidak boleh berisi
+        nilai bertopeng, jadi ia butuh kanalnya sendiri.
+
+        Default no-op: hanya ``dispatch`` yang menggantinya, datanya hidup
+        selama satu run, dan penyaringan apa yang layak ditulis ke disk ada di
+        ``command_plan`` — bukan di sini.
+        """
+
     def finish(self, result: str, ok: bool = True) -> None:
         if self.is_subagent:
             return

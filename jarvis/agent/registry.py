@@ -278,6 +278,15 @@ def _log_call(name: str, args: dict, res: ToolResult, elapsed_s: float,
                 record_evidence(name, safe_args, res)
         except Exception:                                    # noqa: BLE001
             pass
+        # Kanal rencana (§25) — argumen ASLI, karena rencana yang dijalankan
+        # ulang besok tidak boleh berisi nilai bertopeng. Tetap no-op kecuali
+        # dispatch memasang pengumpulnya.
+        try:
+            record_plan = getattr(session, "record_plan", None)
+            if callable(record_plan):
+                record_plan(name, args, res)
+        except Exception:                                    # noqa: BLE001
+            pass
     try:
         record = {
             "ts": time.time(), "tool": name,
