@@ -58,11 +58,21 @@ class CapabilityRegistry:
         return [items[key] for key in sorted(items)]
 
     def descriptor_for_tool(self, tool_name: str) -> CapabilityDescriptor | None:
-        return next(
-            (item for item in self.descriptors()
-             if item.tool_name == tool_name),
-            None,
-        )
+        """Pencarian tunggal — sengaja TANPA cache lintas panggilan.
+
+        §29 sempat meng-cache indeksnya. Tanda tangan cache apa pun yang
+        cukup murah hanya menangkap *id* descriptor, bukan isinya, sehingga
+        descriptor yang didaftar ulang dengan id sama tetapi ``risk`` berbeda
+        akan dijawab dari salinan lama — dan nilai itu masuk ke
+        ``policy.decide``. Biaya O(n²)-nya dulu datang dari ``schemas()`` yang
+        memanggil ini 103 kali; itu diselesaikan di sana dengan satu indeks
+        lokal, bukan dengan menyimpan jawaban melewati batas panggilan.
+        """
+        return self.by_tool_name().get(str(tool_name))
+
+    def by_tool_name(self) -> dict:
+        """Indeks nama tool → descriptor dari SATU snapshot ``descriptors()``."""
+        return {item.tool_name: item for item in self.descriptors()}
 
     def exposed_tool_names(self, context: ExecutionContext) -> list[str]:
         out = []

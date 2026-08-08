@@ -22,13 +22,77 @@ _tools: dict[str, Tool] | None = None
 _lock = threading.Lock()
 _log_lock = threading.Lock()
 
+#: Naik setiap kali tool ditemukan ulang. Semua cache turunan berpegang pada
+#: angka ini — cache yang tidak pernah basi adalah cache yang menyembunyikan
+#: bug.
+_generation = 0
+_schema_lock = threading.Lock()
+_schema_cache: dict[tuple, dict] = {}
+_schema_fingerprint: tuple | None = None
+
+
+def generation() -> int:
+    """Nomor generasi registry saat ini; berubah bila tool ditemukan ulang."""
+    return _generation
+
+
+def fingerprint() -> tuple:
+    """Identitas himpunan tool saat ini — dasar SEMUA cache turunan.
+
+    Nomor generasi saja tidak cukup: ``_tools`` bisa diganti langsung (tes
+    melakukannya, dan apa pun yang menyuntik registry bisa juga) tanpa lewat
+    ``_discover``. Cache yang berpegang pada generasi saja akan menjawab dari
+    himpunan tool yang sudah tidak ada — dan itu diam-diam, yang membuatnya
+    jauh lebih mahal daripada menghitung ulang.
+    """
+    tools = _tools
+    return (_generation, tuple(sorted(tools)) if tools else ())
+
 
 def all_tools(refresh: bool = False) -> dict[str, Tool]:
-    global _tools
+    global _tools, _generation
     with _lock:
         if _tools is None or refresh:
             _tools = _discover()
-        return dict(_tools)
+            _generation += 1
+    if refresh:
+        invalidate_schema_cache()
+    return dict(_tools)
+
+
+def invalidate_schema_cache() -> None:
+    global _schema_fingerprint
+    with _schema_lock:
+        _schema_cache.clear()
+        _schema_fingerprint = None
+
+
+def _tool_schema(name: str, tool: Tool, mark: tuple) -> dict:
+    """Schema satu tool. Murni terhadap toolnya, jadi aman di-cache.
+
+    §29 — ``json_schema()`` untuk 103 tool memakan 21,9 ms setiap kali
+    ``schemas()`` dipanggil, dan hasilnya identik selama himpunan toolnya
+    sama. Tidak ada context atau policy yang ikut ke sini dengan sengaja:
+    penyaringan itu tetap dihitung segar di ``schemas()``, karena cache basi
+    di sana berarti izin yang sudah dicabut masih berlaku.
+    """
+    global _schema_fingerprint
+    with _schema_lock:
+        if _schema_fingerprint != mark:
+            _schema_cache.clear()
+            _schema_fingerprint = mark
+        key = (name, id(tool))
+        cached = _schema_cache.get(key)
+        if cached is not None:
+            return cached
+    built = {"type": "function", "function": {
+        "name": tool.name,
+        "description": tool.description,
+        "parameters": tool.json_schema()}}
+    with _schema_lock:
+        if _schema_fingerprint == mark:
+            _schema_cache[key] = built
+    return built
 
 
 def get(name: str) -> Tool | None:
@@ -81,8 +145,14 @@ def schemas(allowed: list[str] | None = None,
     if context is not None:
         context_allowed = set(capability_registry.exposed_tool_names(context))
     out = []
+    mark = fingerprint()
+    # §29 — SATU snapshot descriptor untuk seluruh loop. Bentuk lama memanggil
+    # ``descriptor_for_tool`` per tool dan tiap panggilan membangun ulang daftar
+    # 103-item: 16,5 ms di setiap ``schemas()``. Indeksnya lokal dan mati saat
+    # fungsi ini selesai, jadi tidak ada jawaban basi yang bisa bertahan.
+    descriptors_by_tool = capability_registry.by_tool_name()
     for name, tool in sorted(all_tools().items()):
-        descriptor = capability_registry.descriptor_for_tool(name)
+        descriptor = descriptors_by_tool.get(name)
         if context is None and descriptor is not None and descriptor.toolset == "desktop_safe":
             continue
         if allowed is not None and name not in allowed:
@@ -91,10 +161,7 @@ def schemas(allowed: list[str] | None = None,
             continue
         if exclude and name in exclude:
             continue
-        out.append({"type": "function", "function": {
-            "name": tool.name,
-            "description": tool.description,
-            "parameters": tool.json_schema()}})
+        out.append(_tool_schema(name, tool, mark))
     return out
 
 

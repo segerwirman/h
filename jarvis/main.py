@@ -189,6 +189,15 @@ def run(no_voice: bool = False, *, ui_factory=None) -> int:
     except Exception as exc:                                 # noqa: BLE001
         logger.warning("app_registry.boot_scan_failed", error=str(exc)[:120])
 
+    # §29 — perintah pertama setelah boot membayar 2427 ms hanya untuk
+    # membangun registry tool dan SDK model, sebelum satu byte pun dikirim.
+    # Tidak satu pun bergantung pada isi perintah, jadi dipanaskan di sini.
+    try:
+        from jarvis.agent import prewarm
+        prewarm.start()
+    except Exception as exc:                                 # noqa: BLE001
+        logger.warning("prewarm.boot_failed", error=str(exc)[:120])
+
     from jarvis.core import secret_migration, secrets_store
     secrets_store.initialize()
     migration = secret_migration.migrate_legacy()

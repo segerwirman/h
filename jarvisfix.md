@@ -2695,6 +2695,69 @@ sendiri masih milik `ack_composer` dan belum sadar-kontrak.
 90 schema tool dikirim ulang tiap panggilan. Shortlist sudah ada; tambahkan
 cache serialisasi + prompt caching, dan pertahankan sesi per lane.
 
+### Hasil Fase 29 — SELESAI 2026-08-08
+
+**Premis rencananya salah dan pengukuran memperbaikinya.** Rencana menuduh
+schema "dikirim ulang tiap panggilan"; `schemas()` ternyata dipanggil **sekali
+per tugas** ([loop.py:193](jarvis/agent/loop.py#L193)), di luar loop iterasi.
+41 ms, bukan 500 ms. Biaya yang sebenarnya ada di tempat lain, dan hanya
+terlihat setelah diukur di proses baru:
+
+| tahap | dingin |
+|---|---|
+| `import llm_client` | 235 ms |
+| `client()` | 248 ms |
+| **SDK dibangun (import + ctor)** | **1577 ms** |
+| `all_tools()` (103 tool) | 319 ms |
+| `schemas()` (94 schema) | 49 ms |
+| **total sebelum model ditanya apa pun** | **2427 ms** |
+
+Itulah yang Takeda tunggu pada perintah pertama setelah boot. Tidak satu pun
+bergantung pada isi perintah — jadi tidak ada alasan menunggu perintah untuk
+mengerjakannya.
+
+| | sebelum | sesudah |
+|---|---|---|
+| jalur perintah pertama | 2427 ms | **1,3 ms** |
+| boot terblokir oleh pemanasan | — | 0,8 ms |
+| `schemas()` hangat | 41,6 ms | **0,28 ms** |
+| `descriptor_for_tool` × 103 | 16,5 ms | 0,07 ms |
+
+Yang dikerjakan: `jarvis/agent/prewarm.py` (thread latar, dipasang di
+`jarvis/main.py` di sebelah `app_registry.refresh_async`), cache schema per
+tool di `registry`, dan satu snapshot descriptor per `schemas()`.
+
+**Cache yang SENGAJA tidak dibuat, dan kenapa.** Versi pertamaku meng-cache
+indeks `descriptor_for_tool` lintas panggilan. Itu menjatuhkan empat tes lama —
+dan penyebabnya bukan tesnya. Tanda tangan cache apa pun yang cukup murah
+hanya menangkap **id** descriptor, bukan isinya, sehingga descriptor yang
+didaftar ulang dengan id sama tetapi `risk` berbeda dijawab dari salinan lama.
+Nilai itu masuk ke `policy.decide`. Kecepatannya nyata, tetapi harganya adalah
+izin yang dinilai dengan angka yang sudah tidak berlaku, diam-diam. Biaya
+O(n²)-nya ternyata datang dari `schemas()` yang memanggil fungsi itu 103 kali;
+diselesaikan dengan satu indeks **lokal** yang mati bersama fungsinya —
+manfaat penuhnya, tanpa satu pun jawaban basi yang bisa bertahan. Ada uji
+regresi khusus untuk skenario `risk` berubah itu.
+
+Karena alasan yang sama, apa pun yang bergantung `context` atau policy tidak
+di-cache sama sekali: `exposed_tool_names` menjalankan `policy.decide` per
+descriptor dan tetap dihitung segar.
+
+**Yang TIDAK dikerjakan, dan kenapa.** Prompt caching ada di rencana tetapi
+tidak dikerjakan. Lane berat memakai endpoint OpenAI-compatible generik; SDK
+OpenAI tidak punya tombol cache di sisi klien (server yang memutuskan), dan
+`cache_control` Anthropic hanya berlaku untuk jalur Anthropic yang tidak
+aktif — menambahkannya berarti mengirim kode yang tidak bisa dibuktikan
+jalan dari sini. Dicatat, bukan ditebak.
+
+**Bukti:** `focused-tested` + `runtime-wired` — 22 uji di
+`tests/test_prewarm_and_schema_cache.py`, 2518 lulus seluruh suite, ruff
+bersih, FROZEN utuh. Angka di atas diukur ulang setelah perubahan.
+**Sisa yang jujur:** bila Takeda bicara dalam ~2,4 detik pertama setelah boot,
+pekerjaannya tetap harus terjadi — pemanasan hanya menumpangkannya, dan
+`_lock` registry memastikan penemuan tool tidak berjalan dua kali (ada
+ujinya).
+
 ---
 
 ## Yang sebaiknya TIDAK dilakukan
