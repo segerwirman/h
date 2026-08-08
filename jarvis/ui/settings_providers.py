@@ -14,7 +14,7 @@ import threading
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (QComboBox, QHBoxLayout, QLabel, QLineEdit,
-                             QPushButton, QVBoxLayout, QWidget)
+                             QMessageBox, QPushButton, QVBoxLayout, QWidget)
 
 from jarvis.core import llm, log, secrets_store, settings_service
 from jarvis.ui import theme
@@ -463,9 +463,14 @@ class ProviderSettingsSheet(QWidget):
                 detail += f"; status: {oauth_status['last_error_code']}"
             self._status.setText(f"jenis: {p.kind} — {detail}")
         else:
-            self._status.setText(f"jenis: {p.kind} — "
-                                 + ("siap" if p.configured()
-                                    else "belum lengkap"))
+            state = "siap" if p.configured() else "belum lengkap"
+            # T1 — credential melintas polos harus terlihat di tempat Takeda
+            # benar-benar melihat, bukan hanya di logs/jarvis.log.
+            if providers.insecure_plaintext_base_url(p.base_url):
+                state += ("  ⚠ TIDAK TERENKRIPSI — API key dikirim terbaca "
+                          "lewat http://; pakai https:// bila endpoint "
+                          "mendukung")
+            self._status.setText(f"jenis: {p.kind} — {state}")
         self._oauth_button.setVisible(name in {"openai_oauth", "anthropic_oauth"})
         # API-key/local provider dapat diuji dari nilai field yang baru diketik;
         # OAuth wajib sudah tersambung agar token aman tersedia.
@@ -551,6 +556,22 @@ class ProviderSettingsSheet(QWidget):
         self._reload_names()
         self.saved.emit()
 
+    def _confirm_disconnect(self, name: str) -> bool:
+        """Tanya dulu sebelum menghapus token OAuth (aksi tak bisa dibatalkan).
+
+        Dipisah jadi method sendiri supaya keputusannya dapat diuji tanpa
+        memunculkan dialog Qt.
+        """
+        answer = QMessageBox.question(
+            self, "Putuskan koneksi",
+            f"Putuskan {name}?\n\n"
+            "Token OAuth akan dihapus dan Anda harus login ulang lewat "
+            "browser. Untuk sekadar memilih model, tutup dialog ini dan "
+            "gunakan daftar model di bawah.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
+        return answer == QMessageBox.StandardButton.Yes
+
     def _oauth_action(self) -> None:
         """Login OAuth non-blocking; UI hanya menerima status aman."""
         name = self._combo.currentText()
@@ -562,6 +583,13 @@ class ProviderSettingsSheet(QWidget):
             return
         status = oauth_module.status()
         if status.get("connected"):
+            # Tombol ini sama untuk HUBUNGKAN dan PUTUSKAN. Tanpa konfirmasi,
+            # satu klik sesudah login sukses menghapus token seketika — persis
+            # yang terekam di log 2026-08-04 09:18:48 (oauth.connected lalu
+            # oauth.logout pada detik yang sama).
+            if not self._confirm_disconnect(name):
+                self._status.setText(f"{name} tetap terhubung.")
+                return
             oauth_module.logout()
             from jarvis.agent import providers
             providers.reset_clients()

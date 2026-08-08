@@ -15,6 +15,7 @@ import secrets
 import socket
 import string
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from jarvis.core import config
@@ -23,6 +24,40 @@ from jarvis.core.dashboard_security import (
     FixedWindowRateLimiter,
     exposure_from_config,
 )
+
+
+@contextmanager
+def _elevation_script(body: str):
+    """Tulis skrip elevasi di direktori PRIVAT, bukan temp bersama.
+
+    Skrip ini dijalankan ulang lewat ``ShellExecuteW(..., "runas", ...)``,
+    yaitu dengan hak Administrator. Bila ia berada di ``tempfile.gettempdir()``
+    — direktori yang bisa ditulis proses lain — ada jendela waktu antara tulis
+    dan eksekusi di mana isinya dapat diganti, sehingga perintah pihak lain
+    yang berjalan dengan hak Administrator.
+
+    Direktori ``~/.jarvis`` sudah dikeraskan ACL-nya oleh ``secrets_store``;
+    helper yang sama dipakai ulang di sini, dan berkasnya dihapus begitu
+    context selesai — termasuk saat terjadi exception.
+    """
+    import os
+    import secrets as _secrets
+
+    from jarvis.core import secrets_store
+
+    folder = secrets_store._jarvis_dir() / "fw"
+    secrets_store._strict_dir(folder)
+    path = folder / f"jarvis_fw_{_secrets.token_hex(8)}.bat"
+    # Windows cmd.exe membaca .bat sebagai ANSI, bukan UTF-8.
+    path.write_bytes(body.encode("mbcs"))
+    secrets_store._strict_file(path)
+    try:
+        yield path
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
 
 _DEPS_OK = False
 try:
@@ -173,67 +208,60 @@ def _ensure_network_access(port: int) -> None:
             )
 
         bat_body = "\r\n".join(bat_lines) + "\r\n"
-        fd, bat_path = tempfile.mkstemp(suffix=".bat", prefix="jarvis_fw_")
+        # Skrip ini dieksekusi dengan hak Administrator lewat ShellExecuteW,
+        # jadi ia TIDAK boleh berada di direktori temp bersama: lihat
+        # _elevation_script() untuk alasan lengkapnya.
         try:
-            os.write(fd, bat_body.encode("mbcs"))   # Windows cmd.exe expects ANSI
-            os.close(fd)
-        except Exception:
-            try:
-                os.close(fd)
-            except Exception:
-                pass
+            script_ctx = _elevation_script(bat_body)
+        except Exception as e:                               # noqa: BLE001
+            print(f"[Dashboard] Firewall setup error: {e}")
             return
 
-        # ── Try running directly (succeeds when already admin) ────────────────
-        try:
-            r = subprocess.run(
-                [bat_path], capture_output=True, timeout=8, shell=True
-            )
-            if r.returncode == 0:
-                print(f"[Dashboard] Firewall configured for port {port}.")
-                try:
-                    os.unlink(bat_path)
-                except Exception:
-                    pass
-                return
-        except Exception:
-            pass
+        with script_ctx as bat_file:
+            bat_path = str(bat_file)
 
-        # ── ShellExecuteW: native UAC elevation (most reliable on Windows) ────
-        # ShellExecuteW with verb "runas" always shows the UAC dialog regardless
-        # of UAC level settings. Non-blocking — uvicorn is already running.
-        print("[Dashboard] One-time network setup required.")
-        print("[Dashboard] >>> A Windows security dialog will appear — click 'Yes' <<<")
-        try:
-            ret = ctypes.windll.shell32.ShellExecuteW(
-                None,       # hwnd  (no parent window)
-                "runas",    # verb  (request elevation)
-                bat_path,   # file  (our .bat)
-                None,       # params
-                None,       # working dir
-                0,          # SW_HIDE (run without a visible cmd window)
-            )
-            if int(ret) > 32:
-                # ShellExecuteW returns immediately; bat finishes in ~1 second.
-                # Sleep briefly so the rules are in place before the first retry.
-                time.sleep(2)
-                print(f"[Dashboard] Network setup complete — port {port} is open.")
-                print("[Dashboard] Refresh your phone browser to connect.")
-            else:
-                print("[Dashboard] Setup was not allowed.")
-                print("[Dashboard] Phone connections may fail until JARVIS is run as Administrator.")
-        except Exception as e:
-            print(f"[Dashboard] Firewall setup error: {e}")
-        finally:
-            # Cleanup after the bat has had time to run
-            def _cleanup(path: str) -> None:
-                time.sleep(5)
-                try:
-                    os.unlink(path)
-                except Exception:
-                    pass
-            threading.Thread(target=_cleanup, args=(bat_path,), daemon=True).start()
-        return
+            # ── Try running directly (succeeds when already admin) ────────────
+            try:
+                # cmd.exe eksplisit, tanpa shell=True: tidak ada string yang
+                # diurai ulang oleh shell.
+                r = subprocess.run(
+                    ["cmd.exe", "/c", bat_path], capture_output=True, timeout=8
+                )
+                if r.returncode == 0:
+                    print(f"[Dashboard] Firewall configured for port {port}.")
+                    return
+            except Exception:
+                pass
+
+            # ── ShellExecuteW: native UAC elevation (most reliable on Windows) ─
+            # ShellExecuteW with verb "runas" always shows the UAC dialog
+            # regardless of UAC level settings.
+            print("[Dashboard] One-time network setup required.")
+            print("[Dashboard] >>> A Windows security dialog will appear — click 'Yes' <<<")
+            try:
+                ret = ctypes.windll.shell32.ShellExecuteW(
+                    None,       # hwnd  (no parent window)
+                    "runas",    # verb  (request elevation)
+                    bat_path,   # file  (our .bat)
+                    None,       # params
+                    None,       # working dir
+                    0,          # SW_HIDE (run without a visible cmd window)
+                )
+                if int(ret) > 32:
+                    # ShellExecuteW returns immediately; bat finishes in ~1 s.
+                    # Sleep briefly so the rules are in place before the first
+                    # retry. Skrip dihapus saat context keluar — tidak ada lagi
+                    # thread pembersih tertunda yang membiarkan berkas
+                    # berhak-Administrator menganggur di disk.
+                    time.sleep(2)
+                    print(f"[Dashboard] Network setup complete — port {port} is open.")
+                    print("[Dashboard] Refresh your phone browser to connect.")
+                else:
+                    print("[Dashboard] Setup was not allowed.")
+                    print("[Dashboard] Phone connections may fail until JARVIS is run as Administrator.")
+            except Exception as e:
+                print(f"[Dashboard] Firewall setup error: {e}")
+            return
 
     # ── macOS ─────────────────────────────────────────────────────────────────
     if sys.platform == "darwin":
@@ -548,10 +576,16 @@ class DashboardServer:
                                 status_code=401)
 
         @app.get("/auto-login")
-        async def auto_login(key: str = ""):
+        async def auto_login(req: Request, key: str = ""):
             """QR code target — validates one-time key, creates session, redirects phone."""
             if not _mutation_allowed():
                 return HTMLResponse("Dashboard LAN is read-only.", status_code=403)
+            # Endpoint ini menerima credential sekali-pakai yang sama dengan
+            # /login, jadi ia memakai pembatas laju yang SAMA. Tanpa ini,
+            # satu-satunya penghalang tebak-kunci adalah panjang kuncinya.
+            if not self._auth_rate_limiter.allow(_client_key(req)):
+                return HTMLResponse("Too many attempts — try again shortly.",
+                                    status_code=429)
             now = time.time()
             if not key or key not in self._pending_keys or self._pending_keys[key] <= now:
                 return HTMLResponse("""<!DOCTYPE html>

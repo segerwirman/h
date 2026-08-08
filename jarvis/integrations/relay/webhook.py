@@ -77,7 +77,13 @@ class WebhookReceiver:
                  path: str | None = None, secret: str | None = None):
         self.store = store or RelayStore()
         self.host = host or _env("RELAY_WEBHOOK_HOST", "127.0.0.1")
-        self.port = int(port or _env("RELAY_WEBHOOK_PORT", "8791"))
+        # ``port or default`` SALAH: 0 itu falsy, padahal port=0 adalah
+        # permintaan EKSPLISIT "pilih port bebas". Dengan bentuk lama setiap
+        # pemanggil ephemeral diam-diam merebut port produksi 8791 — dan
+        # dengan SO_REUSEADDR di Windows dua proses bisa sama-sama "berhasil"
+        # bind ke sana sehingga permintaan nyasar ke server yang salah.
+        self.port = int(port if port is not None
+                        else _env("RELAY_WEBHOOK_PORT", "8791"))
         self.path = path or _env("RELAY_WEBHOOK_PATH", "/relay/webhook")
         self.secret = secret if secret is not None else _env("RELAY_WEBHOOK_SECRET")
         self.replay_window_s = float(_env("RELAY_REPLAY_WINDOW_S", "300"))

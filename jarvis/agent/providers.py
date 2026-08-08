@@ -55,6 +55,27 @@ def _trusted_local_base_url(value: str) -> bool:
         return False
     return bool(address.is_loopback or address.is_private)
 
+
+def insecure_plaintext_base_url(value: str) -> bool:
+    """True bila credential akan melintas TANPA enkripsi ke host non-lokal.
+
+    Provider ``openai_compat`` mengirim API key sebagai header
+    ``Authorization: Bearer``. Di atas ``http://`` polos ke host publik, kunci
+    itu terbaca oleh siapa pun di jalurnya.
+
+    Endpoint lokal (loopback, IP privat, ``.local``) sengaja dikecualikan:
+    plaintext wajar di sana, dan peringatan yang terlalu cerewet akan
+    diabaikan orang justru saat ia benar-benar penting.
+    """
+    try:
+        parsed = urlparse(str(value or "").strip())
+    except (TypeError, ValueError):
+        return False
+    if parsed.scheme != "http":
+        return False
+    return not _trusted_local_base_url(value)
+
+
 DEFAULTS: dict[str, dict] = {
     "gemini": {
         "kind": "gemini", "label": "Google Gemini", "base_url": "",

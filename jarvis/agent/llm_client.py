@@ -17,8 +17,10 @@ import json
 import threading
 import time
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 from jarvis.core import config, log
+from jarvis.agent import providers
 from jarvis.agent.providers import Provider, get_provider, vision_provider
 
 _logger = log.get("agent.llm")
@@ -73,6 +75,15 @@ class LLMClient:
             p = self.provider
             if p.kind == "openai_compat":
                 from openai import OpenAI
+                # API key dikirim sebagai header Authorization; di atas http://
+                # polos ke host non-lokal ia terbaca di sepanjang jalur. Tidak
+                # bisa diperbaiki dari sisi klien — tetapi tidak boleh senyap.
+                if providers.insecure_plaintext_base_url(p.base_url):
+                    _logger.warning(
+                        "agent.llm.insecure_base_url", provider=p.name,
+                        host=urlparse(p.base_url).hostname or "?",
+                        detail="API key dikirim TANPA enkripsi — pakai https:// "
+                               "bila endpoint mendukung")
                 self._sdk = OpenAI(
                     api_key=p.api_key or "not-needed",
                     base_url=p.base_url or None,
