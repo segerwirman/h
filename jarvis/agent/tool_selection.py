@@ -68,8 +68,12 @@ _CATEGORY_PATTERNS: dict[str, re.Pattern[str]] = {
 
 _CATEGORY_MODULES: dict[str, frozenset[str]] = {
     "whatsapp": frozenset({"whatsapp_web", "app_control"}),
+    # §26 — `user_browser` ikut di sini. Keluhan lapangan "pause youtube tapi
+    # jarvis tidak tahu tab saya" sebagian berasal dari sini: kategori browser
+    # hanya memetakan browser AGENT, sehingga tool yang benar-benar menyentuh
+    # Chrome user tidak pernah masuk schema.
     "browser_web": frozenset(
-        {"browser", "web", "google_youtube", "app_control"}
+        {"browser", "user_browser", "web", "google_youtube", "app_control"}
     ),
     "files_code": frozenset(
         {"file_ops", "terminal", "code_exec", "session_tools"}
@@ -98,6 +102,28 @@ _ALWAYS_NAMES = frozenset(
 )
 
 
+def _learned_tool_names(task: str, tools: dict[str, object]) -> list[str] | None:
+    """Saran dari perintah yang pernah terbukti berhasil (Fase 26).
+
+    Saran yang menyebut tool tak dikenal DIABAIKAN sepenuhnya: tool bisa
+    hilang antar versi, dan mempersempit schema ke nama yang tidak ada berarti
+    membuat Jarvis kehilangan kemampuan gara-gara catatan basi.
+    """
+    try:
+        from jarvis.agent import command_index
+
+        names = command_index.suggest(task)
+        if not names:
+            return None
+        if any(name not in tools for name in names):
+            return None
+        selected = set(names)
+        selected.update(name for name in _ALWAYS_NAMES if name in tools)
+        return sorted(selected)
+    except Exception:                                        # noqa: BLE001
+        return None
+
+
 def select_tool_names(task: str, tools: dict[str, object]) -> list[str] | None:
     if not bool(config.get("agent.tool_selection.enabled", True)):
         return None
@@ -110,7 +136,11 @@ def select_tool_names(task: str, tools: dict[str, object]) -> list[str] | None:
     ]
     # Broad cross-domain work is safer with the complete registry.
     if not categories or len(categories) > 3:
-        return None
+        # §26 — celah inilah yang dulu jatuh ke registry penuh (90 tool) atau
+        # ke LLM. Perintah yang SUDAH terbukti berhasil di mesin ini menjawabnya
+        # tanpa jaringan. Kategori deterministik tetap menang di atas: yang
+        # sudah pasti tidak boleh dikalahkan yang dipelajari.
+        return _learned_tool_names(text, tools)
     modules: set[str] = set()
     for category in categories:
         modules.update(_CATEGORY_MODULES[category])

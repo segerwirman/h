@@ -2503,6 +2503,72 @@ dihindari.
 Sekaligus menjawab keluhan lapangan: pemilihan tool belajar dari pemakaian
 Takeda, bukan dari regex yang harus ditulis satu per satu.
 
+### Hasil Fase 26 — SELESAI 2026-08-08
+
+**Rencana awal salah di satu titik dan itu diperbaiki, bukan disembunyikan.**
+Rencana menyebut ONNX MiniLM ~20 ms. Tidak ada model teks di repo — hanya
+`yolov8n.onnx` untuk visi — dan MiniLM berarti unduhan ~90 MB. Itu keputusan
+Takeda, bukan keputusan kode. Yang dibangun karena itu adalah embedder
+**leksikal**: token kata + bigram + n-gram karakter yang di-hash. Bukan
+pemahaman semantik, dan tidak berlagak begitu. Antarmukanya (`embed`,
+`similarity`) sengaja sempit supaya model neural bisa menggantikannya kelak
+tanpa menyentuh satu pun pemanggil.
+
+Yang dikerjakan:
+
+* `jarvis/core/local_embed.py` — embedder lokal, **0.066 ms** per perintah
+  (bandingkan 422 ms hangat / 3250 ms dingin lewat jaringan pada Fase 24).
+  Hash memakai `zlib.crc32`, **bukan** `hash()` bawaan: hash string Python
+  diacak ulang tiap proses, jadi indeks yang ditulis hari ini tidak akan cocok
+  dengan yang dibaca setelah restart. Ada uji subprocess yang mengunci ini.
+* `jarvis/agent/command_index.py` — tabel SQLite (maks 400 baris, yang paling
+  lama tak dipakai dibuang), tidak pernah melempar.
+* `jarvis/agent/tool_selection.py` — `_learned_tool_names` dipakai **hanya**
+  saat regex kategori tidak menemukan apa pun atau menemukan terlalu banyak
+  (>3). Kategori deterministik tetap menang. Saran yang menyebut tool yang
+  sudah tidak ada diabaikan seluruhnya, bukan disaring sebagian.
+* `jarvis/agent/dispatch.py` — belajar di jalur `result.ok`.
+
+**Dua kesalahan rancanganku yang ditangkap ukuran, bukan oleh uji hijau.**
+
+1. Sumber pembelajaran mula-mula kupakai daftar bukti kontrak. Bukti itu hanya
+   dikumpulkan untuk tugas **berkontrak** (YouTube, panggilan), jadi Jarvis
+   nyaris tidak akan pernah belajar apa pun. Diganti ke `session.tool_calls`
+   yang selalu terisi dan sudah teredaksi — hanya nama tool dan statusnya.
+
+2. Ukuran pertama pada perintah lapangan sungguhan membantah embeddernya:
+
+   | pasangan | skor lama |
+   |---|---|
+   | `buka kamera` ~ `tutup kamera` (**lawan kata**) | 0.483 |
+   | `buka kamera` ~ `tolong bukakan kameranya` | 0.336 |
+   | `telepon honbrew lewat whatsapp` ~ `telpon honbrew via wa` | 0.419 |
+
+   Lawan kata lebih dekat daripada parafrasanya sendiri. Uji awalku lulus
+   karena frasa ujinya pendek dan tumpang tindih ("pause youtube" / "pause
+   yt") — bukan seperti cara Takeda benar-benar bicara. Penyebabnya: imbuhan
+   ("bukakan", "kameranya") dan kata sopan ("tolong", "via") memecah n-gram,
+   sementara kata kerja yang menentukan tool cuma satu token melawan puluhan
+   n-gram objek yang sama. Perbaikannya: buang stopword, petakan sinonim
+   (`wa`→`whatsapp`, `telpon`→`telepon`), kupas imbuhan, dan beri kata bobot
+   4× di atas n-gram karakter.
+
+**Ambang diukur, bukan ditebak.** Setelah perbaikan, atas 10 pasangan satu
+tool dan 10 pasangan beda tool: parafrasa terendah **0.814**, beda-tool
+tertinggi **0.649** (`putar lagu di spotify` ~ `hentikan lagu di spotify`).
+Ambang 0.62 dari rencana awal jatuh **di dalam** wilayah beda-tool — perintah
+berhenti akan dirutekan ke tool putar. Ambang dipasang **0.75**, di celahnya,
+dan condong ke atas: saran yang meleset hanya mengembalikan perilaku lama,
+saran yang salah mematahkan perintah. Uji `test_the_threshold_sits_inside_a_
+real_gap` mengunci celah itu (>0.1), bukan cuma angka ambangnya — tanpa itu
+satu perubahan pembobotan bisa merapatkan kedua kelompok sampai berimpit
+sementara semua uji lain tetap hijau.
+
+**Bukti:** `focused-tested` — 44 uji di `tests/test_local_embed_routing.py`,
+2471 lulus seluruh suite, ruff bersih, FROZEN utuh. **Belum `live-proven`:**
+indeks baru terisi setelah Takeda memakai Jarvis sungguhan; manfaatnya nol
+pada perintah yang belum pernah berhasil sekali pun.
+
 ---
 
 ## Fase 27 — Eksekusi spekulatif untuk aksi reversible

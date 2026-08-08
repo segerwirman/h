@@ -202,6 +202,28 @@ def _verified_success(prepared: PreparedAgentTask,
     return contract.success_text(evidence)
 
 
+def _learn_command(task: str, session) -> None:
+    """Catat perintah + tool yang BENAR-BENAR berhasil dijalankan (§26).
+
+    Sumbernya ``session.tool_calls``, bukan daftar bukti kontrak: bukti hanya
+    dikumpulkan untuk tugas BERKONTRAK (YouTube, panggilan), sehingga memakai
+    itu berarti Jarvis hampir tidak pernah belajar apa pun. ``tool_calls``
+    selalu terisi dan sudah teredaksi — hanya nama dan status, tanpa isi hasil.
+    """
+    try:
+        from jarvis.agent import command_index
+
+        names: list[str] = []
+        for item in getattr(session, "tool_calls", []) or []:
+            name = str(item.get("tool", "") or "")
+            if name and item.get("ok") and name not in names:
+                names.append(name)
+        if names:
+            command_index.remember(task, names)
+    except Exception as exc:                                # noqa: BLE001
+        _logger.warning("agent.dispatch.learn_failed", error=str(exc)[:120])
+
+
 def _safe_callback(callback, value: str) -> None:
     if callback is None:
         return
@@ -402,6 +424,12 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
                         return
                     text = _verified_success(prepared, evidence)
                     session.finish(text, ok=True)
+                # §26 — belajar HANYA dari sukses yang terbukti. Bukti tool
+                # sudah dikumpulkan untuk kontrak (Fase 14); memakai sumber
+                # yang sama berarti indeks tidak pernah mengabadikan klaim
+                # palsu — dan sekaligus tidak pernah lebih longgar daripada
+                # kontraknya.
+                _learn_command(task, session)
                 _logger.info("agent.dispatch.done", elapsed_s=elapsed,
                              session=result.session_id)
                 BUS.publish("agent.task.done", task=task, text=text,
