@@ -3016,6 +3016,49 @@ tersedia — bukan salah deteksi.
 `QApplication` lahir di jalur UI dan `main.py`/`ui.py` FROZEN, jadi ini harus
 lewat seam.
 
+### Hasil Fase 32 — SELESAI 2026-08-08
+
+**T4 ternyata jauh lebih besar daripada satu baris status.** Qt sendiri
+menyebutkan sebabnya, dan pesannya sekaligus perbaikannya:
+
+```
+QtWebEngineWidgets must be imported or Qt.AA_ShareOpenGLContexts must be set
+before a QCoreApplication instance is created
+```
+
+`jarvis/browser/agent_view.py` dan `jarvis/browser/embed.py` mengimpor
+`QWebEngineView` secara **lazy** — yaitu sesudah `QApplication` ada — sehingga
+importnya SELALU gagal di aplikasi yang berjalan. Jadi browser agent tertanam
+tidak pernah bisa hidup, dan satu-satunya jejaknya adalah `DEGRADED` yang
+terbaca seperti hal sepele. Kelas bug yang sama dengan insiden utama dokumen
+ini: fitur mati tanpa mengeluarkan suara.
+
+**Perbaikan yang TIDAK diambil, dan kenapa.** Mengimpor WebEngine lebih awal
+akan menyelesaikannya — dan melanggar MK50 §7 yang sengaja membuang QtWebEngine
+dari jalur boot, lengkap dengan `tests/test_phase5_stage_home.py` yang
+menjaganya. Itu berarti memuat Chromium ~100 MB pada setiap boot demi fitur
+yang jarang dipakai. Yang dipasang justru hanya **atributnya**:
+`jarvis/ui/qt_webengine.enable_shared_gl()`, dipanggil satu baris sebelum
+`QApplication` dibuat di `jarvis/ui/window.py`. Ada uji yang membuktikan tidak
+satu pun modul WebEngine ikut termuat.
+
+| | sebelum | sesudah |
+|---|---|---|
+| `_check_browser` di urutan nyata | `DEGRADED — no embed driver` | `QtWegEngine ready` |
+| import lazy `QWebEngineView` | selalu `ImportError` | berhasil |
+| modul Chromium termuat saat boot | 0 | 0 |
+
+**Dan bila terlambat, ia mengatakannya.** `enable_shared_gl()` mengembalikan
+`False` bila `QApplication` sudah ada, dengan log yang menyebut akibatnya —
+mengembalikan `True` di situ berarti berbohong tentang keadaan yang sudah
+tidak bisa diubah.
+
+**Bukti:** `focused-tested` + `runtime-wired` — 8 uji di
+`tests/test_webengine_boot_order.py`, semuanya menjalankan proses bersih agar
+yang diukur adalah urutan yang sungguhan, bukan proses kosong. 2583 lulus
+seluruh suite, ruff bersih, FROZEN utuh. **Belum `live-proven`:** browser agent
+tertanam sendiri belum dicoba Takeda setelah perbaikan ini.
+
 ---
 
 ## Fase 33 — Memori semantik: hidup, atau mati dengan jujur (T5)

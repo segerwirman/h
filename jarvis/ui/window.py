@@ -2483,6 +2483,13 @@ class JarvisUI:
     def __init__(self, face_path: str = "", size=None,
                  services: dict | None = None):
         import sys as _sys
+        # §32 (T4) — Qt membaca AA_ShareOpenGLContexts saat QApplication
+        # dibuat, jadi ini HARUS di atas baris berikutnya. Tanpa itu setiap
+        # import QWebEngineView yang lazy gagal selamanya di proses ini, dan
+        # browser agent tertanam mati diam-diam. Hanya atributnya yang
+        # dipasang — Chromium tetap tidak dimuat (MK50 §7).
+        from jarvis.ui import qt_webengine
+        qt_webengine.enable_shared_gl()
         # QtWebEngine/Chromium parses QApplication's argv — an empty list
         # (no argv[0]) makes the render-process launch fastfail (0xC0000409).
         self._app = QApplication.instance() or QApplication(_sys.argv or ["jarvis"])
