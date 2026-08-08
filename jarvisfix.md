@@ -295,7 +295,7 @@ Kuota Gemini habis di lane teks/agent. **Sesi Live tidak terpengaruh** — 13 gi
 
 Test memakai port webhook dari `.env` (8791). Kalau JARVIS berjalan, test menabrak server sungguhan dan dapat HTTP 401. Perlu port ephemeral atau isolasi. Masuk wilayah Fase 10.
 
-## T4 — `core.browser DEGRADED` — TERJELASKAN 2026-08-08, belum diperbaiki
+## T4 — `core.browser DEGRADED` — SELESAI ✅ (Fase 32, 2026-08-08)
 
 Boot melaporkan `core.browser DEGRADED — system browser ready; no embed driver`, padahal PyQt6-WebEngine terpasang dan cek terpisah di proses lain mengembalikan `QtWebEngine ready`.
 
@@ -310,13 +310,13 @@ Jadi bukan kosmetik dan bukan kesalahan deteksi: driver embed benar-benar tidak 
 
 **Perbaikannya** adalah memindahkan import WebEngine ke sebelum `QApplication` dibuat — tetapi `QApplication` lahir di jalur UI, dan `main.py`/`ui.py` FROZEN, jadi ini butuh seam dan keputusan cakupan. Belum dikerjakan.
 
-## T5 — FAISS tidak ada di extra mana pun
+## T5 — FAISS tidak ada di extra mana pun — SELESAI ✅ (Fase 33, 2026-08-08)
 
 `memory.faiss_missing` muncul di setiap boot; memori semantik nonaktif. `faiss-cpu` tidak terdaftar di `[voice]`/`[vision]`/`[agent]`. Kosmetik, tapi berarti satu fitur mati diam-diam — kelas yang sama dengan insiden utama.
 
 **Diperiksa ulang 2026-08-08:** `import faiss` → `ModuleNotFoundError`, dan `pyproject.toml` masih hanya menyebutnya di komentar (baris 213), bukan sebagai dependensi. Masih TERBUKA, tidak berubah.
 
-## T8 — `test_voice_playback_fix` flaky di bawah beban — TERBUKA
+## T8 — `test_voice_playback_fix` flaky di bawah beban — SELESAI ✅ (Fase 34, 2026-08-08)
 
 `test_play_audio_mengeluarkan_semua_chunk_dan_drain` gagal **satu kali** saat suite penuh dijalankan, lalu:
 
@@ -3289,3 +3289,96 @@ termodifikasi menggantung.
    (`source-present` … `live-proven`); yang belum ada adalah satu tempat untuk
    melihat fitur mana yang benar-benar terbukti di lapangan. Saat ini
    jawabannya tersebar di lima siklus.
+
+---
+
+# PROTOKOL KERJA — wajib diikuti setiap fase
+
+Ditulis setelah 34 fase. Setiap aturan di bawah lahir dari kesalahan yang
+benar-benar terjadi di proyek ini, dan nomor fase/temuannya disebutkan supaya
+bisa ditelusuri — bukan diterima begitu saja.
+
+## Delapan aturan
+
+1. **UKUR DULU, jangan menebak.** Ambang, biaya, dan penyebab harus datang dari
+   perintah yang dijalankan. Kegagalan termahal di dokumen ini semuanya lahir
+   dari angka yang terdengar benar tetapi tidak pernah diukur: S-24 (echo
+   multiplier 8× memblokir semua interupsi), S-25 (ambang 0,55 dari nada
+   sintetis menolak 262 blok suara sungguhan), Fase 26 (ambang 0,62 justru di
+   dalam wilayah beda-tool), Fase 30 (2 dari 3 penutur asing lolos ambang
+   bawaan).
+
+2. **UJI MERAH LEBIH DULU.** Uji yang tidak pernah merah tidak membuktikan apa
+   pun. Jalankan, lihat gagal, baru implementasi.
+
+3. **Uji PERILAKU, bukan teks sumber.** Uji yang memeriksa isi berkas lemah dua
+   arah: ia gagal karena hal yang benar, dan lulus untuk kode yang salah asal
+   kata-katanya cocok (Fase 33).
+
+4. **SUNYI BUKAN BUKTI.** Ketiadaan di log tidak membuktikan sesuatu tidak
+   terjadi. Pasang instrumentasi dulu, simpulkan sesudahnya (S-22: 52 entri
+   yang dikira suara ternyata milik pytest; S-30: `mic_meter.unavailable` basi
+   dari hari sebelumnya).
+
+5. **Jangan mengklaim yang tidak terbukti — dua arah.** Sukses palsu (S-1) dan
+   kegagalan palsu (Fase 33: "Semantic memory disabled" padahal 298/298 memori
+   punya embedding) sama merusaknya.
+
+6. **Tiga gerbang hijau sebelum commit:**
+   ```
+   .venv/Scripts/python.exe -m pytest -q -p no:randomly
+   .venv/Scripts/python.exe -m ruff check .
+   .venv/Scripts/python.exe scripts/verify_frozen.py
+   ```
+
+7. **CATAT di dokumen ini, di bagian `### Hasil Fase N — STATUS TANGGAL`.**
+   Wajib memuat: apa yang dikerjakan, **apa yang diukur** (dengan angkanya),
+   kesalahan rancangan yang ditemukan di tengah jalan, dan **batas jujurnya** —
+   apa yang BELUM terbukti. Bagian batas jujur itu bukan hiasan; ia yang
+   membedakan `focused-tested` dari `live-proven`.
+
+8. **Commit menjelaskan SEBAB, bukan daftar perubahan.**
+
+**Berkas FROZEN tidak boleh diedit sama sekali** — hanya dibungkus lewat seam
+`install(legacy_module)`.
+
+## Kosakata bukti
+
+| label | artinya |
+|---|---|
+| `source-present` | kodenya ada |
+| `configured` | ada di config |
+| `runtime-wired` | benar-benar terpanggil saat aplikasi jalan |
+| `focused-tested` | ada uji yang menjaganya |
+| `fixture-accepted` | lulus terhadap data tiruan |
+| `live-proven` | **terbukti di pemakaian Takeda yang sungguhan** |
+
+Sebagian besar pekerjaan berhenti di `focused-tested`. Menyebutnya
+`live-proven` tanpa sesi nyata adalah klaim palsu.
+
+## Setiap selesai fase — tiga langkah
+
+1. Perbarui dokumen ini (aturan 7).
+2. Commit (aturan 8).
+3. Terbitkan prompt lanjutan:
+   ```
+   .venv/Scripts/python.exe scripts/next_phase_prompt.py            # lengkap
+   .venv/Scripts/python.exe scripts/next_phase_prompt.py --codex    # ringkas
+   .venv/Scripts/python.exe scripts/next_phase_prompt.py --out lanjut.txt
+   ```
+
+## Kenapa prompt lanjutannya sebuah SKRIP, bukan template
+
+Template yang disalin tangan membeku pada saat ia ditulis. Setelah dua fase ia
+menyebut fase yang sudah selesai sebagai "berikutnya" dan temuan yang sudah
+tertutup sebagai "terbuka" — dan agent berikutnya mempercayainya. Itu bukan
+kekhawatiran teoretis: saat pertama kali dijalankan, skrip ini menawarkan **14
+fase yang sudah beres** sebagai pekerjaan tertunda (fase-fase awal menandai
+selesai di judulnya, bukan lewat bagian `Hasil`), dan sekaligus menemukan tiga
+judul temuan yang basi — T4, T5, dan T8 masih bertanda terbuka padahal Fase
+32, 33, dan 34 sudah menutupnya.
+
+Skrip itu membaca ulang `jarvisfix.md` dan git **setiap kali dijalankan**, dan
+sengaja **tidak pernah mengklaim hasil uji**: ia mencetak perintah yang harus
+dijalankan, bukan angka dari kemarin. Menyalin "2593 lulus" ke prompt hari ini
+persis jenis klaim palsu yang dikejar sebelas fase di dokumen ini.
