@@ -2848,3 +2848,103 @@ Fase 25-29 digabung, sekaligus menutup S-6 yang diterima apa adanya.
 
 Keputusan perangkat keras, bukan kode — tetapi bila tujuannya "instan", itu
 tuas terbesar yang tersedia.
+
+---
+
+# SIKLUS 5 — permintaan yang belum tersentuh & fitur yang mati diam-diam (2026-08-08)
+
+Siklus 4 menutup seluruh fase bernomor. Yang tersisa adalah satu permintaan
+Takeda yang **belum pernah dijadikan fase sama sekali**, satu temuan dari
+pengukuran Fase 27, dan tiga fitur yang mati tanpa mengeluarkan suara.
+
+Urutannya bukan urutan kemudahan, melainkan urutan **apa yang Takeda rasakan**.
+
+| Fase | Isi | Menutup |
+|---|---|---|
+| 30 | Jarvis mengenali suara Takeda | permintaan lapangan yang belum pernah difasekan |
+| 31 | Pakai jawaban deterministik yang sudah ada | S-31 |
+| 32 | WebEngine diimpor sebelum `QApplication` | T4 |
+| 33 | Memori semantik: hidup, atau mati dengan jujur | T5 |
+| 34 | Tunggu keadaan, bukan tidur tetap | T8 |
+
+---
+
+## Fase 30 — Jarvis mengenali suara Takeda
+
+Permintaan aslinya: *"saya ingin jarvis bisa mengenali suara saya seperti siri
+dan hanya merespon suara saya ketika pertama kali booting."*
+
+**Tap-nya sudah ada.** `MainWindow._mic_meter` memegang `sd.InputStream`
+16 kHz mono, blok 1024 sampel, dan file itu tidak FROZEN. Tidak ada jalur
+audio baru yang perlu dibuka.
+
+**Batas jujur, dinyatakan di muka.** Tidak ada model speaker di repo, dan
+ECAPA/Resemblyzer berarti unduhan puluhan MB — keputusan Takeda, bukan
+keputusan kode. Yang dibangun di sini adalah sidik suara spektral memakai
+numpy saja. Ia bisa memisahkan dua suara yang jelas berbeda pada mikrofon dan
+ruangan yang sama; ia **tidak** setara pengenal suara neural, dan tidak akan
+berpura-pura begitu. Antarmukanya dibuat sempit supaya model neural bisa
+menggantikannya tanpa mengubah pemanggil.
+
+**Keputusan rancangan yang paling penting: gerbangnya MATI dulu.**
+Verifikasi suara yang keliru membuat Jarvis TULI terhadap pemiliknya sendiri —
+kegagalan yang jauh lebih buruk daripada menjawab orang lain sesekali. Karena
+itu fase ini default-nya **mengamati saja**: skor tiap ucapan dihitung dan
+dicatat, tanpa menolak apa pun. Ambangnya diambil dari suara Takeda di
+mikrofon Takeda, persis seperti S-25 mengajarkan — bukan dari nada sintetis.
+Gerbangnya dinyalakan Takeda setelah angkanya terlihat.
+
+**Dan bila kelak menolak, penolakannya harus TERLIHAT.** Perintah yang
+diabaikan diam-diam adalah kelas bug yang tujuh fase dihabiskan untuk
+memberantasnya.
+
+---
+
+## Fase 31 — Pakai jawaban deterministik yang sudah ada (S-31)
+
+`jarvis/agent/router.py` menyimpulkan `pause youtube` sebagai **T1, single
+browser media action**, dalam 0,01 ms. Jalur perintah UI memakai
+`IntentRouter` yang menyimpulkan **CHAT** lalu menyerahkannya ke pipeline
+model. Jarvis sudah tahu jawabannya, lalu membuangnya.
+
+Ini "instan tapi tetap pintar" tanpa spekulasi sama sekali — tidak ada yang
+perlu ditebak, hanya jawaban yang sudah ada dan tidak dipakai.
+
+**Risikonya nyata dan harus dibatasi:** ini jalur SETIAP ucapan. Jembatannya
+hanya boleh bekerja ketika router tier yakin DAN ada tool yang jelas untuk
+niat itu; selain itu perilakunya harus identik dengan hari ini.
+
+---
+
+## Fase 32 — WebEngine diimpor sebelum `QApplication` (T4)
+
+Direproduksi di dua proses bersih: sebelum `QApplication` dibuat, cek
+mengembalikan `QtWebEngine ready`; sesudahnya `system browser ready; no embed
+driver`. Boot memeriksanya sesudah, jadi driver embed benar-benar tidak
+tersedia — bukan salah deteksi.
+
+`QApplication` lahir di jalur UI dan `main.py`/`ui.py` FROZEN, jadi ini harus
+lewat seam.
+
+---
+
+## Fase 33 — Memori semantik: hidup, atau mati dengan jujur (T5)
+
+`memory.faiss_missing` muncul tiap boot dan `faiss-cpu` tidak terdaftar di
+extra mana pun — hanya di komentar `pyproject.toml`. Satu fitur mati
+diam-diam, kelas yang sama dengan insiden utama dokumen ini.
+
+Dua jalan sah: pasang dependensinya, atau nyatakan matinya di tempat yang
+Takeda benar-benar lihat. Yang tidak sah adalah keadaan sekarang: mati, tetapi
+hanya sebaris peringatan di log yang tidak ada yang baca.
+
+---
+
+## Fase 34 — Tunggu keadaan, bukan tidur tetap (T8)
+
+`test_play_audio_mengeluarkan_semua_chunk_dan_drain` menunggu
+`asyncio.sleep(0.15)` dengan `tail_grace_s=0.02`. Di mesin yang sedang
+terbebani suite penuh, 0,15 detik bisa tidak cukup.
+
+Menaikkan angka tidurnya hanya menggeser ambangnya. Yang benar adalah menunggu
+KEADAAN yang ditunggu, dengan batas waktu longgar.
