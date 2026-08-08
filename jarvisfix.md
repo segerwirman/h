@@ -1443,6 +1443,72 @@ jendelanya. Dikunci `test_failure_message_claims_only_what_is_knowable`.
 
 ---
 
+##### Hasil Fase 13 — SELESAI 2026-08-05
+
+*Ditulis menyusul pada 2026-08-09. Pekerjaannya sudah ada di kode dan
+ter-commit sejak 2026-08-05 (`28daccc`, `e58861c`); bagian Hasil-nya yang tidak
+pernah ditulis. Ditemukan oleh `scripts/next_phase_prompt.py`, yang melaporkan
+Fase 13 sebagai satu-satunya fase Siklus 1–5 tanpa penanda selesai — dokumennya
+yang bolong, bukan pekerjaannya.*
+
+**1 — Bukti panggilan (S-1 lapis 1).** `start_call` melaporkan
+`{"state": "calling"}` 500 ms setelah tombol diklik, **tanpa pernah membaca
+ulang halaman**. Klik yang mendarat di elemen salah, akun tanpa rollout
+panggilan, dan overlay yang tak pernah muncul — ketiganya dilaporkan sukses,
+lalu dinarasikan agent sebagai *"sudah saya telepon"*. Sekarang halaman
+di-poll sampai tombol akhiri-telepon atau indikator berdering benar-benar
+terlihat, dibatasi `whatsapp_web.call_confirm_timeout_s`. Yang tak terbukti
+**melempar**, bukan mengembalikan status lunak — karena setiap pemanggil di
+atasnya mengubah sukses apa pun menjadi kalimat itu. `answer_call` mendapat
+bukti yang sama.
+
+**2 — Aturan 7b di `system.md`.** Melarang mengklaim aksi eksternal berhasil
+tanpa hasil tool yang membuktikannya. Itu lapisan terluar, **bukan
+penegakan** — validasi bukti di sisi dispatch adalah Fase 14.
+
+**3 — Utang vektor memori (S-9).** `memory_store.backfill_embeddings` mengisi
+baris `embedding IS NULL` yang tertinggal selama lane ringan menunjuk endpoint
+yang tidak melayani embedding. **157 dari 212 memori tidak terjangkau
+pencarian semantik**, termasuk 38 memori reflektif yang memberi makan blok
+pelajaran di system prompt.
+
+**Menjalankannya pada basis data sungguhan GAGAL lebih dulu, dan penjaga itu
+membayar dirinya sendiri.** `google-genai` 2.14.0 dengan `gemini-embedding-2`
+mengembalikan **SATU** embedding untuk enam belas konten. Pemanggil
+memasangkan vektor ke teks berdasarkan posisi, jadi vektor yang lebih sedikit
+berarti sebuah memori diam-diam menerima vektor milik memori lain. `embed()`
+kini memverifikasi paritas, memulihkan per teks, dan mengembalikan `None`
+alih-alih hasil sebagian. Backfill lalu tuntas 157/157, seluruhnya 768-dim.
+
+**4 — Satu dari 29 ringkasan panggilan hilang tanpa suara.** Mengejar
+`assert 0 == 1` yang acak di `test_integration_ring` justru menemukan bug
+produksi, bukan tes rapuh. `CallSession` membagikan `uuid4().hex`, dan penyaring
+rahasia memori panggilan menolak teks apa pun yang memuat 12–19 digit
+berurutan — heuristik nomor kartu. **Diukur: 6.906 dari 200.000 uuid hex
+cocok**, jadi kira-kira satu dari dua puluh sembilan ringkasan panggilan yang
+sah dibuang tanpa pesan di mana pun. `record()` mengembalikan `False` dan tidak
+ada yang membacanya. Hex kanonik 32 karakter kini dikecualikan dari heuristik
+digit **saja**; penanda kata rahasia tetap berlaku untuk setiap field, dan
+`4111111111111111` tetap ditolak persis seperti sebelumnya.
+
+**5 — Menukar klaim palsu dengan cerminnya bukan perbaikan.** Pesan gagal Fase
+13 semula berbunyi *"tidak ada panggilan yang berjalan"* — padahal itu tidak
+bisa diketahui: bukti yang gagal bisa berarti selektornya tidak cocok dengan
+DOM WhatsApp, bukan bahwa panggilan tidak dimulai. Menutup teleponnya otomatis
+juga mustahil, karena tombol akhiri-telepon dicari dengan selektor yang barusan
+gagal. Pesannya kini menyatakan keadaan panggilan **TIDAK DIKETAHUI** dan
+menyuruh Takeda memeriksa jendelanya.
+
+**Bukti:** `focused-tested` — `tests/test_whatsapp_call_proof.py` (252 baris),
+`tests/test_embed_batch_parity.py` (139), `tests/test_memory_embedding_backfill.py`
+(117). Backfill 157/157 adalah `live-proven` (dijalankan pada basis data
+sungguhan). Bukti panggilannya **belum** `live-proven`: panggilan nyata
+2026-08-06 tetap gagal, dan itu berlanjut sebagai S-26, S-29 — yang justru
+membuktikan lapisan kejujurannya bekerja, karena kegagalannya dilaporkan
+alih-alih dinarasikan sebagai sukses.
+
+---
+
 ### Fase 14 — Kontrak bukti untuk aksi eksternal
 
 **Menutup:** S-1 lapis 2. **Prasyarat:** Fase 13.
@@ -3433,6 +3499,47 @@ mesinnya berganti.
 
 Sekalian: `### Hasil Fase 13` tidak pernah ditulis meski pekerjaannya sudah ada
 di kode. Dokumennya yang bolong, bukan pekerjaannya.
+
+### Hasil prasyarat — SELESAI 2026-08-09
+
+Diselamatkan dalam tiga commit terpisah, dikelompokkan menurut isinya — bukan
+satu tumpukan. Semuanya pekerjaan sesi sebelumnya; tidak ada isinya yang
+kuubah, dan seluruh suite hijau sebelum disimpan.
+
+| commit | isi |
+|---|---|
+| `4dcbbc9` | empat celah pengerasan + ujinya |
+| `6ed237a` | SDK `openai` didaftarkan sebagai dependensi agent |
+| `45f7dde` | sisa uji, harness WhatsApp, readme, lima uji lama yang diperbaiki |
+
+Yang paling serius di antaranya: skrip elevasi firewall dashboard ditulis di
+`tempfile.gettempdir()` lalu dijalankan lewat `ShellExecuteW` dengan hak
+**Administrator**. Direktori itu bisa ditulis proses lain, sehingga ada jendela
+waktu antara tulis dan eksekusi di mana isinya dapat diganti. Kini ditulis di
+`~/.jarvis` yang ACL-nya sudah dikeraskan.
+
+Berikutnya: `WebhookReceiver` memakai `port or default`, dan `0` itu falsy
+padahal `port=0` adalah permintaan EKSPLISIT "pilih port bebas" — setiap
+pemanggil ephemeral diam-diam merebut port produksi 8791. Dan SDK `openai`
+tidak terdaftar di extra mana pun meski lane berat bergantung padanya, sehingga
+kegagalannya muncul sebagai `ModuleNotFoundError` pada chat PERTAMA, bukan saat
+boot.
+
+`Hasil Fase 13` ditulis menyusul dari dua commit aslinya (`28daccc`,
+`e58861c`) — bukan dari ingatan.
+
+**Yang SENGAJA tidak ikut di-commit,** karena ini keputusan produk dan bukan
+"menyelamatkan yang menggantung":
+
+* penghapusan `AUDIT_REPORT.md`, `JARVIS.MD`, `JARVIS_MK50_MASTER_SPEC.md`
+  (2.271 baris). Ketiganya masih dirujuk `.hermes/plans/*`, dan `jarvisfix.md`
+  sendiri menyebut "MK50 §7". Menghapus spesifikasi induk butuh keputusan
+  Takeda, bukan efek samping pembersihan.
+* `.hermes/handoffs/current.md` dan `.curator_state.json` — keduanya state
+  runtime yang berubah sendiri; `.curator_state.json` bahkan hanya berisi satu
+  timestamp dan sebaiknya di-gitignore.
+
+`full_run.txt` (keluaran pytest sisa) dihapus.
 
 ---
 
