@@ -15,6 +15,8 @@ PLAN = """
 | 18 | Baris tabel yang menyebut S-3 dan menunggu | ✅ **SELESAI** |
 | 22 | Baris tabel lain yang menyebut S-22 dan menunggu sesi nyata |
 
+## Fase 38 — Selesaikan sesuatu yang belum dikerjakan
+
 ## Fase 39 — Fase lama yang ditandai selesai di judulnya — SELESAI ✅
 
 ## Fase 40 — Fase yang sudah selesai
@@ -77,6 +79,17 @@ def test_summary_table_rows_are_not_mistaken_for_open_findings():
     assert not any("SELESAI" in item for item in findings), findings
 
 
+def test_a_word_that_merely_contains_selesai_is_not_a_completion_mark():
+    """"Selesaikan migrasi FROZEN" adalah pekerjaan, bukan laporan selesai.
+
+    Tanpa batas kata, fase paling berisiko di Siklus 6 hilang dari daftar
+    tanpa suara. Ditemukan dengan MENJALANKAN skripnya, bukan membacanya.
+    """
+    numbers = [number for number, _, _ in generator.open_phases(PLAN)]
+
+    assert 38 in numbers, "fase yang judulnya memuat 'Selesaikan' ikut terbuang"
+
+
 def test_a_phase_marked_done_in_its_own_title_is_not_offered_again():
     """Fase 0-13 menandai selesai di judul, bukan lewat bagian "Hasil".
 
@@ -87,15 +100,30 @@ def test_a_phase_marked_done_in_its_own_title_is_not_offered_again():
     assert 39 not in numbers
 
 
-def test_the_real_plan_has_almost_nothing_left_open():
-    """Penjaga terhadap parser yang terlalu longgar ATAU terlalu ketat.
+def test_the_parser_still_recognises_the_finished_work():
+    """Penjaga terhadap parser yang berhenti mengenali penanda selesai.
 
-    Setelah Siklus 5, hampir semua fase punya penanda selesai. Kalau angka ini
-    melonjak, parsernya yang rusak — bukan pekerjaannya yang bertambah.
+    Bentuk pertama uji ini mengunci "paling banyak 3 fase tertunda", dan itu
+    salah: ia gagal begitu Siklus 6 menambahkan delapan fase yang SAH.
+    Penjaga harus menangkap parser yang rusak, bukan pekerjaan yang bertambah —
+    jadi yang dihitung adalah fase yang SUDAH selesai.
     """
-    pending = generator.open_phases(generator._text())
+    all_phases = generator.phases(generator._text())
+    finished = [item for item in all_phases if item[2]]
 
-    assert len(pending) <= 3, [f"Fase {n}" for n, _, _ in pending]
+    assert len(finished) >= 30, (
+        f"hanya {len(finished)} fase terbaca selesai dari {len(all_phases)} — "
+        "parsernya berhenti mengenali penanda selesai")
+
+
+def test_no_phase_from_the_finished_cycles_is_offered_again():
+    """Siklus 1-5 sudah tuntas; hanya Fase 13 yang bagian Hasil-nya belum
+    ditulis (pekerjaannya ada di kode, dokumennya yang bolong).
+    """
+    pending = {number for number, _, _ in generator.open_phases(generator._text())}
+    stale = {number for number in pending if number <= 34} - {13}
+
+    assert not stale, f"fase yang sudah selesai ditawarkan lagi: {sorted(stale)}"
 
 
 def test_the_prompt_never_claims_a_test_result():

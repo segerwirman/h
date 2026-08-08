@@ -3382,3 +3382,253 @@ Skrip itu membaca ulang `jarvisfix.md` dan git **setiap kali dijalankan**, dan
 sengaja **tidak pernah mengklaim hasil uji**: ia mencetak perintah yang harus
 dijalankan, bukan angka dari kemarin. Menyalin "2593 lulus" ke prompt hari ini
 persis jenis klaim palsu yang dikejar sebelas fase di dokumen ini.
+
+---
+
+# SIKLUS 6 — kematangan (2026-08-09)
+
+Lahir dari audit menyeluruh 2026-08-08 (S-32…S-38). Berbeda dari Siklus 4 dan
+5, siklus ini **tidak menjanjikan kecepatan**.
+
+Kecepatannya sudah diambil dan terukur: persiapan sebelum model 3.750 → ~400
+ms, perintah pertama setelah boot 2.427 → 1,3 ms, jalur instan lengkap di bawah
+2 ms. Yang tersisa dari sebuah giliran adalah panggilan modelnya sendiri
+(1,86–4,42 detik, Fase 24), dan tidak ada fase di siklus ini yang menyentuhnya
+— itu keputusan perangkat keras, bukan kode (lihat "Tuas terbesar yang bukan
+kode").
+
+**Yang dibeli siklus ini adalah biaya perbaikan di masa depan.** Lima siklus
+terakhir menghabiskan sebagian besar waktunya bukan untuk menulis perbaikan,
+melainkan untuk menemukan penyebabnya — dan hampir selalu karena sesuatu gagal
+tanpa bersuara.
+
+| Fase | Isi | Menutup | Ukuran keberhasilan |
+|---|---|---|---|
+| — | prasyarat: selamatkan yang menggantung | S-38 | 69 uji ter-commit |
+| 35 | Jadikan diam mustahil | S-32 | 97 penelanan "lain" → 0 |
+| 36 | Batas sandbox dijaga uji | S-36 | ≥12 uji batas, semuanya baru |
+| 37 | Rotasi log + pisahkan kanal bukti | S-35 | log terbatas, audit tetap awet |
+| 38 | Selesaikan migrasi FROZEN | S-33, S-34 | 15 seam → 0, ~4.500 baris kembar hilang |
+| 39 | Drift config jadi kegagalan uji | S-37 | 52 kunci mati → 0 |
+| 40 | Pecah `window.py` | S-33 | 2.703 baris → di bawah 800 per berkas |
+| 41 | Tabel status `live-proven` | — | satu tempat, bukan lima siklus |
+| 42 | Ukur rentang yang masih gelap | — | angka untuk bicara→ACK |
+
+**Jalur paralel yang bukan kode dan tidak boleh dilewati:** pakai Jarvis
+beberapa hari. Fase 25, 26, dan 30 baru berguna setelah punya data nyata —
+saat ini `command_plan` berisi **0 entri** dan `command_index` **1**. Ini juga
+satu-satunya cara menaikkan ketiganya dari `focused-tested` ke `live-proven`.
+
+---
+
+## Prasyarat — selamatkan yang menggantung (S-38)
+
+Bukan fase; dikerjakan sekali sebelum apa pun. 10 berkas uji tak terlacak
+(**69 uji, semuanya lulus**), 1 modul sumber tak terlacak
+(`jarvis/live/whatsapp_hardware_harness.py`), dan berkas termodifikasi yang
+menggantung.
+
+Uji yang lulus tetapi tidak tersimpan sama nilainya dengan nol uji begitu
+mesinnya berganti.
+
+Sekalian: `### Hasil Fase 13` tidak pernah ditulis meski pekerjaannya sudah ada
+di kode. Dokumennya yang bolong, bukan pekerjaannya.
+
+---
+
+## Fase 35 — Jadikan diam mustahil (S-32)
+
+**Menutup:** akar yang sama dengan S-1, S-13, S-22, T4, dan sebagian besar bug
+lapangan lima siklus terakhir.
+
+199 blok `except …: pass|continue`. Hanya 13% pembersihan yang sah:
+
+| jenis | jumlah |
+|---|---|
+| **lain** — kegagalan sungguhan yang hilang | 97 (48%) |
+| **IO/jaringan** — tempat kegagalan paling mungkin | 72 (36%) |
+| pembersihan (sah) | 26 (13%) |
+| impor opsional (sah) | 3 (1%) |
+
+**Rencana:** satu helper `jarvis/core/quiet.py` → `swallow(event, **konteks)`
+yang SELALU mencatat, lalu aturan ruff yang melarang bentuk lama di direktori
+inti. Ditegakkan mesin, bukan ingatan.
+
+**Batas keras:** jangan mengubah alur kendali. Fase ini **hanya** menambahkan
+suara; blok yang hari ini menelan tetap menelan, tetapi meninggalkan jejak.
+Mengubah `pass` menjadi `raise` di 199 tempat sekaligus adalah cara tercepat
+merusak aplikasi yang sedang bekerja.
+
+**Yang harus diukur:** jumlah entri log baru per boot. Bila fase ini membanjiri
+log, ia memindahkan masalah, bukan menyelesaikannya — dan Fase 37 belum jalan.
+
+**Selesai bila:** 97 blok "lain" dan 72 blok IO bersuara; aturan ruff aktif;
+suite hijau; jumlah log per boot terukur dan masih terbaca.
+
+---
+
+## Fase 36 — Batas sandbox dijaga uji (S-36)
+
+**Menutup:** S-36. Dikerjakan lebih awal karena murah dan menjaga permukaan
+paling berbahaya.
+
+`execute_code`, `file_write`, `file_patch`, `cron_*`, `task_*` semuanya AKTIF
+di registry, dan modulnya tidak pernah disebut satu pun uji. `_inside_sandbox`
+adalah **satu fungsi** yang berdiri antara agent dan seluruh disk Takeda.
+
+Probe 2026-08-08 menahan 8 dari 8 percobaan (`../..`, UNC `//?/`, path absolut,
+campuran). Rancangannya benar. Yang tidak ada adalah penjaganya untuk besok:
+yang benar hari ini tanpa uji hanyalah yang belum sempat rusak.
+
+**Rencana:** delapan kasus probe itu menjadi uji permanen, ditambah symlink,
+junction Windows, nama pendek 8.3, dan path dengan karakter Unicode yang
+menormalisasi berbeda.
+
+**Batas keras:** ini fase **uji saja**. Bila sebuah kasus ternyata bocor,
+perbaikannya fase tersendiri dengan temuan bernomor — jangan diselundupkan.
+
+**Selesai bila:** ≥12 uji batas hijau, dan setiap tool aktif tanpa uji punya
+minimal satu uji jalur bahagia + satu uji penolakan.
+
+---
+
+## Fase 37 — Rotasi log + pisahkan kanal bukti (S-35)
+
+**Menutup:** S-35.
+
+`logs/jarvis.log`: 41,0 MB / 199.981 baris dalam empat minggu, tanpa batas.
+
+Ini bukan kebersihan disk. Seluruh metode kerja dokumen ini bersandar pada log
+sebagai bukti. Kanal bukti yang tumbuh tanpa batas berhenti bisa dibaca tepat
+ketika paling dibutuhkan — dan Fase 35 akan menambah volumenya.
+
+**Rencana:** `RotatingFileHandler` dengan retensi untuk log cerewet, DAN
+pisahkan audit JSONL (`*_audit.jsonl`) yang harus awet dari log yang boleh
+dibuang. Keduanya, bukan salah satu.
+
+**Batas keras:** `logging.test_file` (§22) tidak boleh ikut terpotong di tengah
+suite — pemisahan log uji itu yang membuat S-22 bisa dipecahkan.
+
+**Selesai bila:** log terbatas ukurannya, audit JSONL tetap utuh, dan ada uji
+yang membuktikan rotasi tidak menghapus entri yang sedang ditulis.
+
+---
+
+## Fase 38 — Selesaikan migrasi FROZEN (S-33, S-34)
+
+**Menutup:** S-33 dan S-34. Fase terbesar dan paling berisiko di siklus ini.
+
+| | baris | pengimpor |
+|---|---|---|
+| `ui.py` (FROZEN) | 2.622 | **1** |
+| `jarvis/ui/window.py` | 2.703 | **18** |
+| `main.py` (FROZEN) | 1.877 | ditambal 15 seam |
+| `jarvis/main.py` | 392 | — |
+
+FROZEN dulu alat **stabilisasi** dan berhasil. Sekarang ia biaya: S-13, S-15,
+dan S-27 semuanya hidup di lapisan seam, dan semuanya lama dilacak justru
+karena perilakunya tidak berada di tempat kodenya berada.
+
+**Rencana:** angkat `jarvis/ui/window.py` + `jarvis/main.py` sebagai
+satu-satunya tumpukan; lipat 15 `install(legacy)` menjadi kode biasa;
+arsipkan `ui.py`/`main.py`; perbarui `config/frozen_manifest.json` **secara
+sadar**, bukan sebagai efek samping.
+
+**Batas keras:**
+* Kerjakan SETELAH Fase 35 — melipat seam sambil kegagalan masih senyap adalah
+  cara termahal mengerjakannya.
+* Satu seam per commit, suite hijau di antara setiap commit.
+* Pipeline suara Gemini Live harus tetap hidup di setiap langkah; bila satu
+  seam tidak bisa dilipat tanpa memutusnya, **hentikan dan catat**, jangan
+  paksakan.
+
+**Selesai bila:** 0 pemanggilan `install(legacy)`, `ui.py`/`main.py` tidak lagi
+di jalur runtime, manifest FROZEN diperbarui dengan alasan tertulis, dan suara
+end-to-end terbukti masih jalan di sesi nyata — `live-proven`, bukan cukup
+`focused-tested`.
+
+---
+
+## Fase 39 — Drift config jadi kegagalan uji (S-37)
+
+**Menutup:** S-37.
+
+`config.yaml` 1.011 baris / 617 kunci. Kode membaca 297 (+28 section, +5
+prefiks dinamis). Sisanya: **52 kunci mati**, dan **36 kunci dibaca tanpa
+pernah dideklarasikan**.
+
+Keduanya berbahaya dengan cara berbeda — yang mati membuat orang menyetel hal
+yang tidak berpengaruh; yang tak dideklarasikan membuat perilaku bergantung
+pada default tersembunyi yang tidak terlihat di mana pun.
+
+**Rencana:** perluas `config.validate()` yang sudah ada agar gagal pada
+keduanya, dengan daftar pengecualian eksplisit untuk prefiks dinamis
+(`auxiliary.*`, `providers.google.apis.*`, dan tiga lainnya).
+
+**Batas keras:** hapus kunci mati hanya setelah dipastikan tidak dibaca lewat
+kunci dinamis. Audit 2026-08-08 sempat melaporkan 80 yatim; 28 di antaranya
+ternyata dibaca `f"auxiliary.{task}.provider"`. Pola sempit menghasilkan angka
+yang salah.
+
+**Selesai bila:** `config.validate()` gagal untuk kunci mati dan kunci tak
+dideklarasikan, dan `config.yaml` bersih dari keduanya.
+
+---
+
+## Fase 40 — Pecah `jarvis/ui/window.py` (S-33)
+
+**Prasyarat:** Fase 38.
+
+2.703 baris, 157 fungsi, 17 thread. Satu berkas memegang loop mic, dispatch
+perintah, antrean bicara, panel, dan pengenalan penutur sekaligus.
+
+**Rencana:** pisahkan per tanggung jawab, bukan per ukuran. Kandidat paling
+jelas: loop mic + barge-in + speaker id (satu berkas), dispatch perintah +
+jembatan deterministik (satu berkas), sisanya tetap widget.
+
+**Batas keras:** murni pemindahan. Tidak ada perubahan perilaku dalam fase ini
+— bila sebuah pemindahan menggoda untuk sekalian memperbaiki sesuatu, catat
+sebagai temuan dan kerjakan terpisah.
+
+**Selesai bila:** tidak ada berkas UI di atas 800 baris, dan suite hijau tanpa
+satu pun uji diubah. Uji yang harus ikut berubah adalah tanda perilaku ikut
+berubah.
+
+---
+
+## Fase 41 — Tabel status `live-proven`
+
+Kosakata buktinya sudah ada (`source-present` … `live-proven`). Yang belum ada
+adalah **satu tempat** untuk melihat fitur mana yang benar-benar terbukti di
+lapangan; saat ini jawabannya tersebar di enam siklus.
+
+**Rencana:** satu tabel di dokumen ini, dibangkitkan skrip seperti
+`next_phase_prompt.py` — dengan alasan yang sama: tabel yang disalin tangan
+membeku, lalu menyesatkan.
+
+**Batas keras:** skrip tidak boleh MENYIMPULKAN `live-proven`. Label itu hanya
+boleh datang dari kalimat eksplisit di bagian Hasil. Menyimpulkannya dari
+"ada ujinya" persis klaim palsu yang dikejar sebelas fase.
+
+**Selesai bila:** `python scripts/evidence_status.py` mencetak tabelnya, dan
+angkanya cocok dengan yang tertulis di bagian Hasil masing-masing fase.
+
+---
+
+## Fase 42 — Ukur rentang yang masih gelap
+
+**Opsional; kerjakan hanya bila "instan" masih terasa kurang.**
+
+Fase 24 menutup dengan satu pengakuan: penanda latensi dibuka di ACK, sehingga
+**waktu antara Takeda selesai bicara dan ACK terbit masih gelap**. Seluruh
+angka kecepatan di dokumen ini mengukur dari ACK ke depan.
+
+**Rencana:** penanda dari akhir ucapan (VAD/transkrip final) sampai ACK,
+memakai `jarvis/core/latency.py` yang sudah ada.
+
+**Batas keras:** ukur dulu, jangan perbaiki apa pun di fase ini. Aturan 1
+protokol; tiga kali dalam dokumen ini tebakan arsitektur meleset (S-13, S-22,
+Fase 24 sendiri).
+
+**Selesai bila:** ada angka untuk rentang itu — bukan perbaikan.
+

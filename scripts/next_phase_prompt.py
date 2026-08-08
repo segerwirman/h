@@ -51,7 +51,13 @@ def _text() -> str:
 #: bukan lewat bagian "Hasil" tersendiri. Membaca hanya satu bentuk membuat 14
 #: fase yang sudah beres ditawarkan lagi sebagai pekerjaan tertunda — ditemukan
 #: dengan MENJALANKAN skrip ini, bukan dengan membacanya.
-_DONE_IN_TITLE_RE = re.compile(r"SELESAI|✅|DITUTUP|TIDAK DIBANGUN", re.I)
+#:
+#: Batas kata WAJIB. Tanpa `\\b`, judul "Fase 38 — **Selesai**kan migrasi
+#: FROZEN" dibaca sebagai fase yang sudah selesai, dan fase paling berisiko di
+#: Siklus 6 hilang dari daftar tanpa suara — persis kegagalan yang keberadaan
+#: skrip ini dimaksudkan untuk mencegah. Ditemukan dengan menjalankannya.
+_DONE_IN_TITLE_RE = re.compile(
+    r"\bSELESAI\b|✅|\bDITUTUP\b|\bTIDAK DIBANGUN\b", re.I)
 
 
 def phases(text: str) -> list[tuple[int, str, str]]:
