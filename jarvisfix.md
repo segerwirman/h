@@ -3071,6 +3071,47 @@ Dua jalan sah: pasang dependensinya, atau nyatakan matinya di tempat yang
 Takeda benar-benar lihat. Yang tidak sah adalah keadaan sekarang: mati, tetapi
 hanya sebaris peringatan di log yang tidak ada yang baca.
 
+### Hasil Fase 33 — SELESAI 2026-08-08
+
+**Pengukuran membantah separuh temuan T5.** Ada DUA penyimpanan memori, dan
+peringatannya bicara tentang yang salah:
+
+| store | pakai FAISS? | keadaan nyata |
+|---|---|---|
+| `jarvis/agent/memory_store.py` (dipakai agent) | tidak — SQLite + cosine | **298/298 baris punya embedding** |
+| `jarvis/core/memory.py` (indeks lama) | ya | `data/memory.faiss` tidak pernah ada |
+
+Jadi Jarvis berkata *"Semantic memory disabled"* setiap boot sementara memori
+semantik yang benar-benar dipakainya hidup sepenuhnya. Itu **kegagalan palsu**
+— kelas kesalahan yang sama dengan klaim palsu yang diberantas Siklus 2, hanya
+arahnya terbalik. FAISS tidak dipasang: yang salah pesannya, bukan
+dependensinya.
+
+Yang dikerjakan:
+
+* Pesannya kini menyebut persis apa yang mati dan apa yang tidak, sebagai
+  konstanta `FAISS_MISSING_DETAIL` supaya bisa diuji tanpa menebak teks
+  sumber. Tingkatnya turun dari `warning` ke `info` — ini memang bukan
+  peringatan.
+* `core.memory` menjadi subsistem boot, sehingga keadaannya muncul di deret
+  status yang sama dengan `core.llm`/`core.vision`. Satu baris di log 41 MB
+  bukan "terlihat". Dijalankan sungguhan sekarang:
+  `core.memory ONLINE — 298/298 memori punya embedding`.
+* Empat keadaan dibedakan: kosong (bukan rusak), sebagian punya embedding
+  (degraded), nol embedding (degraded, pencarian jatuh ke teks), dan tidak
+  bisa dibaca (**failed** — tidak bisa dibaca bukan sama dengan kosong).
+
+**Satu pelajaran metode.** Tiga uji pertamaku memeriksa TEKS SUMBER, dan
+langsung terpicu oleh komentarku sendiri yang mengutip kalimat lama. Uji
+semacam itu lemah dua arah: ia gagal karena hal yang benar, dan ia akan lulus
+untuk kode yang salah asal kata-katanya cocok. Diganti menjadi uji perilaku —
+konstanta pesannya, dan `_memory_counts` dijalankan terhadap basis data
+sungguhan.
+
+**Bukti:** `focused-tested` + `runtime-wired` — 10 uji di
+`tests/test_memory_visibility.py`, 2593 lulus seluruh suite, ruff bersih,
+FROZEN utuh.
+
 ---
 
 ## Fase 34 — Tunggu keadaan, bukan tidur tetap (T8)

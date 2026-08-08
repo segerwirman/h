@@ -33,6 +33,12 @@ from jarvis.core import config, log, llm
 
 _logger = log.get("core.memory")
 
+#: §33 (T5) — pesan yang benar-benar dikirim, sebagai konstanta supaya bisa
+#: diuji tanpa menebak-nebak teks sumber.
+FAISS_MISSING_DETAIL = (
+    "indeks vektor lama core.memory nonaktif (faiss tidak terpasang); "
+    "memori semantik agent tetap jalan lewat memory_store")
+
 _SCHEMA_VERSION = 2
 
 
@@ -154,7 +160,14 @@ class MemoryManager:
             else:
                 self.docs = []
         except ImportError:
-            _logger.warning("memory.faiss_missing", detail="FAISS is not installed. Semantic memory disabled.")
+            # §33 (T5) — pesan lama berbunyi "Semantic memory disabled" dan
+            # itu MELEBIH-LEBIHKAN kerugiannya. Yang mati hanyalah indeks
+            # vektor lama di modul ini; memori semantik yang benar-benar
+            # dipakai agent hidup di jarvis/agent/memory_store.py (SQLite +
+            # embedding, cosine in-memory, tanpa FAISS) — diukur 298 dari 298
+            # baris punya embedding. Kegagalan palsu sama merusaknya dengan
+            # sukses palsu, hanya arahnya terbalik.
+            _logger.info("memory.faiss_missing", detail=FAISS_MISSING_DETAIL)
             self.index = None
             self.docs = []
 

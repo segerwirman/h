@@ -97,6 +97,53 @@ def _check_gesture() -> CheckResult:
         return CheckResult("core.gesture", False, detail=str(e)[:80])
 
 
+def _memory_counts() -> tuple[int, int]:
+    """(jumlah memori, jumlah yang punya embedding) dari store yang DIPAKAI.
+
+    §33 — sengaja membaca ``memories`` di basis data agent, bukan indeks
+    FAISS lama: berkas itu bahkan tidak pernah ada, dan menghitungnya tidak
+    memberi tahu apa pun tentang memori yang benar-benar bekerja.
+    """
+    import sqlite3
+
+    from jarvis.agent.paths import db_path
+
+    connection = sqlite3.connect(f"file:{db_path()}?mode=ro", uri=True)
+    try:
+        total = int(connection.execute(
+            "SELECT COUNT(*) FROM memories").fetchone()[0])
+        with_vectors = int(connection.execute(
+            "SELECT COUNT(*) FROM memories "
+            "WHERE embedding IS NOT NULL").fetchone()[0])
+        return total, with_vectors
+    finally:
+        connection.close()
+
+
+def _check_memory() -> CheckResult:
+    """Keadaan memori semantik, di tempat Takeda benar-benar melihat.
+
+    Sebelumnya satu-satunya jejaknya adalah sebaris peringatan di log 41 MB,
+    dan peringatan itu pun berlebihan (T5).
+    """
+    try:
+        total, with_vectors = _memory_counts()
+    except Exception as e:                                   # noqa: BLE001
+        # Tidak bisa dibaca BUKAN sama dengan kosong.
+        return CheckResult("core.memory", False, detail=str(e)[:80])
+    if total == 0:
+        return CheckResult("core.memory", True, detail="memori masih kosong")
+    if with_vectors == 0:
+        return CheckResult("core.memory", True, degraded=True,
+                           detail=f"{total} memori, 0 punya embedding — "
+                                  "pencarian semantik jatuh ke teks")
+    if with_vectors < total:
+        return CheckResult("core.memory", True, degraded=True,
+                           detail=f"{with_vectors}/{total} memori punya embedding")
+    return CheckResult("core.memory", True,
+                       detail=f"{with_vectors}/{total} memori punya embedding")
+
+
 def _check_browser() -> CheckResult:
     try:
         import PyQt6.QtWebEngineWidgets  # noqa: F401
@@ -169,6 +216,7 @@ _CHECKS: dict[str, Callable[[], CheckResult]] = {
     "core.vision": _check_vision,
     "core.gesture": _check_gesture,
     "core.browser": _check_browser,
+    "core.memory": _check_memory,
     "core.system": _check_system,
 }
 
