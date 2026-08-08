@@ -2465,6 +2465,10 @@ class JarvisUI:
 
         analyzer = BargeInAnalyzer(BargeInConfig.from_config())
         analyzer.start_calibration(time.monotonic())
+        # §30 — stream yang sama sudah memegang seluruh audio mic, jadi
+        # pengenalan penutur tidak perlu membuka jalur audio kedua.
+        from jarvis.core import speaker_id
+        speaker_listener = speaker_id.Listener(16000)
 
         try:
             import numpy as np
@@ -2495,6 +2499,20 @@ class JarvisUI:
                     # daripada interupsi yang terlewat.
                     playback_level=_playback_level(self._win),
                 )
+                # §30 — mengamati saja secara default. Gerbangnya mati sampai
+                # Takeda melihat angka dari suaranya sendiri; verifikasi yang
+                # keliru membuat Jarvis TULI terhadap pemiliknya, dan itu jauh
+                # lebih buruk daripada menjawab orang lain sesekali.
+                try:
+                    who = speaker_listener.feed(
+                        indata, listening=(state == "LISTENING"))
+                    if who is not None and who.blocked:
+                        self._win.write_log(
+                            "SYS: Suara tidak dikenali — perintah diabaikan "
+                            f"(skor {who.score:.2f} < {who.threshold:.2f}).")
+                except Exception:                            # noqa: BLE001
+                    pass
+
                 if verdict.interrupt:
                     _logger.info("voice.barge_in", rms=round(verdict.rms, 3),
                                  threshold=round(verdict.threshold, 3),
@@ -2508,6 +2526,7 @@ class JarvisUI:
                 # dan barge-in yang tidak pernah memicu sama-sama terlihat
                 # sunyi di log, dan sunyi tidak membedakan apa pun.
                 _logger.info("mic_meter.started", **analyzer.diagnostics())
+                _logger.info("speaker_id.started", **speaker_id.diagnostics())
                 while not self._mic_meter_stop.wait(0.2):
                     pass
         except Exception as e:

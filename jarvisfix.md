@@ -2898,6 +2898,58 @@ Gerbangnya dinyalakan Takeda setelah angkanya terlihat.
 diabaikan diam-diam adalah kelas bug yang tujuh fase dihabiskan untuk
 memberantasnya.
 
+### Hasil Fase 30 — SELESAI (mengamati) 2026-08-08
+
+`jarvis/core/speaker_id.py` + `tests/test_speaker_id.py` (36 uji), merah lebih
+dulu. Sidik suara: selubung rata-rata dan sebarannya di 32 pita mel,
+dinormalisasi terhadap kekerasan suara, numpy saja, tanpa unduhan.
+
+Terpasang di `MainWindow._mic_meter` — stream yang sama sudah memegang seluruh
+audio mic, jadi tidak ada jalur audio kedua yang dibuka. `Listener` menyatukan
+blok 64 ms menjadi satu ucapan dan menutupnya saat sunyi; menilai per blok
+tidak mungkin mengenali siapa pun.
+
+**Pengukuran membantah ambang bawaanku, dan itu bagian terpenting fase ini.**
+Angka awal 0.82 kupilih sebelum mengukur. Hasilnya:
+
+| | skor |
+|---|---|
+| pemilik, take lain | 1.000 |
+| pemilik, +derau 5× | 0.994 |
+| pemilik, f0 geser 10% (flu/lelah) | 0.984 |
+| **penutur lain, suara rendah** | **0.903** ← LOLOS |
+| **penutur lain, formant beda** | **0.860** ← LOLOS |
+| penutur lain, suara tinggi | 0.618 |
+
+Dua dari tiga "penutur lain" lolos ambang tetap. Sebaliknya take pemilik
+semuanya 1.000 — sinyal sintetis terlalu bersih untuk melahirkan ambang apa
+pun. Ini jebakan S-25 yang sama persis. Karena itu ambangnya sekarang
+**dikalibrasi saat pendaftaran**: tiap take dibandingkan dengan take lainnya
+(leave-one-out), dan ambangnya ditaruh sedikit di bawah take pemilik yang
+paling buruk — yaitu seberapa jauh suara Takeda bisa menyimpang dari dirinya
+sendiri, pada mikrofon itu, di ruangan itu. `DEFAULT_THRESHOLD` tinggal
+cadangan terakhir.
+
+**Tiga keadaan yang sengaja TIDAK pernah menolak**, masing-masing berujinya:
+
+| keadaan | alasan |
+|---|---|
+| belum terdaftar | tidak ada yang bisa dibandingkan |
+| audio tak terpakai (sunyi/terlalu pendek) | bukan bukti bahwa itu orang lain; menolaknya membuat Jarvis membisu tiap kali mikrofonnya buruk |
+| profil rusak | satu berkas cacat tidak boleh membuat Jarvis tuli |
+
+**Bukti:** `focused-tested` + `runtime-wired` — 36 uji, 2554 lulus seluruh
+suite, ruff bersih, FROZEN utuh.
+
+**Yang uji-uji ini TIDAK buktikan, dan ini harus dibaca sebelum menyalakan
+gerbangnya:** seluruh angka di atas berasal dari suara sintetis. Ia
+membuktikan pipanya — determinisme, batas, penanganan sampah, penolakan yang
+terlihat, kalibrasi yang bekerja — dan **tidak** membuktikan akurasi pada
+suara manusia. Variasi suara manusia yang sama jauh lebih besar daripada 1.000
+yang terlihat di tabel. Karena itu `voice.speaker_id.gate` **default False**:
+Jarvis menghitung dan mencatat skor tiap ucapan tanpa menolak apa pun, sampai
+Takeda melihat `speaker_id.observed` di lognya sendiri dan memutuskan.
+
 ---
 
 ## Fase 31 — Pakai jawaban deterministik yang sudah ada (S-31)
