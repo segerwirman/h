@@ -2635,6 +2635,54 @@ kesepakatan.
 Inilah yang membuat "instan tapi tetap pintar" mungkin — bukan memilih salah
 satu di antara keduanya.
 
+### Hasil Fase 27 — DIUKUR, TIDAK DIBANGUN 2026-08-08
+
+**Premisnya tidak berlaku, dan itu terlihat dari ukuran — bukan dari
+pendapat.** Fase ini mengandaikan jalur deterministik sedang MENUNGGU model.
+Yang terukur:
+
+| perintah | tier | keputusan |
+|---|---|---|
+| `buka spotify` | T0 | 0,17 ms |
+| `pause youtube` | T1 | 0,01 ms |
+| `cari berita hari ini` | T1 | 0,02 ms |
+| `telepon honbrew lewat whatsapp` | T2 | 0,02 ms |
+| `buatkan ringkasan rapat tadi` | T2 | 0,02 ms |
+
+`router.llm_fallback = False`, jadi tidak ada satu pun panggilan model di
+jalur klasifikasi. Jalur deterministik sudah berjalan **seketika**; model
+hanya ditanya justru di tempat yang TIDAK punya jalur deterministik. Irisan
+tempat spekulasi berguna karena itu kosong:
+
+* perintah yang persis berulang → sudah ditangani Fase 25, tanpa model;
+* perintah yang cocok aturan → sudah instan, tanpa model;
+* sisanya → memang butuh model, tidak ada apa pun untuk dijalankan paralel;
+* aksi tak-tertarik → dilarang berspekulasi oleh aturan rencananya sendiri.
+
+Membangunnya berarti menambah balapan pembatalan dan risiko aksi ganda demi
+keuntungan yang tidak bisa ditunjukkan angkanya. Fase ini ditutup sebagai
+**diukur dan sengaja tidak dibangun**, bukan sebagai pekerjaan tertunda.
+
+### S-31 — dua router tidak sepakat, dan yang lebih pintar tidak dipakai
+
+Ini temuan nyata yang muncul dari pengukuran di atas, bukan bagian dari
+rencana mana pun.
+
+`jarvis/agent/router.py` menyimpulkan `pause youtube` adalah **T1, "single
+browser media action"**, dalam 0,01 ms. Tetapi jalur perintah UI memakai
+`IntentRouter` di `jarvis/core/router.py`
+([window.py:1042](jarvis/ui/window.py#L1042)), yang menyimpulkan **CHAT** →
+`_chat()` → pipeline model. Hal yang sama terjadi pada `kirim pesan ke
+honbrew` dan `telepon honbrew lewat whatsapp`.
+
+Jadi Jarvis SUDAH tahu jawabannya secara deterministik, lalu membuangnya dan
+bertanya ke model. Ini persis "instan tapi tetap pintar" yang Takeda minta —
+tanpa spekulasi sama sekali, karena tidak ada yang perlu ditebak.
+
+**Belum dikerjakan dengan sengaja:** menjembatani kedua router mengubah jalur
+perintah utama untuk setiap ucapan, dan itu keputusan cakupan milik Takeda,
+bukan efek samping dari fase yang isinya ternyata kosong.
+
 ---
 
 ## Fase 28 — Satu antrean bicara
