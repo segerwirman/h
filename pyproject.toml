@@ -86,6 +86,11 @@ agent = [
     # HILANG dari kedua requirements lama, padahal penjadwalan cron
     # dipromosikan di readme.md — jarvis/agent/cron.py:51.
     "croniter>=2.0",
+    # SDK untuk setiap provider kind "openai_compat" (OpenAI, OpenRouter,
+    # endpoint custom) — jarvis/agent/llm_client.py:75 mengimpornya di dalam
+    # _client(). Tanpa ini provider custom gagal dengan ModuleNotFoundError
+    # yang hanya muncul saat chat pertama, bukan saat boot.
+    "openai>=2.0",
 ]
 
 dev = [
