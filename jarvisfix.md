@@ -287,19 +287,34 @@ agent.llm.retry        ClientError: 429 RESOURCE_EXHAUSTED  ×2
 agent.llm.chat_failed  ClientError: 429 RESOURCE_EXHAUSTED  ×2
 ```
 
-Kuota Gemini habis di lane teks/agent. **Sesi Live tidak terpengaruh** — 13 giliran suara sukses di menit yang sama. Retry sudah ada dan bekerja; batasnya yang tercapai. Kemungkinan sudah tertutup sendiri sekarang karena lane berat memakai `custom` — **belum diverifikasi ulang**.
+Kuota Gemini habis di lane teks/agent. **Sesi Live tidak terpengaruh** — 13 giliran suara sukses di menit yang sama. Retry sudah ada dan bekerja; batasnya yang tercapai.
+
+**Diperiksa 2026-08-08:** `routing.heavy.provider = custom`, jadi lane berat memang tidak lagi memakai kuota Gemini. Lane ringan tetap `gemini` (pilihan Takeda), sehingga 429 masih mungkin di sana. Belum terlihat lagi di log; dibiarkan terbuka sampai ada bukti dari pemakaian nyata, bukan ditutup karena sunyi.
 
 ## T3 — `test_relay.py` memakai port tetap — SELESAI ✅ (lihat Fase 10.1)
 
 Test memakai port webhook dari `.env` (8791). Kalau JARVIS berjalan, test menabrak server sungguhan dan dapat HTTP 401. Perlu port ephemeral atau isolasi. Masuk wilayah Fase 10.
 
-## T4 — `core.browser DEGRADED` — kontradiksi belum ditelusuri
+## T4 — `core.browser DEGRADED` — TERJELASKAN 2026-08-08, belum diperbaiki
 
-Boot melaporkan `core.browser DEGRADED — system browser ready; no embed driver`, padahal PyQt6-WebEngine terpasang dan cek terpisah di proses lain mengembalikan `QtWebEngine ready`. **Belum saya selidiki.** Jangan diasumsikan kosmetik sebelum ditelusuri.
+Boot melaporkan `core.browser DEGRADED — system browser ready; no embed driver`, padahal PyQt6-WebEngine terpasang dan cek terpisah di proses lain mengembalikan `QtWebEngine ready`.
+
+**Penyebabnya ditemukan dan bisa direproduksi.** `PyQt6.QtWebEngineWidgets` harus diimpor SEBELUM `QApplication` dibuat; sesudahnya importnya gagal. Diukur di dua proses bersih:
+
+```
+tanpa QApplication   -> CheckResult(ok=True, degraded=False, 'QtWebEngine ready')
+sesudah QApplication -> CheckResult(ok=True, degraded=True,  'system browser ready; no embed driver')
+```
+
+Jadi bukan kosmetik dan bukan kesalahan deteksi: driver embed benar-benar tidak tersedia pada saat boot memeriksanya, karena urutannya. Log boot nyata (`logs/jarvis.log`, 2026-08-05) memang berbunyi `DEGRADED`.
+
+**Perbaikannya** adalah memindahkan import WebEngine ke sebelum `QApplication` dibuat — tetapi `QApplication` lahir di jalur UI, dan `main.py`/`ui.py` FROZEN, jadi ini butuh seam dan keputusan cakupan. Belum dikerjakan.
 
 ## T5 — FAISS tidak ada di extra mana pun
 
 `memory.faiss_missing` muncul di setiap boot; memori semantik nonaktif. `faiss-cpu` tidak terdaftar di `[voice]`/`[vision]`/`[agent]`. Kosmetik, tapi berarti satu fitur mati diam-diam — kelas yang sama dengan insiden utama.
+
+**Diperiksa ulang 2026-08-08:** `import faiss` → `ModuleNotFoundError`, dan `pyproject.toml` masih hanya menyebutnya di komentar (baris 213), bukan sebagai dependensi. Masih TERBUKA, tidak berubah.
 
 ## T8 — `test_voice_playback_fix` flaky di bawah beban — TERBUKA
 
@@ -342,7 +357,14 @@ Lihat bagian OAuth di atas. Takeda memilih perbaikan tanpa auto-pilih model, jad
 
 # BAGIAN III — FASE YANG BELUM DIJALANKAN
 
-## FASE 7 — Pulihkan suite pytest utuh
+## FASE 7 — Pulihkan suite pytest utuh — SELESAI ✅ (diverifikasi 2026-08-08)
+
+**Status dokumen ini sempat basi.** Diperiksa ulang: seluruh suite kini jalan
+dalam SATU proses — `2518 passed`, dan `tests/test_actionpanel_toggle.py`
+sendiri `5 passed`. Crash `0xC0000409` tidak lagi terjadi. Kesehatan repo bisa
+diukur dengan satu perintah, yang justru dipakai di setiap fase Siklus 2–4.
+Catatan investigasi di bawah dipertahankan sebagai riwayat.
+
 
 `tests/test_actionpanel_toggle.py` crash native `0xC0000409` (STACK_BUFFER_OVERRUN, Qt offscreen) dan **membunuh seluruh proses pytest**. File itu punya 5 test; 1 lulus lalu proses mati, 4 tidak sempat jalan.
 
