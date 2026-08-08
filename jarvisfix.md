@@ -2966,6 +2966,44 @@ perlu ditebak, hanya jawaban yang sudah ada dan tidak dipakai.
 hanya boleh bekerja ketika router tier yakin DAN ada tool yang jelas untuk
 niat itu; selain itu perilakunya harus identik dengan hari ini.
 
+### Hasil Fase 31 — SELESAI 2026-08-08
+
+`router.deterministic_tool(text)` mengembalikan `(tool, args)` atau `None`,
+dipasang **tepat sebelum** `_chat()` di `MainWindow._dispatch_command`
+— bukan di depan segalanya. Jembatan yang duduk di depan akan mendahului
+aturan yang sudah benar untuk SETIAP ucapan; di sini ia hanya mengisi celah
+yang tadinya jatuh ke model. Ada uji yang mengunci urutan itu.
+
+Polanya memakai `_BROWSER_MEDIA_RE` yang **sama** dengan yang menggerakkan
+keputusan tier. Salinan kedua sebuah regex akan menyimpang diam-diam — tier
+bisa bilang T1 sementara jembatannya bilang tidak tahu, tanpa ada yang
+menyadarinya. Ada ujinya juga.
+
+**Satu cacat nyata ditemukan saat mengerjakannya.** Aturan medianya menuntut
+`video`, sehingga akhiran yang selalu Takeda pakai tidak pernah cocok:
+
+| perintah | sebelum | sesudah |
+|---|---|---|
+| `jeda videonya` | fallback percakapan, tanpa tool | T1 media → `user_browser_media` |
+| `pause videonya` | fallback percakapan | T1 media → `user_browser_media` |
+| `lanjutkan videonya` | fallback percakapan | T1 media → `user_browser_media` |
+
+Jadi aturan itu selama ini nyaris tidak pernah kena pada cara Takeda benar-benar
+bicara. Diperbaiki di regex bersamanya, bukan di salinan.
+
+**Celah yang sengaja dibiarkan.** `skip iklannya` diakui tier sebagai aksi
+media, tetapi `user_browser_media` hanya punya pause/play/toggle/mute/unmute.
+Mengarang aksi "skip" berarti menjalankan sesuatu yang tidak ada, jadi
+jembatannya mengembalikan `None` dan perintahnya tetap ke model. Ada ujinya
+supaya ini terbaca sebagai keputusan, bukan kelalaian.
+
+**Bukti:** `focused-tested` + `runtime-wired` — 21 uji di
+`tests/test_deterministic_bridge.py`, 2574 lulus seluruh suite, ruff bersih,
+FROZEN utuh. **Belum `live-proven`:** `user_browser_media` butuh Chrome yang
+dijalankan dengan `--remote-debugging-port=9222`; tanpa itu tool-nya melapor
+"tidak terjangkau" — dan sejak Fase 23 itu memang dibedakan dari "tidak ada
+video", yang diuji ulang di sini.
+
 ---
 
 ## Fase 32 — WebEngine diimpor sebelum `QApplication` (T4)

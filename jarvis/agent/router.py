@@ -301,8 +301,12 @@ _BROWSER_MEDIA_RE = re.compile(
     r"^(?:jarvis[,\s]+)?(?:tolong\s+)?(?:"
     r"pause|jeda|lanjutkan|resume|play|putar|mute|unmute|"
     r"besarkan|kecilkan|naikkan|turunkan|atur|set|skip|lewati"
-    r")\b.*\b(?:video|youtube|iklan|media|player)\b"
-    r"|^(?:jarvis[,\s]+)?(?:tolong\s+)?(?:skip|lewati)\s+iklan\b",
+    # §31 — akhiran "-nya/-ku/-mu" wajib diterima: Takeda mengatakan "jeda
+    # videonya", bukan "jeda video". Tanpa ini aturan medianya tidak pernah
+    # kena pada cara ia benar-benar bicara, dan perintahnya jatuh ke fallback
+    # percakapan tanpa satu pun tool yang teridentifikasi.
+    r")\b.*\b(?:video|youtube|iklan|media|player)(?:nya|ku|mu)?\b"
+    r"|^(?:jarvis[,\s]+)?(?:tolong\s+)?(?:skip|lewati)\s+iklan(?:nya)?\b",
     re.IGNORECASE,
 )
 _BROWSER_TAB_RE = re.compile(
@@ -310,6 +314,45 @@ _BROWSER_TAB_RE = re.compile(
     r"pindah|switch|daftar|list)\b.*\btab\b",
     re.IGNORECASE,
 )
+
+
+#: Kata kerja media → aksi tool. Satu-satunya tempat pemetaan ini hidup.
+_MEDIA_ACTIONS: tuple[tuple[str, str], ...] = (
+    ("pause", "pause"), ("jeda", "pause"),
+    ("lanjut", "play"), ("resume", "play"), ("play", "play"), ("putar", "play"),
+    ("unmute", "unmute"), ("bunyikan", "unmute"),
+    ("mute", "mute"), ("bisukan", "mute"),
+)
+
+
+def deterministic_tool(text) -> tuple[str, dict] | None:
+    """Tool konkret untuk perintah yang SUDAH pasti — atau ``None`` (§31).
+
+    S-31: router ini menyimpulkan ``pause youtube`` sebagai T1 "single browser
+    media action" dalam 0,01 ms, tetapi jalur perintah UI memakai
+    ``IntentRouter`` yang menyimpulkan CHAT dan menyerahkannya ke model.
+    Jarvis sudah tahu jawabannya, lalu membuangnya. Fungsi ini memberi jawaban
+    itu bentuk yang bisa dijalankan.
+
+    Sengaja memakai ``_BROWSER_MEDIA_RE`` yang SAMA dengan yang menggerakkan
+    keputusan tier: salinan kedua sebuah regex akan menyimpang diam-diam, dan
+    tier bisa bilang T1 sementara fungsi ini bilang tidak tahu tanpa ada yang
+    menyadarinya.
+
+    Bukan spekulasi — tidak ada yang ditebak di sini. Yang belum pasti tetap
+    ``None`` dan tetap ditanyakan ke model.
+    """
+    try:
+        raw = text if isinstance(text, str) else ""
+        normalized = _strip_command_prefix(_normalize(raw))
+        if not normalized or not _BROWSER_MEDIA_RE.search(normalized):
+            return None
+        for stem, action in _MEDIA_ACTIONS:
+            if stem in normalized:
+                return "user_browser_media", {"action": action}
+        return None
+    except Exception:                                        # noqa: BLE001
+        return None
 
 
 def extract_image_prompt(text: str) -> str:

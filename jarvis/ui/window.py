@@ -1068,7 +1068,52 @@ class MainWindow(QMainWindow):
         elif c.intent is Intent.NATIVE_AGENT_TASK:
             self.run_native_task(c.slots, text)
         else:
+            # §31 (S-31) — tepat SEBELUM menyerah ke model, tanyakan router
+            # tier yang sering sudah tahu jawabannya secara deterministik.
+            # Duduk di sini dengan sengaja: jembatan yang berada di depan
+            # segalanya akan mendahului aturan yang sudah benar, untuk SETIAP
+            # ucapan. Di sini ia hanya mengisi celah yang tadinya jatuh ke
+            # model.
+            from jarvis.agent import router as tier_router
+            resolved = tier_router.deterministic_tool(text)
+            if resolved is not None:
+                from jarvis.agent import registry
+                if registry.get(resolved[0]) is not None:
+                    self._run_deterministic_tool(*resolved)
+                    return
             self._chat(text)
+
+    def _run_deterministic_tool(self, tool_name: str, args: dict) -> None:
+        """Jalankan tool T1 langsung lewat registry; tidak masuk agent loop.
+
+        Kegagalannya dilaporkan apa adanya — Fase 23 sudah memisahkan
+        "browser tidak terjangkau" dari "tidak ada video", dan jembatan ini
+        tidak boleh mengubur perbedaan itu lagi.
+        """
+        self.orb.set_state(OrbState.THINKING)
+
+        def work():
+            import asyncio
+            from jarvis.agent import registry
+            try:
+                result = asyncio.run(registry.execute(tool_name, dict(args)))
+                if result.ok:
+                    text = str(result.display or result.for_llm())
+                    self.write_log(f"Jarvis: {text}")
+                    self._speak_line(text)
+                else:
+                    message = result.error or f"{tool_name} gagal tanpa detail."
+                    self.write_log(f"ERR: {message}")
+                    self._speak_line(message)
+            except Exception as exc:                         # noqa: BLE001
+                message = f"{tool_name} gagal: {str(exc)[:160]}"
+                self.write_log(f"ERR: {message}")
+                self._speak_line(message)
+            finally:
+                self._restore_orb()
+
+        threading.Thread(target=work, daemon=True,
+                         name="deterministic-tool").start()
 
     def _run_google_light(self, tool_name: str, args: dict) -> None:
         """T1 Google langsung via registry; tidak pernah masuk agent loop."""
