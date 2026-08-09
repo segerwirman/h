@@ -3897,6 +3897,83 @@ end-to-end terbukti masih jalan di sesi nyata — `live-proven`, bukan cukup
 
 ---
 
+### Hasil Fase 38 — SEBAGIAN 2026-08-09
+
+**Bagian yang selesai: `ui.py` keluar dari jalur runtime.**
+
+Diukur sebelum menyentuh apa pun — dan angkanya mengubah prioritas fase ini:
+
+| | |
+|---|---|
+| `import ui` | **4.566 ms**, 1.801 modul |
+| pengimpornya | **satu**: `main.py:38` |
+| pemakaian saat runtime | **nol** — hanya anotasi tipe di `main.py:555` |
+
+`jarvis/main.py` membangun UI baru lalu menyerahkannya ke `JarvisLive(ui)`,
+jadi `JarvisUI` lama tidak pernah diinstansiasi. Yang dimuat penuh — 2.622
+baris Qt — hanyalah demi satu anotasi. Dan importnya duduk di **jalur kesiapan
+suara**: `_import_legacy()` dipanggil sebelum `voice.pipeline_ready` terbit.
+
+| | sebelum | sesudah |
+|---|---|---|
+| `import main` (proses bersih) | 6.646 ms | **3.000 ms** |
+| modul termuat | 1.801 | 1.364 |
+| `ui` termuat | ya | **tidak** |
+
+`main.py` dibuka dari FROZEN **dengan sadar** dan disentuh di tiga tempat saja:
+import dijadikan `TYPE_CHECKING`, anotasi dikutip (modul itu tidak punya
+`from __future__ import annotations`, jadi anotasinya dievaluasi saat runtime),
+dan entri legacy mengimpor sendiri saat dipakai. Baseline sha256 digeser
+bersama alasannya tertulis di manifest. **`ui.py` sendiri tidak disentuh** —
+membuka dua berkas sekaligus berarti dua sumber risiko dalam satu langkah.
+
+---
+
+**Bagian yang DIHENTIKAN, sesuai batas keras fase ini sendiri.**
+
+Rencananya berbunyi: *"bila satu seam tidak bisa dilipat tanpa memutus suara,
+**hentikan dan catat**, jangan paksakan."* Setelah 15 seam diperiksa satu per
+satu, itulah yang berlaku:
+
+| cara memasang | jumlah |
+|---|---|
+| **membungkus perilaku legacy yang sudah ada** | **11** |
+| menyetel atribut modul | 3 |
+| lainnya | 1 |
+
+Melipat sebelas pembungkus berarti **menulis ulang metode pipeline suara di
+dalam berkas 1.877 baris**, dan satu-satunya cara membuktikan hasilnya masih
+benar adalah sesi Gemini Live sungguhan dengan mikrofon. Tidak ada uji di repo
+ini yang bisa menggantikannya.
+
+Jaring pengamannya memang ada — 14 dari 15 seam disebut setidaknya satu uji
+(`voice_native_tools` 70 penyebutan, `voice_tasks` 24, `voice_safety` 23) —
+tetapi `whatsapp_voice` **nol**, dan uji-uji itu menguji seam-nya, bukan
+hasil peleburannya.
+
+Melipatnya tanpa bukti suara berarti melakukan hal paling berisiko di seluruh
+proyek ini sambil melanggar standar bukti yang seluruh dokumen ini dibangun di
+atasnya. Jadi tidak dilakukan.
+
+**Yang dibutuhkan untuk melanjutkan** — dan ini butuh Takeda, bukan kode:
+
+1. Pilih arahnya lebih dulu. Memindahkan `JarvisLive` ke `jarvis/` lalu melebur
+   di sana lebih bersih daripada menuangkan 11 seam ke dalam berkas beku, tapi
+   lebih besar. Keputusan cakupan.
+2. Satu seam per commit, dengan Takeda menjalankan suara sungguhan **setelah
+   setiap commit**. Urutan teraman: yang penyebutan ujinya paling banyak lebih
+   dulu (`voice_native_tools`, `voice_tasks`, `voice_safety`), yang nol
+   terakhir (`whatsapp_voice`) — dan itu setelah S-29 tuntas.
+3. Beberapa sesi, bukan satu.
+
+**Bukti:** `focused-tested` + `runtime-wired` untuk bagian yang selesai — 8 uji
+baru (semuanya di proses bersih, karena `sys.modules` di dalam pytest sudah
+tercemar), 2709 lulus seluruh suite, ruff bersih, FROZEN utuh dengan baseline
+baru. **Belum `live-proven`:** kesiapan suara 3,6 detik lebih cepat baru
+terbukti saat Takeda menjalankan Jarvis sungguhan.
+
+---
+
 ## Fase 39 — Drift config jadi kegagalan uji (S-37)
 
 **Menutup:** S-37.
