@@ -3804,6 +3804,64 @@ yang membuktikan rotasi tidak menghapus entri yang sedang ditulis.
 
 ---
 
+### Hasil Fase 37 — SELESAI 2026-08-09
+
+`jarvis/core/log.py` + `tests/test_log_rotation.py` (15 uji), merah lebih dulu.
+
+**Pengukuran mengubah rancangan fase ini, bukan sekadar mengonfirmasinya.**
+Rencananya menyebut `RotatingFileHandler` — dan itu jawaban yang **salah** di
+sini. Subsistem visi berjalan sebagai `multiprocessing.Process` terpisah dan
+menulis berkas log yang SAMA. Di Windows rotasi melakukan `os.rename` pada
+berkas yang masih dipegang proses lain. Diprobe sebelum menulis sebaris kode:
+
+```
+berkas hasil : ['probe.log']          <- tidak ada .1, rotasi tidak pernah jadi
+rotasi gagal : True (36 dari 40)
+ukuran utama : 168 byte               <- seharusnya ~1600
+```
+
+Rename-nya gagal, `handleError` dipanggil, dan **barisnya hilang sama sekali**.
+Rotasi naif di atas satu berkas bersama berarti Jarvis diam-diam membuang log
+justru saat visi hidup — yaitu memperbaiki gejala S-35 dengan menciptakan
+bentuk S-32 yang lebih buruk.
+
+Karena itu urutannya dibalik: **satu penulis per berkas dulu, baru rotasi.**
+Proses anak kini menulis berkasnya sendiri (`jarvis-vision.log`) berdasarkan
+`multiprocessing.current_process().name`, dan barulah rotasinya aman.
+
+| | sebelum | sesudah |
+|---|---|---|
+| `jarvis.log` | 39,2 MB, **tanpa batas** | 10 MB × (5+1) = **60 MB langit-langit** |
+| penulis per berkas | 2 (utama + visi) | **1** |
+| `*_audit.jsonl` | — | tak tersentuh, ada ujinya |
+
+`maxBytes=0` dijepit ke minimum: nol berarti TIDAK PERNAH berotasi, yaitu
+persis keadaan sebelum fase ini. Angka yang mustahil dijepit, bukan dituruti.
+
+**Kanal bukti tetap terpisah.** `*_audit.jsonl` ditulis langsung, bukan lewat
+`logging`, jadi rotasi tidak menyentuhnya — dan ada uji yang mengunci itu,
+supaya tidak ada yang kelak menariknya ke dalam `logging` "biar rapi". Log uji
+(§22) juga tetap berkas sendiri.
+
+**Dua kesalahanku sendiri, keduanya ketahuan karena diperiksa.**
+
+Pembersih nama berkas semula regex `[/\:*?"<>|\s]+`. Di dalam kelas karakter,
+`\:` hanya berarti `:` — jadi **backslash, pemisah path Windows, justru tidak
+ikut dibersihkan**, dan uji pertamaku lolos karena kebetulan tidak memakai
+backslash. Diganti menjadi himpunan karakter, yang tidak punya jebakan escape
+sama sekali.
+
+Lalu uji "handler nyata berbatas" gagal di suite penuh tetapi lulus sendirian.
+Penyebabnya bukan kode: pytest memasang penangkap lognya sendiri yang juga
+turunan `FileHandler` tetapi mengarah ke perangkat null. Ujinya disaring ke
+handler yang benar-benar menulis berkas log kita.
+
+**Bukti:** `focused-tested` + `runtime-wired` — 15 uji, 2701 lulus seluruh
+suite, ruff bersih, FROZEN utuh. **Belum `live-proven`:** pemisahan
+`jarvis-vision.log` baru terbukti saat Takeda menjalankan visi sungguhan.
+
+---
+
 ## Fase 38 — Selesaikan migrasi FROZEN (S-33, S-34)
 
 **Menutup:** S-33 dan S-34. Fase terbesar dan paling berisiko di siklus ini.
