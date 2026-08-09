@@ -32,6 +32,7 @@ from datetime import datetime
 from jarvis.core import config, log
 from jarvis.core.bus import BUS
 
+from jarvis.core import quiet
 _logger = log.get("core.proactive_signals")
 
 MIN_GAP_S = 600.0          # 1 interupsi / 10 menit
@@ -174,7 +175,8 @@ def _signal_cron() -> Signal | None:
         try:
             nxt = float(job.get("next_run") or 0)
             name = str(job.get("name") or job.get("id") or "tugas terjadwal")
-        except Exception:                                    # noqa: BLE001
+        except Exception as exc:                                    # noqa: BLE001
+            quiet.swallowed("core.proactive_signals.signal_cron_skipped", exc)
             continue
         if 0 < (nxt - now) <= 900:
             return Signal("cron", f"'{name}' dijadwalkan sebentar lagi", 1.1)
@@ -220,8 +222,8 @@ def blocked_reason() -> str | None:
         from jarvis.core.focus_mode import FocusMode
         if not FocusMode.get().should_show_proactive_suggestions():
             return "focus_mode aktif"
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                        # noqa: BLE001
+        quiet.swallowed("core.proactive_signals.blocked_reason_failed", exc)
 
     now = time.monotonic()
     with _lock:

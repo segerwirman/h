@@ -17,6 +17,7 @@ from jarvis.core.bus import BUS
 from jarvis.agent.interaction import detect_language, render_ack
 from jarvis.agent.task_contracts import PreparedAgentTask, ToolEvidence, prepare_task
 
+from jarvis.core import quiet
 _logger = log.get("agent.dispatch")
 
 #: Hasil yang lebih panjang berarti modelnya sedang MERANGKAI
@@ -73,8 +74,8 @@ class TaskHandle:
             try:
                 from jarvis.agent.tasks import REGISTRY
                 REGISTRY.cancel(bg.id)
-            except Exception:                                # noqa: BLE001
-                pass
+            except Exception as exc:                                # noqa: BLE001
+                quiet.swallowed("agent.dispatch.cancel_failed", exc)
 
 
 def _key(task: str) -> str:
@@ -335,8 +336,8 @@ def _safe_callback(callback, value: str) -> None:
         return
     try:
         callback(value)
-    except Exception:                                       # noqa: BLE001
-        pass
+    except Exception as exc:                                       # noqa: BLE001
+        quiet.swallowed("agent.dispatch.safe_callback_failed", exc)
 
 
 def _release_browser_session(session_id: str) -> None:

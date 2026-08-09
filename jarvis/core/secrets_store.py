@@ -20,6 +20,7 @@ from typing import Protocol
 
 from jarvis.core import log
 
+from jarvis.core import quiet
 _logger = log.get("core.secrets_store")
 _SERVICE = "jarvis-mk50"
 _lock = threading.RLock()
@@ -45,16 +46,16 @@ def _strict_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
     try:
         path.chmod(stat.S_IRWXU)  # 0700; ACL Windows tetap dijaga OS/DPAPI
-    except OSError:
-        pass
+    except OSError as exc:
+        quiet.swallowed("core.secrets_store.strict_dir_failed", exc)
     _strict_windows_acl(path, directory=True)
 
 
 def _strict_file(path: Path) -> None:
     try:
         path.chmod(stat.S_IRUSR | stat.S_IWUSR)  # 0600
-    except OSError:
-        pass
+    except OSError as exc:
+        quiet.swallowed("core.secrets_store.strict_file_failed", exc)
     _strict_windows_acl(path, directory=False)
 
 
@@ -128,8 +129,8 @@ def _atomic_write(path: Path, payload: bytes) -> None:
     except Exception:
         try:
             tmp.unlink(missing_ok=True)
-        except OSError:
-            pass
+        except OSError as exc:
+            quiet.swallowed("core.secrets_store.atomic_write_failed", exc)
         raise
     _strict_file(tmp)
     os.replace(tmp, path)
@@ -292,8 +293,8 @@ def _choose_fallback() -> _Backend | None:
         try:
             import win32crypt
             return _DPAPIBackend(win32crypt)
-        except Exception:
-            pass
+        except Exception as exc:
+            quiet.swallowed("core.secrets_store.choose_fallback_failed", exc)
     try:
         from cryptography.fernet import Fernet  # noqa: F401
         return _FernetBackend()
@@ -366,8 +367,8 @@ def get(key: str) -> str | None:
             if fallback is not None and fallback is not backend:
                 try:
                     return fallback.get(key)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    quiet.swallowed("core.secrets_store.get_failed", exc)
         return None
 
 
@@ -386,8 +387,8 @@ def set(key: str, value: str) -> bool:
             if fallback is not None and fallback is not backend:
                 try:
                     return bool(fallback.set(key, str(value)))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    quiet.swallowed("core.secrets_store.set_failed", exc)
         return False
 
 
@@ -405,8 +406,8 @@ def delete(key: str) -> bool:
             if fallback is not None and fallback is not backend:
                 try:
                     return bool(fallback.delete(key))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    quiet.swallowed("core.secrets_store.delete_failed", exc)
         return False
 
 

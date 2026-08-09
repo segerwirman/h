@@ -33,6 +33,7 @@ import time
 
 from jarvis.core import config, local_embed, log
 
+from jarvis.core import quiet
 _logger = log.get("agent.command_plan")
 _lock = threading.Lock()
 
@@ -177,8 +178,8 @@ def touch(command) -> None:
             connection.execute(
                 "UPDATE command_plan SET used_at = ? WHERE key = ?",
                 (time.time(), key(command)))
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                        # noqa: BLE001
+        quiet.swallowed("agent.command_plan.touch_failed", exc)
 
 
 def forget(command) -> None:
@@ -187,8 +188,8 @@ def forget(command) -> None:
         with _lock, _conn() as connection:
             connection.execute("DELETE FROM command_plan WHERE key = ?",
                                (key(command),))
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                        # noqa: BLE001
+        quiet.swallowed("agent.command_plan.forget_failed", exc)
 
 
 def count() -> int:
@@ -204,8 +205,8 @@ def reset() -> None:
     try:
         with _lock, _conn() as connection:
             connection.execute("DELETE FROM command_plan")
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                        # noqa: BLE001
+        quiet.swallowed("agent.command_plan.reset_failed", exc)
 
 
 __all__ = ["MAX_ARGS_CHARS", "MAX_DISPLAY_CHARS", "MAX_ENTRIES", "MAX_STEPS",

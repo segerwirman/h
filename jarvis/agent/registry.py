@@ -16,6 +16,7 @@ import time
 from jarvis.core import config, log
 from jarvis.agent.base import Tool, ToolResult
 
+from jarvis.core import quiet
 _logger = log.get("agent.registry")
 
 _tools: dict[str, Tool] | None = None
@@ -119,7 +120,8 @@ def _discover() -> dict[str, Tool]:
             if callable(gate) and not gate():
                 _logger.info("agent.tools.module_disabled", module=modinfo.name)
                 continue
-        except Exception:                                    # noqa: BLE001
+        except Exception as exc:                                    # noqa: BLE001
+            quiet.swallowed("agent.registry.discover_skipped", exc)
             continue
         for _, cls in inspect.getmembers(mod, inspect.isclass):
             if (issubclass(cls, Tool) and cls is not Tool
@@ -309,8 +311,8 @@ def _remember_denial(session, key: str) -> None:
             denied = set()
             setattr(session, "denied_confirmations", denied)
         denied.add(key)
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                        # noqa: BLE001
+        quiet.swallowed("agent.registry.remember_denial_failed", exc)
 
 
 def _is_active_native_desktop_adapter(adapter) -> bool:
@@ -334,8 +336,8 @@ def _log_call(name: str, args: dict, res: ToolResult, elapsed_s: float,
             session_result = ToolResult(
                 ok=res.ok, content=None, display=None, error=safe_error, meta={})
             session.record_tool(name, safe_args, session_result, elapsed_s)
-        except Exception:                                    # noqa: BLE001
-            pass
+        except Exception as exc:                                    # noqa: BLE001
+            quiet.swallowed("agent.registry.log_call_failed", exc)
         # Kanal bukti kontrak (S-12) — hasil UTUH, terpisah dari audit di atas.
         # Tanpa ini validator kontrak hanya pernah melihat content=None dan
         # tidak ada kontrak yang bisa lolos, seberapa benar pun pekerjaannya.
@@ -343,8 +345,8 @@ def _log_call(name: str, args: dict, res: ToolResult, elapsed_s: float,
             record_evidence = getattr(session, "record_evidence", None)
             if callable(record_evidence):
                 record_evidence(name, safe_args, res)
-        except Exception:                                    # noqa: BLE001
-            pass
+        except Exception as exc:                                    # noqa: BLE001
+            quiet.swallowed("agent.registry.log_call_failed", exc)
         # Kanal rencana (§25) — argumen ASLI, karena rencana yang dijalankan
         # ulang besok tidak boleh berisi nilai bertopeng. Tetap no-op kecuali
         # dispatch memasang pengumpulnya.
@@ -352,8 +354,8 @@ def _log_call(name: str, args: dict, res: ToolResult, elapsed_s: float,
             record_plan = getattr(session, "record_plan", None)
             if callable(record_plan):
                 record_plan(name, args, res)
-        except Exception:                                    # noqa: BLE001
-            pass
+        except Exception as exc:                                    # noqa: BLE001
+            quiet.swallowed("agent.registry.log_call_failed", exc)
     try:
         record = {
             "ts": time.time(), "tool": name,
@@ -364,8 +366,8 @@ def _log_call(name: str, args: dict, res: ToolResult, elapsed_s: float,
         with _log_lock:
             from jarvis.agent import tool_usage
             tool_usage.append_record(record)
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                        # noqa: BLE001
+        quiet.swallowed("agent.registry.log_call_failed", exc)
 
 
 _SECRET_HINTS = ("key", "token", "password", "secret", "credential")

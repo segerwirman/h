@@ -24,6 +24,7 @@ import threading
 
 from jarvis.core import config, local_embed, log
 
+from jarvis.core import quiet
 _logger = log.get("agent.command_index")
 _lock = threading.Lock()
 
@@ -124,7 +125,8 @@ def suggest(command) -> list[str] | None:
         for stored_command, tools_json, vector_json in rows:
             try:
                 score = local_embed.similarity(query, json.loads(vector_json))
-            except Exception:                                # noqa: BLE001
+            except Exception as exc:                                # noqa: BLE001
+                quiet.swallowed("agent.command_index.suggest_skipped", exc)
                 continue
             if score > best_score:
                 best_score = score
@@ -153,8 +155,8 @@ def reset() -> None:
     try:
         with _lock, _conn() as connection:
             connection.execute("DELETE FROM command_index")
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                        # noqa: BLE001
+        quiet.swallowed("agent.command_index.reset_failed", exc)
 
 
 __all__ = ["DEFAULT_THRESHOLD", "MAX_ENTRIES", "count", "enabled", "remember", "reset", "suggest",

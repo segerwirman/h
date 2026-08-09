@@ -3574,6 +3574,71 @@ suite hijau; jumlah log per boot terukur dan masih terbaca.
 
 ---
 
+### Hasil Fase 35 — SEBAGIAN 2026-08-09
+
+`jarvis/core/quiet.py` + `tests/test_quiet.py` (14 uji), merah lebih dulu.
+
+**Penegakannya tidak perlu aturan buatan sendiri.** ruff sudah punya S110
+(`try-except-pass`) dan S112 (`try-except-continue`); keduanya kini di
+`select`. Dibuktikan: berkas baru berisi `except Exception: pass` langsung
+membuat ruff merah.
+
+| | jumlah |
+|---|---|
+| pelanggaran awal (ruff) | **211** |
+| diubah jadi `quiet.swallowed()` | **32** |
+| tersisa, **terdaftar per berkas** di `pyproject.toml` | 178 di 74 berkas |
+
+Yang diubah lebih dulu adalah inti agent dan `jarvis/core` — `registry`,
+`loop`, `dispatch`, `command_plan`, `command_index`, `secrets_store`,
+`settings_service`, `process_guard`, `proactive_signals`. Sisanya didaftarkan
+per berkas dengan jumlahnya, bentuk yang sama dipakai E722 sejak Fase 10:
+pelanggaran **baru** di berkas mana pun tetap membuat CI merah, sementara yang
+lama dikerjakan bertahap.
+
+`jarvis/core/quiet.py` tetap di daftar itu **selamanya** — helper pencatat yang
+mencatat kegagalan pencatatannya sendiri akan berulang tanpa henti.
+
+**Peredaman diuji, bukan diharapkan.** Sebagian blok hidup di dalam loop ketat
+(callback mic ~16×/detik). Satu nama event dicatat paling sering sekali per
+5 detik, dan yang diredam **dihitung** lalu dilaporkan — peredaman tanpa
+hitungan hanyalah bentuk baru dari diam. Tabel event dibatasi 512 entri karena
+nama event bisa dibangun dinamis.
+
+**Alur kendali tidak berubah**, dan ada ujinya. Blok yang menelan tetap
+menelan; ia hanya berhenti diam. Mengubah `pass` menjadi `raise` di 211 tempat
+sekaligus adalah cara tercepat merusak aplikasi yang sedang bekerja.
+
+**Alat konversiku sendiri melakukan persis kesalahan yang fase ini berantas.**
+Bentuk pertamanya melaporkan **35 konversi berhasil**; ruff menghitung **3**.
+Sebabnya: baris `except` di repo ini hampir selalu membawa komentar di ekornya
+(`# noqa: BLE001`), dan pola pencocokku hanya menerima baris yang BERAKHIR
+dengan `:` — jadi ia melewatkan hampir semuanya sambil tetap melapor sukses.
+Ia juga menyisipkan impor di tengah pernyataan impor multi-baris `loop.py`
+sehingga berkasnya tidak bisa di-parse.
+
+Keduanya ketahuan karena hasilnya diverifikasi dari **ruff**, bukan dari
+laporan alatnya sendiri. Itu aturan 1 protokol yang berlaku pada perkakas juga:
+laporan sebuah alat tentang dirinya sendiri bukan pengukuran.
+
+**Bukti:** `focused-tested` — 14 uji, 2627 lulus seluruh suite, ruff bersih,
+FROZEN utuh. **Status SEBAGIAN dengan sengaja:** 178 blok masih menelan diam,
+seluruhnya terdaftar. Menyebut fase ini SELESAI sementara 84% utangnya masih
+berdiri adalah klaim palsu jenis yang sama dengan yang diberantas Siklus 2.
+
+**Sisa pekerjaannya, berurut menurut nilai:**
+
+| berkas | sisa |
+|---|---|
+| `actions/game_updater.py` | 17 |
+| `actions/browser_control.py` | 11 |
+| `dashboard/server.py` | 10 |
+| `jarvis/agent/adapters/telegram.py` | 8 |
+| `actions/open_app.py` | 7 |
+| sisanya (69 berkas) | 125 |
+
+---
+
 ## Fase 36 — Batas sandbox dijaga uji (S-36)
 
 **Menutup:** S-36. Dikerjakan lebih awal karena murah dan menjaga permukaan

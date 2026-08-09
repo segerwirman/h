@@ -153,6 +153,13 @@ select = [
     "E9",    # syntax error / IO error — tidak bisa ditawar
     "F",     # pyflakes: nama tak terdefinisi, variabel mati, f-string rusak
     "E722",  # bare except — menelan KeyboardInterrupt/SystemExit
+    # §35 (S-32) — kegagalan yang ditelan diam-diam. Audit 2026-08-08 menghitung
+    # 211; hanya 13% pembersihan yang sah, sementara 48% adalah kegagalan
+    # sungguhan yang hilang tanpa jejak dan 36% ada di jalur IO/jaringan. Itu
+    # akar yang sama dengan S-1, S-13, S-22, dan T4 — bukan bug-nya yang mahal,
+    # melainkan diamnya. Pakai jarvis.core.quiet.swallowed() sebagai gantinya.
+    "S110",  # try-except-pass
+    "S112",  # try-except-continue
 ]
 ignore = [
     # Pola opsional-dependency ada di mana-mana: modul diimpor hanya untuk
@@ -177,14 +184,94 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["F811", "F841"]
 
+# ── §35: utang S110/S112 yang TERSISA — didaftarkan, bukan disembunyikan ────
+# 32 blok sudah diubah menjadi quiet.swallowed() di inti agent dan jarvis/core.
+# Sisanya di bawah, per berkas dengan jumlahnya, supaya pelanggaran BARU di
+# berkas mana pun tetap membuat CI merah sementara yang lama dikerjakan
+# bertahap. Bentuk yang sama dipakai E722 sejak Fase 10.
+#
+# jarvis/core/quiet.py TETAP di daftar ini selamanya: helper pencatat yang
+# mencatat kegagalan pencatatannya sendiri akan berulang tanpa henti.
+"actions/browser_control.py" = ["S110", "S112"]   # 11
+"actions/close_app.py" = ["S110", "S112"]   # 3
+"actions/computer_control.py" = ["S110", "S112"]   # 2
+"actions/computer_settings.py" = ["S110", "S112"]   # 3
+"actions/desktop.py" = ["S110", "S112"]   # 1
+"actions/dev_agent.py" = ["S110", "S112"]   # 1
+"actions/file_controller.py" = ["S110", "S112"]   # 1
+"actions/game_updater.py" = ["S110", "S112"]   # 17
+"actions/hermes_action.py" = ["S110", "S112"]   # 3
+"actions/open_app.py" = ["S110", "S112"]   # 7
+"actions/reminder.py" = ["S110", "S112"]   # 1
+"actions/screen_processor.py" = ["S110", "S112"]   # 1
+"actions/system_monitor.py" = ["S110", "S112"]   # 4
+"actions/weather_report.py" = ["S110", "S112"]   # 2
+"core/camera_vision.py" = ["S110", "S112"]   # 1
+"dashboard/server.py" = ["S110", "S112"]   # 10
+"jarvis/agent/adapters/telegram.py" = ["S110", "S112"]   # 8
+"jarvis/agent/auxiliary.py" = ["S110", "S112"]   # 1
+"jarvis/agent/capabilities.py" = ["S110", "S112"]   # 1
+"jarvis/agent/cron.py" = ["S110", "S112"]   # 2
+"jarvis/agent/image_gen_service.py" = ["S110", "S112"]   # 1
+"jarvis/agent/interaction.py" = ["S110", "S112"]   # 1
+"jarvis/agent/interactive_dispatch.py" = ["S110", "S112"]   # 1
+"jarvis/agent/management_surface.py" = ["S110", "S112"]   # 1
+"jarvis/agent/mcp_client.py" = ["S110", "S112"]   # 2
+"jarvis/agent/model_routing.py" = ["S110", "S112"]   # 1
+"jarvis/agent/providers.py" = ["S110", "S112"]   # 2
+"jarvis/agent/providers_discovery.py" = ["S110", "S112"]   # 1
+"jarvis/agent/skill_hub.py" = ["S110", "S112"]   # 2
+"jarvis/agent/skills.py" = ["S110", "S112"]   # 1
+"jarvis/agent/tool_usage.py" = ["S110", "S112"]   # 1
+"jarvis/agent/tools/browser.py" = ["S110", "S112"]   # 4
+"jarvis/agent/tools/food.py" = ["S110", "S112"]   # 1
+"jarvis/agent/tools/gmail.py" = ["S110", "S112"]   # 1
+"jarvis/agent/tools/vision.py" = ["S110", "S112"]   # 1
+"jarvis/agent/tools/whatsapp_web.py" = ["S110", "S112"]   # 1
+"jarvis/agent/voice_gate.py" = ["S110", "S112"]   # 1
+"jarvis/automation/uia_capture.py" = ["S110", "S112"]   # 1
+"jarvis/browser/agent_view.py" = ["S110", "S112"]   # 3
+"jarvis/core/app_registry.py" = ["S110", "S112"]   # 1
+"jarvis/core/boot.py" = ["S110", "S112"]   # 2
+"jarvis/core/latency.py" = ["S110", "S112"]   # 2
+"jarvis/core/quiet.py" = ["S110", "S112"]   # 2
+"jarvis/core/speech_queue.py" = ["S110", "S112"]   # 1
+"jarvis/gateway/delivery.py" = ["S110", "S112"]   # 1
+"jarvis/integrations/anthropic_oauth.py" = ["S110", "S112"]   # 1
+"jarvis/integrations/comments/youtube.py" = ["S110", "S112"]   # 1
+"jarvis/integrations/desktop_safe_lifecycle.py" = ["S110", "S112"]   # 1
+"jarvis/integrations/google_auth.py" = ["S110", "S112"]   # 1
+"jarvis/integrations/hermes/async_dispatch.py" = ["S110", "S112"]   # 1
+"jarvis/integrations/openai_oauth.py" = ["S110", "S112"]   # 3
+"jarvis/integrations/telegram_control.py" = ["S110", "S112"]   # 4
+"jarvis/integrations/user_browser.py" = ["S110", "S112"]   # 4
+"jarvis/integrations/voice_native_tools.py" = ["S110", "S112"]   # 1
+"jarvis/integrations/voice_notices.py" = ["S110", "S112"]   # 1
+"jarvis/integrations/voice_playback_fix.py" = ["S110", "S112"]   # 3
+"jarvis/integrations/voice_safety.py" = ["S110", "S112"]   # 1
+"jarvis/integrations/voice_text_only_observer.py" = ["S110", "S112"]   # 1
+"jarvis/integrations/whatsapp_voice.py" = ["S110", "S112"]   # 5
+"jarvis/integrations/whatsapp_web.py" = ["S110", "S112"]   # 3
+"jarvis/live/whatsapp_hardware_harness.py" = ["S110", "S112"]   # 1
+"jarvis/nlp/email_filter.py" = ["S110", "S112"]   # 1
+"jarvis/runtime/resource_pool.py" = ["S110", "S112"]   # 1
+"jarvis/ui/content_studio.py" = ["S110", "S112"]   # 1
+"jarvis/ui/overlays.py" = ["S110", "S112"]   # 1
+"jarvis/ui/task_halo.py" = ["S110", "S112"]   # 1
+"jarvis/ui/window.py" = ["S110", "S112"]   # 4
+"jarvis/vision/device_caps.py" = ["S110", "S112"]   # 1
+"jarvis/vision/process.py" = ["S110", "S112"]   # 4
+"scripts/next_phase_prompt.py" = ["S110", "S112"]   # 1
+"scripts/whatsapp_selector_probe.py" = ["S110", "S112"]   # 2
+
 # `except:` telanjang di parser metadata YouTube (:317, :323) — juga menelan
 # KeyboardInterrupt, sehingga Ctrl-C tidak responsif saat operasi video
 # panjang. Lihat AUDIT_FINDINGS_CODE.md §9c.
-"actions/youtube_video.py" = ["E722"]
+"actions/youtube_video.py" = ["E722", "S110", "S112"]   # +6 (§35)
 
 # `image_base64` dihitung lalu tidak pernah dipakai (:455) — sisa refactor ke
 # `image_bytes`. Menghapusnya membuang panggilan fungsi; perlu dibaca dulu.
-"actions/code_helper.py" = ["F841"]
+"actions/code_helper.py" = ["F841", "S110", "S112"]   # +2 (§35)
 
 # `page = browser.new_page()` (:47) tidak pernah dipakai. BUKAN sekadar
 # variabel mati — assignment ini punya efek samping (membuat halaman), jadi
@@ -192,7 +279,7 @@ ignore = [
 "core/social_manager.py" = ["F841"]
 
 # `except ... as e` tanpa memakai `e` (:373).
-"jarvis/agent/tools/google_youtube.py" = ["F841"]
+"jarvis/agent/tools/google_youtube.py" = ["F841", "S110", "S112"]   # +5 (§35)
 
 # `pid = self._selected` (:1302) tidak terpakai — assignment mati murni.
 "jarvis/ui/panels.py" = ["F841"]

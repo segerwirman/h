@@ -19,6 +19,7 @@ from jarvis.core import config, latency, log
 from jarvis.agent import context as ctx
 from jarvis.agent import llm_client, memory_store, model_routing, registry, \
     skills
+from jarvis.core import quiet
 from jarvis.agent.adapters.base import Adapter, NullAdapter
 from jarvis.agent.base import ToolResult
 from jarvis.agent.reflect import reflect_async
@@ -250,8 +251,8 @@ async def run(task: str, adapter: Adapter | None = None,
             try:
                 await adapter.progress(
                     f"⚠ provider berat bermasalah — beralih ke {failover_name}")
-            except Exception:                                # noqa: BLE001
-                pass
+            except Exception as exc:                                # noqa: BLE001
+                quiet.swallowed("agent.loop.run_failed", exc)
             resp = await asyncio.to_thread(cl.chat, messages, tool_schemas)
         if not resp.ok:
             msg = f"LLM gagal: {resp.error}"
@@ -311,8 +312,8 @@ async def run(task: str, adapter: Adapter | None = None,
     try:
         from jarvis.agent import curator
         curator.maybe_run_async()
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                        # noqa: BLE001
+        quiet.swallowed("agent.loop.run_failed", exc)
     _logger.info("agent.run_done", session=session.id,
                  iterations=iterations, chars=len(final_text))
     return RunResult(ok=True, text=final_text, iterations=iterations,
@@ -370,8 +371,8 @@ async def _iteration_escalation(adapter, session, iterations: int,
     try:
         await adapter.progress(
             f"⚠ mendekati batas iterasi ({iterations}/{max_iter})")
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                        # noqa: BLE001
+        quiet.swallowed("agent.loop.iteration_escalation_failed", exc)
     if not bool(getattr(adapter, "interactive", False)):
         return False
     if not bool(config.get("agent.iteration_escalation.enabled", True)):
@@ -404,8 +405,8 @@ def _task_update(bg_task, **fields) -> None:
     try:
         from jarvis.agent.tasks import REGISTRY
         REGISTRY.update(bg_task.id, **fields)
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                        # noqa: BLE001
+        quiet.swallowed("agent.loop.task_update_failed", exc)
 
 
 def _short_args(arguments) -> str:
@@ -454,8 +455,8 @@ async def _execute_calls(tool_calls, adapter, session, context, bg_task=None):
         _task_update(bg_task, step=f"{tc.name} → {_short_args(tc.arguments)}")
         try:
             await adapter.progress(f"🔧 {tc.name}")
-        except Exception:                                    # noqa: BLE001
-            pass
+        except Exception as exc:                                    # noqa: BLE001
+            quiet.swallowed("agent.loop.one_failed", exc)
         held = await _acquire_for(bg_task, tc.name)
         if held is None:
             return ToolResult.fail("dibatalkan sebelum tool dijalankan")
@@ -472,8 +473,8 @@ async def _execute_calls(tool_calls, adapter, session, context, bg_task=None):
                 for path in paths[:2]:
                     try:
                         await adapter.send_image(str(path), str(result.content or ""))
-                    except Exception:                        # noqa: BLE001
-                        pass
+                    except Exception as exc:                        # noqa: BLE001
+                        quiet.swallowed("agent.loop.one_failed", exc)
         return result
 
     all_read_only = all(

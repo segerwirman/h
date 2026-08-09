@@ -31,6 +31,7 @@ from pathlib import Path
 
 from jarvis.core import log
 
+from jarvis.core import quiet
 _logger = log.get("core.process_guard")
 
 # Nama proses yang tidak pernah boleh dibunuh lewat perintah "tutup aplikasi".
@@ -95,16 +96,17 @@ def own_pids() -> set[int]:
             for child in me.children(recursive=True):
                 try:
                     child_name = _normalize(child.name())
-                except Exception:                            # noqa: BLE001
+                except Exception as exc:                            # noqa: BLE001
                     # Child tanpa identitas tidak dimasukkan ke daftar target
                     # aplikasi oleh app_registry, jadi tidak perlu membuat
                     # seluruh browser kebal hanya karena inspeksi satu PID
                     # gagal.
+                    quiet.swallowed("core.process_guard.own_pids_skipped", exc)
                     continue
                 if child_name in PROTECTED_NAMES:
                     pids.add(child.pid)
-        except Exception:                                    # noqa: BLE001
-            pass
+        except Exception as exc:                                    # noqa: BLE001
+            quiet.swallowed("core.process_guard.own_pids_failed", exc)
     except Exception as exc:                                 # noqa: BLE001
         # ImportError is the common case, but a damaged/locked native psutil
         # package must not disable process actions or bypass protection.
@@ -128,8 +130,8 @@ def own_process_names() -> set[str]:
     try:
         import psutil
         names.add(_normalize(psutil.Process(os.getpid()).name()))
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                        # noqa: BLE001
+        quiet.swallowed("core.process_guard.own_process_names_failed", exc)
     names.discard("")
     return names
 

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from jarvis.core import config, config_write, log
 
+from jarvis.core import quiet
 _logger = log.get("core.settings")
 
 # type: text | int | float | bool | choice | readonly
@@ -89,7 +90,8 @@ def _image_providers() -> list[str]:
                     from jarvis.integrations import openai_oauth
                     if not openai_oauth.image_generation_supported():
                         continue
-                except Exception:                            # noqa: BLE001
+                except Exception as exc:                            # noqa: BLE001
+                    quiet.swallowed("core.settings_service.image_providers_skipped", exc)
                     continue
             names.append(name)
     except Exception:                                        # noqa: BLE001
@@ -226,7 +228,8 @@ def _active_image_label(providers) -> str:
                     if providers.get_provider(name).supports("image"):
                         prov = name
                         break
-                except Exception:                            # noqa: BLE001
+                except Exception as exc:                            # noqa: BLE001
+                    quiet.swallowed("core.settings_service.active_image_label_skipped", exc)
                     continue
         return prov or "tidak ada provider image ber-capability"
     except Exception:                                        # noqa: BLE001
@@ -458,12 +461,12 @@ def set_value(key: str, value, ftype: str) -> tuple[bool, str]:
         try:
             from jarvis.ui import theme
             theme.set_theme(str(coerced))
-        except Exception:                                    # noqa: BLE001
-            pass
+        except Exception as exc:                                    # noqa: BLE001
+            quiet.swallowed("core.settings_service.set_value_failed", exc)
     if key.startswith("providers.google.apis."):
         try:
             from jarvis.integrations import google_auth
             google_auth.refresh_registry()
-        except Exception:                                    # noqa: BLE001
-            pass
+        except Exception as exc:                                    # noqa: BLE001
+            quiet.swallowed("core.settings_service.set_value_failed", exc)
     return True, "tersimpan"
