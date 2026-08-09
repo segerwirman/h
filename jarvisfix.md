@@ -3731,6 +3731,57 @@ bersih, FROZEN utuh. Tiga temuan menunggu fasenya sendiri.
 
 ---
 
+### S-40 & S-41 — DIPERBAIKI 2026-08-09
+
+Dikerjakan di luar urutan siklus, tepat setelah Fase 36 menemukannya. Alasannya:
+selama S-40 berdiri, Jarvis menjanjikan satu tool kepada model yang **tidak
+pernah bekerja**, dan S-41 menyentuh langsung nilai inti dokumen ini.
+
+**S-40 — `execute_code` tidak pernah bisa jalan.** Bentuk lama menyusun satu
+string lalu menyerahkannya ke shell: `f'{cmd_prefix} "{script}"'` dengan
+`shell=True`. Script-nya dikutip, interpreternya tidak — jadi di setiap
+instalasi yang path-nya memuat spasi (`E:\jarvis agent\h`) perintahnya
+terpotong.
+
+Perbaikannya **bukan** menambahkan kutip. `_RUNNERS` kini menyimpan argv
+sebagai **daftar** dan `subprocess.run` memakai `shell=False`. Itu menghapus
+persoalan kutip seluruhnya alih-alih menambal satu bentuknya, dan sekalian
+membuang shell dari jalurnya — satu lapisan interpretasi yang memang tidak
+pernah dibutuhkan, karena kodenya ditulis ke berkas dan tidak pernah
+disisipkan ke perintah.
+
+**S-41 — pencarian gagal menyamar jadi hasil kosong.** `session.search`
+menangkap semua exception, mencatat `session.search_failed`, lalu
+mengembalikan daftar kosong — sehingga **gagal** dan **tidak ada hasil** tidak
+bisa dibedakan. Toolnya melaporkan *"tidak ada sesi yang cocok"*, dan model
+membacanya sebagai "sudah dicari, memang tidak ada".
+
+Diperbaiki di dua tempat, karena satu saja tidak cukup:
+
+* `session.search` berhenti menelan — ia mencatat lalu **melempar**. Hanya ada
+  satu pemanggil, jadi kontraknya bisa diperketat tanpa merusak apa pun.
+* `session_search` memvalidasi bentuk querynya sendiri lalu melaporkan
+  kegagalan sebagai kegagalan. Argumen datang dari **model** dan `registry`
+  tidak memvalidasinya terhadap `params_schema`, jadi pemeriksaannya harus ada
+  di tool — bukan diserahkan ke SQL.
+
+**Bukti:** `live-proven` — dijalankan terhadap registry sungguhan di mesin
+Takeda:
+
+```
+execute_code {"code": "print(6*7)"}   ->  ok=True   "exit=0\n42"
+session_search {"query": null}        ->  ok=False  "query kosong"
+```
+
+Penanda `xfail` pada empat uji Fase 36 dicabut; keempatnya kini hijau sebagai
+uji biasa. **S-39 sengaja masih terbuka** dan tetap `xfail(strict=True)` —
+ia tidak bisa dieksploitasi lewat toolnya, jadi ia menunggu fasenya sendiri
+alih-alih ikut menumpang.
+
+2686 lulus, ruff bersih, FROZEN utuh.
+
+---
+
 ## Fase 37 — Rotasi log + pisahkan kanal bukti (S-35)
 
 **Menutup:** S-35.

@@ -23,8 +23,19 @@ class SessionSearch(Tool):
     timeout_s = 30
 
     async def run(self, query: str, limit: int = 8, **_) -> ToolResult:
-        rows = await asyncio.to_thread(
-            session_mod.search, query, min(int(limit), 20))
+        # Argumen datang dari MODEL dan tidak divalidasi registry, jadi
+        # bentuknya diperiksa di sini — bukan diserahkan ke SQL.
+        text = query if isinstance(query, str) else ""
+        if not text.strip():
+            return ToolResult.fail("query kosong")
+        try:
+            rows = await asyncio.to_thread(
+                session_mod.search, text, min(int(limit or 8), 20))
+        except Exception as exc:                             # noqa: BLE001
+            # S-41 — pencarian yang gagal dilaporkan GAGAL. Mengembalikan
+            # "0 hasil" di sini berarti berbohong tentang sesuatu yang tidak
+            # pernah dikerjakan.
+            return ToolResult.fail(f"pencarian sesi gagal: {str(exc)[:160]}")
         if not rows:
             return ToolResult.success("tidak ada sesi yang cocok",
                                       display="0 hasil")

@@ -15,12 +15,23 @@ from jarvis.agent.paths import data_dir
 
 _CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
-_RUNNERS = {
-    "python": (sys.executable, ".py"),
-    "node": ("node", ".js"),
-    "javascript": ("node", ".js"),
-    "bash": ("bash", ".sh"),
-    "powershell": ("powershell -NoProfile -File", ".ps1"),
+#: S-40 — argv sebagai DAFTAR, dan ``shell=False``.
+#:
+#: Bentuk lama menyusun satu string lalu menyerahkannya ke shell:
+#: ``f'{cmd_prefix} "{script}"'``. Script-nya dikutip, interpreternya tidak —
+#: sehingga di setiap instalasi yang path-nya memuat spasi (mesin Takeda:
+#: ``E:\jarvis agent\h``) perintahnya terpotong dan tool ini GAGAL SETIAP
+#: KALI: ``'E:\jarvis' is not recognized as an internal or external command``.
+#:
+#: Daftar argv menghapus persoalan kutip seluruhnya, dan sekalian membuang
+#: shell dari jalurnya — satu lapisan interpretasi yang tidak pernah
+#: dibutuhkan, karena kodenya ditulis ke berkas, bukan disisipkan ke perintah.
+_RUNNERS: dict[str, tuple[list[str], str]] = {
+    "python": ([sys.executable], ".py"),
+    "node": (["node"], ".js"),
+    "javascript": (["node"], ".js"),
+    "bash": (["bash"], ".sh"),
+    "powershell": (["powershell", "-NoProfile", "-File"], ".ps1"),
 }
 
 
@@ -59,7 +70,7 @@ class ExecuteCode(Tool):
                 script = Path(f.name)
             try:
                 return subprocess.run(
-                    f'{cmd_prefix} "{script}"', shell=True,
+                    [*cmd_prefix, str(script)], shell=False,
                     capture_output=True, text=True, encoding="utf-8",
                     errors="replace", cwd=str(sandbox), timeout=timeout,
                     creationflags=_CREATE_NO_WINDOW)

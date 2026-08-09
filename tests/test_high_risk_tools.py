@@ -28,9 +28,8 @@ def _run(name: str, args: dict):
 
 # ── execute_code ──────────────────────────────────────────────────────────
 
-@pytest.mark.xfail(strict=True, reason="S-40 — interpreter tak dikutip; fase ini uji saja")
 def test_execute_code_runs_and_returns_output():
-    """S-40 — `execute_code` TIDAK PERNAH bisa jalan di mesin Takeda.
+    r"""S-40 (DIPERBAIKI) — dulu `execute_code` tidak pernah bisa jalan di sini.
 
     `_RUNNERS["python"]` memakai `sys.executable` apa adanya di dalam
     `f'{cmd_prefix} "{script}"'` dengan `shell=True`. Path instalasi ini
@@ -55,7 +54,6 @@ def test_execute_code_reports_a_failing_snippet_as_failure():
     assert result.ok is False
 
 
-@pytest.mark.xfail(strict=True, reason="S-40 — gagal lebih dulu sebelum sempat timeout")
 def test_execute_code_is_bounded_by_a_timeout():
     """Tanpa batas waktu, satu loop tak berujung membekukan agent."""
     result = _run("execute_code", {"code": "while True:\n    pass",
@@ -72,7 +70,6 @@ def test_execute_code_rejects_an_unknown_language():
     assert result.ok is False
 
 
-@pytest.mark.xfail(strict=True, reason="S-40 — interpreter tak dikutip")
 def test_execute_code_runs_outside_the_workspace(tmp_path):
     """Sandbox subprocess-nya harus punya cwd sendiri, bukan root proyek —
     kalau tidak, satu skrip nyasar menulis di tengah kode sumber."""
@@ -172,9 +169,8 @@ def test_session_search_answers_a_plain_query():
     assert result.ok is True
 
 
-@pytest.mark.xfail(strict=True, reason="S-41 — kegagalan internal dilaporkan sukses")
 def test_session_search_reports_an_internal_failure_as_failure():
-    """S-41 — `session_search` mencatat ERROR lalu melapor `ok=True`.
+    """S-41 (DIPERBAIKI) — dulu `session_search` melapor `ok=True` setelah gagal.
 
     Dengan `query=None` ia melempar `AttributeError` di dalam, mencatat
     `session.search_failed` di log, lalu mengembalikan

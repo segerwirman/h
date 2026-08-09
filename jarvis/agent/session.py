@@ -197,7 +197,13 @@ def search(query: str, limit: int = 8, after: float | None = None,
                 sql += " ORDER BY ts DESC LIMIT ?"; params.append(limit)
                 rows = [dict(r) for r in c.execute(sql, params).fetchall()]
     except Exception as e:                                   # noqa: BLE001
+        # S-41 — dulu di sini ada `return rows` yang kosong, sehingga
+        # PENCARIAN GAGAL tidak bisa dibedakan dari TIDAK ADA HASIL. Pemanggil
+        # melaporkannya sebagai "tidak ada sesi yang cocok", dan model
+        # membacanya sebagai "sudah dicari, memang tidak ada" — padahal
+        # pencariannya tidak pernah terjadi.
         _logger.error("session.search_failed", error=str(e)[:120])
+        raise
     return rows
 
 
