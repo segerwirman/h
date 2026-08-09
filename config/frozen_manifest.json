@@ -2,11 +2,11 @@
   "schema_version": 1,
   "algorithm": "sha256",
   "baseline_commit": "094b696",
-  "description": "MK50 Frozen-zone integrity baseline. Text files use canonical LF bytes so checkout line-ending conversion cannot create false failures.",
+  "description": "MK50 Frozen-zone integrity baseline. Text files use canonical LF bytes so checkout line-ending conversion cannot create false failures. Fase 38 (2026-08-09): baseline main.py digeser DENGAN SADAR. `ui.py` (2.622 baris Qt, 4.566 ms) dimuat penuh hanya untuk satu anotasi tipe dan tidak pernah diinstansiasi di jalur `python -m jarvis.main` — sementara importnya duduk di jalur kesiapan suara. Tiga suntingan minimal: import dijadikan TYPE_CHECKING, anotasi dikutip, dan entri legacy mengimpor sendiri saat dipakai. `ui.py` sendiri TIDAK disentuh.",
   "files": {
     "main.py": {
       "mode": "text-lf",
-      "sha256": "fd020047cdbcd85983e88a70e0e95e8eafc1c06830c027f32e262e914283026e"
+      "sha256": "391cef4cb6b47c9a521db79304e8db876c022f648cd96918f7dcb495dfe499ca"
     },
     "ui.py": {
       "mode": "text-lf",

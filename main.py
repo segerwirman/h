@@ -35,7 +35,14 @@ from pathlib import Path
 import sounddevice as sd
 from google import genai
 from google.genai import types
-from ui import JarvisUI
+# §38 (S-33) — hanya untuk TIPE. Modul `ui` berukuran 2.622 baris Qt dan
+# memakan 4.566 ms untuk dimuat, padahal `JarvisUI` lama TIDAK PERNAH
+# diinstansiasi di jalur `python -m jarvis.main`: UI barunya diserahkan
+# dari luar ke `JarvisLive(ui)`. Import ini dulu duduk di jalur kesiapan
+# suara, jadi suara Jarvis siap 4,5 detik lebih lambat setiap boot.
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ui import JarvisUI
 from memory.memory_manager import (
     load_memory, update_memory, format_memory_for_prompt,
 )
@@ -552,7 +559,7 @@ TOOL_DECLARATIONS = [
 
 class JarvisLive:
 
-    def __init__(self, ui: JarvisUI):
+    def __init__(self, ui: "JarvisUI"):
         self.ui             = ui
         self.session              = None
         self.audio_in_queue       = None
@@ -1860,6 +1867,10 @@ class JarvisLive:
             await asyncio.sleep(delay)
 
 def main():
+    # Jalur legacy (menjalankan main.py langsung) tidak didukung — lihat
+    # readme. Ia tetap boleh bekerja, jadi UI lamanya diimpor DI SINI,
+    # saat benar-benar dipakai, bukan saat modul ini dimuat.
+    from ui import JarvisUI
     ui = JarvisUI("face.png")
 
     def runner():
