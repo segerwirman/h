@@ -3664,6 +3664,73 @@ minimal satu uji jalur bahagia + satu uji penolakan.
 
 ---
 
+### Hasil Fase 36 — SELESAI 2026-08-09
+
+`tests/test_file_sandbox_boundary.py` (36 uji) + `tests/test_high_risk_tools.py`
+(24 uji). Fase ini **uji saja**, sesuai batas kerasnya — dan justru karena itu
+ia menemukan tiga hal.
+
+**Batasnya sendiri kokoh.** Semua yang dilempar padanya ditolak: `../..` dalam
+lima bentuk, path absolut, UNC (`//server/share`, `\\?\C:`), berkas rahasia
+Takeda (`~/.ssh/id_rsa`, `~/.claude/settings.json`), junction Windows yang
+menunjuk keluar, nama pendek 8.3, dan — yang paling mudah terlewat — direktori
+tetangga berawalan sama (`/ws-rahasia` bukan bagian dari `/ws`; pemeriksaan
+berbasis awalan STRING akan meloloskannya, `parents` tidak). Ditambah bukti
+nyata: `file_write` ke berkas di luar sandbox meninggalkan isinya utuh.
+
+Symlink di-skip di mesin ini karena butuh hak Administrator; junction menutupi
+kasusnya, dan justru lebih relevan karena tidak butuh hak apa pun.
+
+---
+
+**Tiga temuan. Tidak satu pun diperbaiki di sini** — batas kerasnya menyebut
+fase ini uji saja, dan perbaikannya punya nomor sendiri. Ketiganya ditandai
+`xfail(strict=True)`, jadi begitu diperbaiki suite akan MERAH sampai penandanya
+dicabut: bug yang terdokumentasi tidak boleh diam-diam menjadi bug yang
+terlupakan.
+
+**S-40 — `execute_code` tidak pernah bisa jalan di mesin Takeda.** Ini yang
+terbesar. `_RUNNERS["python"]` memakai `sys.executable` apa adanya di dalam
+`f'{cmd_prefix} "{script}"'` dengan `shell=True`. Path instalasi memuat spasi,
+jadi perintahnya terpotong:
+
+```
+'E:\jarvis' is not recognized as an internal or external command
+```
+
+Script-nya dikutip, interpreternya tidak. Tool ini **terdaftar, terbuka untuk
+model, dan gagal setiap kali dipanggil** — dan tidak ada yang menyadarinya
+karena tidak ada satu pun uji. Persis alasan fase ini ada.
+
+**S-41 — `session_search` melaporkan kegagalan sebagai hasil kosong yang sah.**
+Dengan query yang tidak valid ia melempar di dalam, mencatat
+`session.search_failed` di log, lalu mengembalikan
+`ok=True, "tidak ada sesi yang cocok"`. Model membacanya sebagai *"sudah
+dicari, memang tidak ada"* — padahal pencariannya tidak pernah terjadi.
+Kegagalan palsu dalam bentuk terbalik.
+
+**S-39 — pemeriksa batas melempar alih-alih menolak.** `_inside_sandbox`
+menangkap `OSError`, tetapi `resolve()` melempar `ValueError` untuk path
+relatif berisi null byte. **Belum bisa dieksploitasi lewat toolnya** — dan itu
+diperiksa, bukan diasumsikan: `_resolve` selalu menghasilkan path absolut, dan
+di jalur itu gerbangnya menjawab benar. Tetapi `registry.execute` menelan
+lemparan `needs_confirmation` lalu jatuh ke `tool.requires_confirmation` yang
+`False`, jadi pemanggil baru mana pun yang mengirim path relatif akan membuka
+gerbangnya tanpa suara.
+
+---
+
+**Satu ekspektasiku sendiri yang salah, dan dikoreksi.** Uji "tidak pernah
+melempar" semula juga menuntut `ok=False` untuk argumen sampah. Itu keliru:
+`cron_list` dan `task_status` memang tidak butuh argumen dan berhak berhasil.
+Yang dijanjikan `registry.execute` adalah **tidak melempar**, bukan harus
+gagal.
+
+**Bukti:** `focused-tested` — 60 uji baru, 2682 lulus seluruh suite, ruff
+bersih, FROZEN utuh. Tiga temuan menunggu fasenya sendiri.
+
+---
+
 ## Fase 37 — Rotasi log + pisahkan kanal bukti (S-35)
 
 **Menutup:** S-35.
