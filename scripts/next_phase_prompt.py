@@ -39,6 +39,26 @@ _RESULT_RE = re.compile(
     r"(?:\d{4}-\d{2}-\d{2})?\s*$",
     re.M)
 
+# A result heading is not automatically a completion marker.  The plan uses
+# ``SEBAGIAN`` for work that remains open, and future handoffs may use the
+# same shape for ``BELUM``/``BLOKIR``.  Keep the terminal vocabulary explicit
+# so a new or partial status cannot silently disappear from the next prompt.
+_PARTIAL_STATUS_RE = re.compile(
+    r"\b(?:SEBAGIAN|BELUM|BLOKIR|TERTUNDA|MENUNGGU|PENDING)\b", re.I)
+_TERMINAL_STATUS_RE = re.compile(
+    r"^(?:SELESAI\b.*|DIUKUR\s*,\s*TIDAK\s+DIBANGUN\b.*|DITUTUP\b.*)$",
+    re.I)
+
+
+def _terminal_status(status: str) -> bool:
+    """Return true only for statuses that close a phase by explicit policy."""
+    normalized = " ".join(status.split())
+    return bool(
+        normalized
+        and not _PARTIAL_STATUS_RE.search(normalized)
+        and _TERMINAL_STATUS_RE.fullmatch(normalized)
+    )
+
 
 def _text() -> str:
     try:
@@ -62,7 +82,11 @@ _DONE_IN_TITLE_RE = re.compile(
 
 def phases(text: str) -> list[tuple[int, str, str]]:
     """(nomor, judul, status) untuk setiap fase; status "" bila belum selesai."""
-    done = {int(n): status.strip() for n, status in _RESULT_RE.findall(text)}
+    done = {
+        int(number): status.strip()
+        for number, status in _RESULT_RE.findall(text)
+        if _terminal_status(status)
+    }
     seen: dict[int, str] = {}
     for number, title in _PHASE_RE.findall(text):
         # Judul pertama yang menang: bagian "Hasil" tidak menimpa judul fase.
@@ -82,10 +106,19 @@ def open_phases(text: str) -> list[tuple[int, str, str]]:
 
 
 def open_findings(text: str) -> list[str]:
-    """Temuan yang disebut TERBUKA / belum dikerjakan, apa adanya."""
-    out = []
+    """Judul temuan yang disebut TERBUKA / belum dikerjakan."""
+    headings: dict[str, str] = {}
+    open_items: list[tuple[str, str]] = []
     for line in text.splitlines():
         stripped = line.strip()
+        heading = re.match(
+            r"^#+\s*(S-\d+|T-?\d+)\s*[—-]\s*(.+?)\s*$", stripped)
+        if heading is None:
+            heading = re.match(
+                r"^\*\*(S-\d+|T-?\d+)\s*[—-]\s*(.+?)\*\*", stripped)
+        if heading:
+            number, title = heading.groups()
+            headings[number] = f"{number} — {title.rstrip(' .')}"
         # Baris tabel ringkasan memuat nomor temuan DAN kata "menunggu" pada
         # baris yang justru bertanda SELESAI. Disaring di sini, bukan dengan
         # pola temuan yang makin rumit.
@@ -93,11 +126,20 @@ def open_findings(text: str) -> list[str]:
             continue
         if re.search(r"SELESAI|✅", line):
             continue
-        if not re.search(r"\b[ST]-\d+\b|^#+ T\d+ ", line):
+        numbers = re.findall(r"\b(?:S-\d+|T-?\d+)\b", line)
+        # Banyak nomor dalam satu kalimat biasanya retrospektif (contoh:
+        # "T4, T5, dan T8 masih terbuka padahal sudah ditutup"). Tanpa status
+        # per nomor, jangan menebak semuanya masih terbuka.
+        if len(numbers) != 1:
             continue
-        if re.search(r"TERBUKA|belum dikerjakan|belum diperbaiki|menunggu",
-                     line, re.I):
-            out.append(" ".join(stripped.strip("# ").split())[:150])
+        if re.search(
+            r"TERBUKA|belum dikerjakan|belum diperbaiki|menunggu",
+            line,
+            re.I,
+        ):
+            item = " ".join(stripped.strip("# ").split())[:150]
+            open_items.append((numbers[0], item))
+    out = [headings.get(number, item) for number, item in open_items]
     seen, unique = set(), []
     for item in out:
         if item not in seen:
@@ -109,7 +151,8 @@ def open_findings(text: str) -> list[str]:
 def _git(*args: str) -> str:
     try:
         return subprocess.run(("git", *args), cwd=ROOT, capture_output=True,
-                              text=True, timeout=30).stdout.strip()
+                              text=True, encoding="utf-8", errors="replace",
+                              timeout=30).stdout.strip()
     except Exception:                                        # noqa: BLE001
         return ""
 

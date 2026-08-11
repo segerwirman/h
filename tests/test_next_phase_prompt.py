@@ -8,6 +8,8 @@ sini menjaga satu hal: apa pun yang dicetak harus bisa ditelusuri ke
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from scripts import next_phase_prompt as generator
 
 
@@ -48,6 +50,21 @@ def test_a_phase_with_a_result_is_not_offered_again():
     assert 41 in numbers
 
 
+def test_partial_results_remain_pending():
+    text = """
+## Fase 22 — interupsi suara
+### Hasil Fase 22 — SEBAGIAN 2026-08-05
+
+## Fase 35 — kebisuan
+### Hasil Fase 35 — BELUM 2026-08-09
+
+## Fase 38 — migrasi UI
+### Hasil Fase 38 — BLOKIR 2026-08-09
+    """
+
+    assert [number for number, _, _ in generator.open_phases(text)] == [22, 35, 38]
+
+
 def test_a_phase_closed_without_being_built_is_also_done():
     """"DIUKUR, TIDAK DIBANGUN" adalah keputusan, bukan pekerjaan tertunda."""
     numbers = [number for number, _, _ in generator.open_phases(PLAN)]
@@ -67,6 +84,41 @@ def test_only_findings_marked_open_are_listed():
     assert "T9" in findings
     assert "S-99" in findings
     assert "T10" not in findings, "temuan yang sudah selesai ikut terbawa"
+
+
+def test_an_open_finding_uses_its_heading_not_a_later_prose_fragment():
+    text = """
+    **S-39 — pemeriksa batas melempar alih-alih menolak.** Detail diagnosis.
+
+    Uji biasa. **S-39 sengaja masih terbuka** dan menunggu fasenya sendiri.
+    """
+
+    assert generator.open_findings(text) == [
+        "S-39 — pemeriksa batas melempar alih-alih menolak"
+    ]
+
+
+def test_closed_legacy_findings_in_retrospective_prose_stay_closed():
+    text = """
+    Judul temuan yang basi — T4, T5, dan T8 masih bertanda terbuka padahal
+    fase berikutnya sudah menutupnya.
+
+    ## T9 — temuan yang benar-benar terbuka — TERBUKA
+    """
+
+    assert generator.open_findings(text) == [
+        "T9 — temuan yang benar-benar terbuka — TERBUKA"
+    ]
+
+
+def test_a_finding_finished_in_code_is_not_still_offered():
+    text = """
+    ### S-17 — profil browser — SELESAI DI KODE 2026-08-10
+
+    Perbaikan selesai. Belum live-proven pada Chrome nyata.
+    """
+
+    assert generator.open_findings(text) == []
 
 
 def test_summary_table_rows_are_not_mistaken_for_open_findings():
@@ -121,9 +173,10 @@ def test_no_phase_from_the_finished_cycles_is_offered_again():
     ditulis (pekerjaannya ada di kode, dokumennya yang bolong).
     """
     pending = {number for number, _, _ in generator.open_phases(generator._text())}
-    stale = {number for number in pending if number <= 34} - {13}
+    stale = {number for number in pending if number <= 34} - {13, 22}
 
     assert not stale, f"fase yang sudah selesai ditawarkan lagi: {sorted(stale)}"
+    assert {22, 35, 38} <= pending
 
 
 def test_the_prompt_never_claims_a_test_result():
@@ -175,6 +228,20 @@ def test_the_prompt_warns_about_uncommitted_work(monkeypatch):
                         lambda *args: "M berkas.py" if args[0] == "status" else "")
 
     assert "belum bersih" in generator.build()
+
+
+def test_git_output_is_decoded_as_utf8(monkeypatch):
+    captured = {}
+
+    def fake_run(*args, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(stdout="fase selesai — aman")
+
+    monkeypatch.setattr(generator.subprocess, "run", fake_run)
+
+    assert generator._git("log", "-1") == "fase selesai — aman"
+    assert captured["encoding"] == "utf-8"
+    assert captured["errors"] == "replace"
 
 
 def test_it_survives_a_missing_plan_file(monkeypatch, tmp_path):

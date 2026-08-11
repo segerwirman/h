@@ -7,8 +7,9 @@
 **SIKLUS 3 (2026-08-05, sore): Fase 20-21, 23 SELESAI. Fase 22 SEBAGIAN** — empat
 temuan lapangan dari pemakaian nyata; lihat bagian SIKLUS 3 di akhir. Lihat
 bagian [Siklus 2](#siklus-2--audit-ulang-2026-08-05) di akhir dokumen.
-**Suite:** `pytest tests/ -q` → **2281 lulus, 0 gagal** · hijau juga dengan jaringan keluar diblokir · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
-FROZEN OK (10 file, baseline `094b696`).
+**Suite (snapshot historis, bukan current tree):** `pytest tests/ -q` → **2281 lulus, 0 gagal** · hijau juga dengan jaringan keluar diblokir · 6 run berturut tanpa crash (S-13 tuntas lewat S-14) · `ruff` bersih ·
+FROZEN OK (10 file, baseline `094b696`). Verifikasi stabilisasi current tree
+dicatat di bagian catatan verifikasi lanjutan di bawah.
 
 ---
 
@@ -965,26 +966,33 @@ berisiko memulai panggilan VIDEO tanpa diminta.
 
 ---
 
-### S-17 — Profil Chrome tertinggal mengunci WhatsApp Web — TERBUKA
+### S-17 — Profil Chrome tertinggal mengunci WhatsApp Web — SELESAI DI KODE 2026-08-10
 
-Probe selesai normal, tetapi jendela Chrome-nya **tetap hidup**. `atexit` di
-`whatsapp_web` memanggil `stop()`, jadi seharusnya tertutup — artinya
-`launch_persistent_context(channel="chrome")` melahirkan Chrome yang lepas dari
-kendali Playwright.
-
-Akibat nyata di luar sesi debugging ini: **JARVIS tidak bisa memulai WhatsApp
-Web bila ada sisa instance profil yang sama**, dengan pesan yang sama sekali
-tidak menyebut profil terkunci:
+Probe lama selesai normal, tetapi jendela Chrome-nya **tetap hidup**. `atexit`
+di `whatsapp_web` memanggil `stop()`, jadi seharusnya tertutup. Akibat nyata:
+JARVIS tidak bisa memulai WhatsApp Web bila instance lain masih memiliki profil
+yang sama:
 
 ```
 BrowserType.launch_persistent_context: Opening in existing browser session.
 This usually means that the profile is already in use by another instance.
 ```
 
-Jadi satu crash atau penutupan paksa membuat panggilan berikutnya gagal dengan
-sebab yang menyesatkan. **Belum diperbaiki.** Perbaikan yang tepat: deteksi
-lock profil sebelum launch dan laporkan sebabnya secara spesifik, atau bersihkan
-sisa proses profil sendiri sebelum mencoba.
+**Perbaikan kode:** Chromium kini menjadi authority tunggal atas ownership
+profil. Jarvis tidak menghapus `SingletonLock`, `DevToolsActivePort`, atau
+`LOCK`; signature profile busy dilaporkan sebagai `WhatsAppError` spesifik dan
+tidak di-retry. Error unknown juga tidak di-retry. Fallback ke bundled Chromium
+hanya untuk channel/executable yang benar-benar hilang dan tetap memakai path
+profil persisten yang sama. `shutdown_existing()` didaftarkan ke
+`RuntimeSupervisor` tanpa membuka browser secara eager; context yang sudah ada
+ditutup tepat sekali.
+
+**Bukti:** focused-tested + runtime-wired. Uji membuktikan lock tetap utuh,
+profile busy tidak memicu fallback, context ditutup sekali, dan registration
+tidak membuat browser. **Belum `live-proven`:** persistence login setelah
+shutdown/restart serta penolakan owner kedua masih harus diuji dengan Chrome
+nyata. Karena itu yang ditutup di sini adalah cacat kode dan pesan menyesatkan,
+bukan klaim bahwa sisa proses Chrome lama sudah terbukti hilang di lapangan.
 
 ---
 
@@ -3718,6 +3726,9 @@ lemparan `needs_confirmation` lalu jatuh ke `tool.requires_confirmation` yang
 `False`, jadi pemanggil baru mana pun yang mengirim path relatif akan membuka
 gerbangnya tanpa suara.
 
+S-39 kemudian diperbaiki 2026-08-10 di fase tersendiri; lihat hasil S-39 di
+bawah. Boundary kini fail-closed untuk path yang tidak dapat di-resolve.
+
 ---
 
 **Satu ekspektasiku sendiri yang salah, dan dikoreksi.** Uji "tidak pernah
@@ -3774,11 +3785,94 @@ session_search {"query": null}        ->  ok=False  "query kosong"
 ```
 
 Penanda `xfail` pada empat uji Fase 36 dicabut; keempatnya kini hijau sebagai
-uji biasa. **S-39 sengaja masih terbuka** dan tetap `xfail(strict=True)` —
-ia tidak bisa dieksploitasi lewat toolnya, jadi ia menunggu fasenya sendiri
-alih-alih ikut menumpang.
+uji biasa. S-39 dikerjakan terpisah setelahnya karena membutuhkan perubahan
+fail-closed di boundary sandbox.
 
 2686 lulus, ruff bersih, FROZEN utuh.
+
+### S-39 — DIPERBAIKI 2026-08-10
+
+`_inside_sandbox()` di `jarvis/agent/tools/file_ops.py` menangkap `OSError`,
+tetapi `Path.resolve()` juga dapat melempar `ValueError` untuk path invalid,
+misalnya `Path("\\x00tidak-valid")`. Registry memang menangkap exception dari
+`needs_confirmation()`, tetapi fallback ke `tool.requires_confirmation` tidak
+boleh menjadi jalan keluar bagi path yang gagal diperiksa.
+
+Perbaikan dibuat di boundary tunggal `_inside_sandbox()`:
+
+* resolusi target, workspace root, dan `allowed_paths()` kini berada dalam satu
+  boundary exception;
+* `OSError`, `TypeError`, dan `ValueError` semuanya menghasilkan `False`;
+* `False` berarti path dianggap di luar sandbox dan tetap meminta konfirmasi;
+* pemeriksaan path valid tetap memakai `Path.parents`, tanpa perubahan perilaku.
+
+`xfail(strict=True)` dicabut dari regression test. Tidak ada berkas FROZEN yang
+diedit.
+
+**Bukti terukur:**
+
+```
+test_a_path_that_cannot_be_resolved_is_treated_as_outside  1 passed  (0.45 s)
+tests/test_file_sandbox_boundary.py                         35 passed, 1 skipped (8.74 s)
+full suite                                                  2773 passed, 1 skipped, 5 warnings (171.61 s)
+ruff check .                                                All checks passed!
+verify_frozen.py                                            FROZEN integrity: OK (10 files, baseline 094b696)
+```
+
+Skip symlink tetap berasal dari privilege Windows (`WinError 1314`), bukan
+failure produk. Batas jujur: test membuktikan path invalid ditolak secara
+fail-closed; belum ada klaim eksploit live terhadap proses Jarvis nyata.
+
+---
+
+## Fase 39 — Drift config jadi kegagalan uji (S-37)
+
+### Hasil Fase 39 — SELESAI 2026-08-10
+
+**Menutup:** S-37.
+
+Audit awal yang tercatat di dokumen ini (`1.011` baris / `617` kunci,
+`52` dead, `36` undeclared) berasal dari metode lama dan tidak lagi dijadikan
+angka kontrak. Pengukuran kontrak yang diperbarui sebelum cleanup mencatat:
+`776` declared nodes, `619` declared leaves, `327` exact reads, `29` section
+reads, `39` dead keys, `42` undeclared reads, `2` unresolved dynamic, dan `0`
+scan errors. Dynamic families kemudian diselesaikan secara finite sebelum cleanup.
+
+Kontrak final yang dijalankan terhadap repository nyata:
+
+```
+YAML_OK True
+dead_keys ()
+undeclared_reads ()
+unresolved_dynamic ()
+scan_errors ()
+```
+
+Analyzer AST kini menghitung literal `get()`, `section()`, `secret()` dengan
+config path, alias/import lokal, constant terbatas, wrapper caller, serta
+finite families untuk auxiliary slots, Google APIs, acknowledgement languages,
+Settings fields, WhatsApp/Youtube wrappers, dan conditional FROZEN UI paths.
+Unknown dynamic read tetap failure; tidak ada wildcard global.
+
+`config.yaml` dibersihkan secara manual/surgical: key mati dihapus hanya
+setelah consumer dan reachability diperiksa; read aktif yang tidak dideklarasikan
+diberi default aman atau consumer obsolete dipensiunkan. Secret Relay,
+credential environment-only, dan batas source packaged-mode dipertahankan.
+`config.validate()` tetap warning-only saat boot; test repository menjadikan
+drift fatal.
+
+**Bukti verifikasi Fase 39:** focused suite config/circuit/settings/auxiliary/
+capability hijau; full suite **2773 passed, 1 skipped, 5 warnings**; `ruff check
+.` menghasilkan **All checks passed!**; `verify_frozen.py` menghasilkan **FROZEN
+integrity: OK (10 files, baseline 094b696)**. Tidak ada failure.
+
+**Batas jujur:** pada `sys.frozen` atau instalasi tanpa source tree, scan dilewati
+dengan status structured `source_unavailable`; hasil itu bukan bukti zero drift.
+Repository CI/test harus memanggil audit dengan source root eksplisit. Warning
+dependency/deprecation tetap ada dan tidak disamarkan sebagai zero-warning.
+
+---
+
 
 ---
 
@@ -3974,29 +4068,86 @@ terbukti saat Takeda menjalankan Jarvis sungguhan.
 
 ---
 
-## Fase 39 — Drift config jadi kegagalan uji (S-37)
+### Stabilisasi prasyarat sebelum Fase 39 — SELESAI DI KODE 2026-08-10
 
-**Menutup:** S-37.
+Log hidup menunjukkan dua kejadian berbeda. `mark_xlix.starting` dan
+`voice.pipeline_ready` menandai proses aplikasi baru; `APIError` dalam
+`ExceptionGroup` tanpa kedua event itu hanya reconnect sesi Gemini Live.
+`voice.route_timeout` bukan pemicu reconnect, tetapi FunctionCall ID sebelumnya
+belum dideduplikasi lintas turn/reconnect. Reconnect juga menulis ulang
+`JARVIS online` dan prompt Relay *"Sistem baru saja booting"*, sehingga sesi
+internal yang pulih tampak seperti boot penuh.
 
-`config.yaml` 1.011 baris / 617 kunci. Kode membaca 297 (+28 section, +5
-prefiks dinamis). Sisanya: **52 kunci mati**, dan **36 kunci dibaca tanpa
-pernah dideklarasikan**.
+### Catatan verifikasi lanjutan — 2026-08-11
 
-Keduanya berbahaya dengan cara berbeda — yang mati membuat orang menyetel hal
-yang tidak berpengaruh; yang tak dideklarasikan membuat perilaku bergantung
-pada default tersembunyi yang tidak terlihat di mana pun.
+Perbaikan berikutnya tetap berada di scope stabilisasi/Fase 39, sementara Fase 40 sengaja tidak dilanjutkan:
 
-**Rencana:** perluas `config.validate()` yang sudah ada agar gagal pada
-keduanya, dengan daftar pengecualian eksplisit untuk prefiks dinamis
-(`auxiliary.*`, `providers.google.apis.*`, dan tiga lainnya).
+* `whatsapp_web.py` dipulihkan dari tail duplikat yang sempat tersisip; modul valid berhenti pada satu `__all__`, dengan satu kelas owner, satu worker, dan satu lifecycle shutdown.
+* `ReconnectBackoff.failed()` kini mengembalikan delay aktif sebelum menggandakan nilai berikutnya: urutannya `3, 6, 12, ...`, sedangkan `connected()` tidak mereset dan `healthy()` mereset ke `3`.
+* Verifikasi aktual berhasil: focused stabilization `127 passed`, suite tambahan
+  `53 passed`, generator/evidence `29 passed`, dan `py_compile` untuk lima target
+  stabilisasi keluar `0`.
+* `scripts/verify_frozen.py` menghasilkan `FROZEN integrity: OK` untuk 10 file.
+  Hash canonical-LF `main.py` diperbarui bersama manifest dalam commit voice.
+* Candidate tree bersih menjalankan `2794 passed, 1 skipped, 1 xfailed,
+  2 failed, 5 warnings`; dua failure hanya pada tes latency memory yang
+  bergantung pada baris SQLite seed. Candidate kosong memiliki 0 baris, dan
+  root data lokal memiliki 354 baris sehingga dua tes itu lulus; tidak ada
+  perubahan pada `memory_store.py` maupun tes tersebut.
+* Ruff target stabilisasi dan generator lulus. Ruff root penuh belum dijadikan
+  klaim hijau karena debt Fase 35 dan working tree Fase 40 memang masih ada.
 
-**Batas keras:** hapus kunci mati hanya setelah dipastikan tidak dibaca lewat
-kunci dinamis. Audit 2026-08-08 sempat melaporkan 80 yatim; 28 di antaranya
-ternyata dibaca `f"auxiliary.{task}.provider"`. Pola sempit menghasilkan angka
-yang salah.
+Batas jujur: tidak ada Gemini Live, mikrofon, browser WhatsApp, credential, atau
+provider live yang dijalankan. Candidate full belum hijau karena dua failure
+baseline/isolation tersebut; Fase 40 dan sisa debt Fase 35 tetap terbuka.
 
-**Selesai bila:** `config.validate()` gagal untuk kunci mati dan kunci tak
-dideklarasikan, dan `config.yaml` bersih dari keduanya.
+**Perubahan suara:**
+
+* `FunctionCallHistory` bounded dibagi seluruh `VoiceToolGate` dalam satu proses.
+  ID yang baru dilepas tetap recoverable; ID baru masuk `in_flight` saat eksekusi
+  mulai, hasil disimpan sebelum network send, dan outcome `unknown` tidak diulang
+  otomatis. ID kosong tidak dibuang, dan proses Jarvis baru mendapat history baru.
+* Handoff agent native membersihkan watchdog reply Gemini. Lifecycle/timeout
+  pekerjaan panjang tetap milik dispatcher native; Live tidak lagi mengucapkan
+  pembatalan palsu hanya karena agent masih bekerja.
+* Leaf `ExceptionGroup` diratakan dan diklasifikasikan sebagai `auth`, `network`,
+  `server`, `session`, atau `local`. Log hanya memuat tipe leaf, kode numerik,
+  status terbatas, dan bentuk input; raw `details`, API key, token, serta audio
+  tidak dicetak.
+* Settings API key hanya dibuka untuk bukti 401/`UNAUTHENTICATED` atau marker
+  invalid-key eksplisit. 403/`PERMISSION_DENIED` generik bukan bukti key salah.
+* Telemetri sekarang membedakan connect attempt, failure, reconnect scheduled,
+  dan restored. `SYS: JARVIS online.` hanya untuk koneksi pertama; Relay boot
+  briefing maksimal sekali per proses. Fresh client dan pembacaan secure key
+  pada reconnect tetap dipertahankan.
+
+**Perubahan WhatsApp:**
+
+* Penghapusan manual `SingletonLock`, `DevToolsActivePort`, dan `LOCK` dibuang.
+  Chromium kembali menjadi satu-satunya authority atas kepemilikan profil.
+* Fallback bundled Chromium hanya untuk signature channel/executable hilang.
+  Profile busy dan error unknown gagal jelas tanpa retry, tanpa profil sementara,
+  dan kedua jalur launch tetap memakai `%LOCALAPPDATA%/JARVIS/WhatsAppWebProfile`.
+* Runtime canonical mendaftarkan `shutdown_existing()` ke `RuntimeSupervisor`
+  tanpa memanggil `WhatsAppWebService.get()` atau membuka browser saat boot.
+  Shutdown mengunci transisi lifecycle dan enqueue, menggagalkan future tertunda,
+  mempertahankan owner saat join timeout, dan menolak replacement selama owner lama
+  masih hidup.
+
+**Koreksi penting:** implementasi `ReconnectBackoff.failed()` dan test focused
+sekarang menyepakati delay aktif pertama `3s`, lalu `6s`, `12s`, tanpa reset pada
+penerimaan websocket. `healthy()` baru mengembalikan delay ke `3s`.
+
+
+**Bukti historis (snapshot sebelum edit terakhir):** uji merah lebih dulu gagal pada simbol lifecycle/history yang belum ada. Setelah implementasi dan cleanup prompt: 106 focused tests lulus; suite penuh **2740 lulus, 1 skipped (privilege symlink Windows), 1 xfailed (S-39 yang sudah tercatat), 5 warnings**; `ruff check .` bersih; FROZEN integrity lulus untuk 10 berkas (baseline `094b696`). Baseline `main.py` digeser dengan sadar; berkas FROZEN lain tidak disentuh.
+
+**Batas jujur saat ini:** angka historis di atas bukan bukti full green pada current
+tree. Verifikasi current tree tercatat di catatan lanjutan: focused suites dan
+frozen verifier lulus, tetapi candidate full masih memiliki dua failure baseline
+karena database memory kosong. Belum `live-proven`: soak Gemini Live 10–15 menit,
+tugas agent native panjang, restart profil WhatsApp setelah login, dan penolakan
+owner profil kedua membutuhkan sesi Jarvis/Chrome nyata. Tidak ada operasi Gemini
+Live, mikrofon, browser WhatsApp, credential, atau provider live pada langkah ini.
 
 ---
 
@@ -4038,6 +4189,20 @@ boleh datang dari kalimat eksplisit di bagian Hasil. Menyimpulkannya dari
 **Selesai bila:** `python scripts/evidence_status.py` mencetak tabelnya, dan
 angkanya cocok dengan yang tertulis di bagian Hasil masing-masing fase.
 
+### Hasil Fase 41 — SELESAI 2026-08-11
+
+`scripts/evidence_status.py` sekarang membaca hanya bagian `Hasil Fase`,
+menjaga status fase parsial sebagai parsial, dan mencetak tabel deterministik.
+Label `live-proven` hanya dicatat bila muncul positif di bagian Hasil; label
+itu tidak disimpulkan dari adanya source, test, wiring, atau judul fase.
+Negasi seperti `Belum live-proven` juga tidak diubah menjadi bukti positif.
+
+Uji: `tests/test_evidence_status.py` + `tests/test_next_phase_prompt.py`
+(29 uji) lulus. Ruff pada dua skrip dan dua test lulus. Generator menjaga Fase
+22, 35, dan 38 tetap terbuka karena hasilnya `SEBAGIAN`/status nonterminal.
+Tabel di bawah adalah keluaran generator pada tree ini, bukan salinan status
+yang diketik manual.
+
 ---
 
 ## Fase 42 — Ukur rentang yang masih gelap
@@ -4056,4 +4221,56 @@ protokol; tiga kali dalam dokumen ini tebakan arsitektur meleset (S-13, S-22,
 Fase 24 sendiri).
 
 **Selesai bila:** ada angka untuk rentang itu — bukan perbaikan.
+
+---
+
+## Lampiran — Status evidence fase (dibangkitkan)
+
+<!-- Dibangkitkan dengan: python scripts/evidence_status.py -->
+
+| Fase | Judul | Hasil | Bukti eksplisit di bagian Hasil |
+|---:|---|---|---|
+| 0 | Baseline ✅ | — | — |
+| 1 | Dependency runtime ✅ | — | — |
+| 2 | State provider ✅ | — | — |
+| 3 | Verifikasi voice end-to-end ✅ | — | — |
+| 4 | Kegagalan boot terlihat ✅ | — | — |
+| 5 | Blocking tanpa timeout ✅ | — | — |
+| 6 | Regression test ✅ | — | — |
+| 7 | Pulihkan suite pytest utuh — SELESAI ✅ (diverifikasi 2026-08-08) | — | — |
+| 8 | Lunasi utang test — SELESAI ✅ | — | — |
+| 9 | Keputusan produk — SELESAI ✅ | — | — |
+| 10 | Pengerasan keamanan — SELESAI ✅ | — | — |
+| 11 | Jujurkan capability & config — SELESAI ✅ | — | — |
+| 12 | Konsolidasi dual stack — SELESAI ✅ (opsi b) | — | — |
+| 13 | Kejujuran hasil panggilan | SELESAI | focused-tested, live-proven |
+| 14 | Kontrak bukti untuk aksi eksternal | SELESAI | — |
+| 15 | Konfirmasi bisa dijawab dengan suara | SELESAI | — |
+| 16 | Eksekusi panggilan tanpa gerbang ganda | SELESAI | — |
+| 17 | Batas iterasi: jujur, bisa diatur, bisa dilanjut | SELESAI | — |
+| 18 | Sumber pencarian terbuka di browser | SELESAI | — |
+| 19 | Barge-in adaptif tahan noise | SELESAI | — |
+| 20 | `close_app` menyebut apa yang benar-benar ditutup | SELESAI | — |
+| 21 | Jarvis melihat & mengendalikan Chrome milik Takeda | SELESAI | — |
+| 22 | Interupsi suara terbukti hidup | SEBAGIAN | — |
+| 23 | Rekomendasi membuka SUMBERNYA, bukan transkrip | SELESAI | — |
+| 24 | Ukur dulu, jangan tebak | SELESAI | — |
+| 25 | Memori perintah TERVERIFIKASI | SELESAI | focused-tested |
+| 26 | Routing berbasis embedding, lokal | SELESAI | focused-tested |
+| 27 | Eksekusi spekulatif untuk aksi reversible | DIUKUR, TIDAK DIBANGUN | — |
+| 28 | Satu antrean bicara | SELESAI | — |
+| 29 | Sesi model hangat | SELESAI | focused-tested, runtime-wired |
+| 30 | Jarvis mengenali suara Takeda | SELESAI (mengamati) | focused-tested, runtime-wired |
+| 31 | Pakai jawaban deterministik yang sudah ada (S-31) | SELESAI | focused-tested, runtime-wired |
+| 32 | WebEngine diimpor sebelum `QApplication` (T4) | SELESAI | focused-tested, runtime-wired |
+| 33 | Memori semantik: hidup, atau mati dengan jujur (T5) | SELESAI | focused-tested, runtime-wired |
+| 34 | Tunggu keadaan, bukan tidur tetap (T8) | SELESAI | — |
+| 35 | Jadikan diam mustahil (S-32) | SEBAGIAN | focused-tested |
+| 36 | Batas sandbox dijaga uji (S-36) | SELESAI | focused-tested |
+| 37 | Rotasi log + pisahkan kanal bukti (S-35) | SELESAI | focused-tested, runtime-wired |
+| 38 | Selesaikan migrasi FROZEN (S-33, S-34) | SEBAGIAN | focused-tested, runtime-wired |
+| 39 | Drift config jadi kegagalan uji (S-37) | SELESAI | — |
+| 40 | Pecah `jarvis/ui/window.py` (S-33) | — | — |
+| 41 | Tabel status `live-proven` | SELESAI | — |
+| 42 | Ukur rentang yang masih gelap | — | — |
 
