@@ -29,6 +29,21 @@ from jarvis.core import config, log
 
 _logger = log.get("whatsapp.web")
 _PHONE_RE = re.compile(r"^\d{8,15}$")
+_PROFILE_BUSY_MARKERS = (
+    "processsingleton",
+    "profile is already in use",
+    "user data directory is already in use",
+    "profile directory is already in use",
+    "avoid profile corruption",
+)
+_MISSING_BROWSER_MARKERS = (
+    "executable doesn't exist",
+    "executable does not exist",
+    "browser executable is not found",
+    "distribution 'chrome' is not found",
+    "chrome distribution is not found",
+    "playwright install",
+)
 
 
 class WhatsAppError(RuntimeError):
@@ -212,6 +227,15 @@ def available() -> bool:
     return True
 
 
+def _launch_error_kind(exc: BaseException) -> str:
+    text = str(exc).casefold()
+    if any(marker in text for marker in _PROFILE_BUSY_MARKERS):
+        return "profile_busy"
+    if any(marker in text for marker in _MISSING_BROWSER_MARKERS):
+        return "browser_missing"
+    return "unknown"
+
+
 def _first_visible(page, selectors: tuple[str, ...]):
     for selector in selectors:
         try:
@@ -375,6 +399,8 @@ class WhatsAppWebService:
         self._thread: threading.Thread | None = None
         self._lifecycle_lock = threading.Lock()
         self._started = threading.Event()
+        self._generation = 0
+        self._stop_enqueued = False
         self._state = "stopped"
         self._failure = ""
         self._last_status: dict = {"state": "stopped"}
@@ -402,15 +428,44 @@ class WhatsAppWebService:
                 channel=channel or None, **kwargs
             )
         except Exception as first:
+            kind = _launch_error_kind(first)
             _logger.warning(
-                "whatsapp.chrome_unavailable",
-                error=str(first)[:160],
+                "whatsapp.launch_failed",
+                kind=kind,
+                error_type=type(first).__name__,
+            )
+            if kind == "profile_busy":
+                raise WhatsAppError(
+                    "Profil Chrome WhatsApp Jarvis sedang dipakai proses lain. "
+                    "Tutup pemilik profil itu, lalu coba lagi."
+                ) from first
+            if kind != "browser_missing" or not channel:
+                raise WhatsAppError(
+                    "Chrome WhatsApp Jarvis gagal dibuka. Periksa instalasi "
+                    "browser dan izin profil."
+                ) from first
+            _logger.info(
+                "whatsapp.launch_fallback",
+                reason="browser_missing",
                 fallback="bundled-chromium",
             )
-            return playwright.chromium.launch_persistent_context(**kwargs)
+            try:
+                return playwright.chromium.launch_persistent_context(**kwargs)
+            except Exception as fallback:
+                fallback_kind = _launch_error_kind(fallback)
+                if fallback_kind == "profile_busy":
+                    raise WhatsAppError(
+                        "Profil Chrome WhatsApp Jarvis sedang dipakai proses lain. "
+                        "Tutup pemilik profil itu, lalu coba lagi."
+                    ) from fallback
+                raise WhatsAppError(
+                    "Chrome WhatsApp Jarvis gagal dibuka. Periksa instalasi "
+                    "browser dan izin profil."
+                ) from fallback
 
-    def _main(self) -> None:
+    def _main(self, generation: int) -> None:
         context = None
+        owner = threading.current_thread()
         try:
             from playwright.sync_api import sync_playwright
 
@@ -459,6 +514,12 @@ class WhatsAppWebService:
                 if "web.whatsapp.com" not in str(page.url):
                     page.goto(url, wait_until="domcontentloaded")
                 with self._lifecycle_lock:
+                    if (
+                        self._thread is not owner
+                        or self._generation != generation
+                        or self._state == "closing"
+                    ):
+                        return
                     self._state = "accepting"
                 self._started.set()
                 while True:
@@ -466,13 +527,40 @@ class WhatsAppWebService:
                     if job is None:
                         break
                     function, future = job
+                    with self._lifecycle_lock:
+                        accepting = (
+                            self._thread is owner
+                            and self._generation == generation
+                            and self._state == "accepting"
+                        )
+                    if not accepting:
+                        if not future.done():
+                            future.set_exception(
+                                WhatsAppError("WhatsApp Web sedang ditutup.")
+                            )
+                        continue
                     try:
                         future.set_result(function(page))
                     except Exception as exc:  # noqa: BLE001
                         future.set_exception(exc)
         except Exception as exc:  # noqa: BLE001
-            self._failure = f"WhatsApp Web gagal dimulai: {str(exc)[:180]}"
-            _logger.error("whatsapp.start_failed", error=self._failure)
+            with self._lifecycle_lock:
+                startup_failed = (
+                    self._thread is owner
+                    and self._generation == generation
+                    and self._state == "starting"
+                )
+                if startup_failed:
+                    self._failure = (
+                        str(exc)[:180]
+                        if isinstance(exc, WhatsAppError)
+                        else "WhatsApp Web gagal dimulai. Periksa browser dan coba lagi."
+                    )
+            _logger.error(
+                "whatsapp.start_failed" if startup_failed
+                else "whatsapp.worker_failed",
+                error_type=type(exc).__name__,
+            )
             self._started.set()
         finally:
             if context is not None:
@@ -480,10 +568,31 @@ class WhatsAppWebService:
                     context.close()
                 except Exception:
                     pass
+            self._started.set()
             with self._lifecycle_lock:
-                self._state = "stopped"
-                self._thread = None
-            self._last_status = {"state": "stopped"}
+                if (
+                    self._thread is owner
+                    and self._generation == generation
+                ):
+                    self._fail_queued_locked()
+                    self._state = "stopped"
+                    self._thread = None
+                    self._stop_enqueued = False
+                    self._last_status = {"state": "stopped"}
+
+    def _recover_dead_closing_locked(self) -> None:
+        thread = self._thread
+        if self._state != "closing" or (
+            thread is not None and thread.is_alive()
+        ):
+            return
+        self._fail_queued_locked()
+        self._jobs = queue.Queue()
+        self._thread = None
+        self._state = "stopped"
+        self._stop_enqueued = False
+        self._failure = ""
+        self._last_status = {"state": "stopped"}
 
     def _ensure(self) -> None:
         if not available():
@@ -491,31 +600,61 @@ class WhatsAppWebService:
                 "WhatsApp Web belum diaktifkan atau Playwright tidak tersedia."
             )
         with self._lifecycle_lock:
+            self._recover_dead_closing_locked()
+            thread = self._thread
+            owner_alive = bool(thread is not None and thread.is_alive())
+            if self._state == "closing":
+                raise WhatsAppError("WhatsApp Web sedang ditutup.")
+            if owner_alive and self._state not in {"starting", "accepting"}:
+                raise WhatsAppError("WhatsApp Web sedang ditutup.")
             if (
                 self._state == "accepting"
-                and self._thread
-                and self._thread.is_alive()
+                and thread is not None
+                and thread.is_alive()
             ):
                 return
             if self._state != "starting":
                 self._state = "starting"
                 self._failure = ""
                 self._started.clear()
+                self._stop_enqueued = False
+                self._generation += 1
+                generation = self._generation
                 self._thread = threading.Thread(
                     target=self._main,
+                    args=(generation,),
                     daemon=True,
                     name="jarvis-whatsapp-web",
                 )
                 self._thread.start()
+            generation = self._generation
         if not self._started.wait(timeout=65):
             raise WhatsAppError("WhatsApp Web tidak siap dalam 65 detik.")
-        if self._failure:
-            raise WhatsAppError(self._failure)
+        with self._lifecycle_lock:
+            if generation != self._generation:
+                raise WhatsAppError("WhatsApp Web sedang ditutup.")
+            failure = self._failure
+            accepting = bool(
+                self._state == "accepting"
+                and self._thread is not None
+                and self._thread.is_alive()
+            )
+        if failure:
+            raise WhatsAppError(failure)
+        if not accepting:
+            raise WhatsAppError("WhatsApp Web gagal dimulai.")
 
     def _call(self, function, timeout: float = 60):
         self._ensure()
         future: Future = Future()
-        self._jobs.put((function, future))
+        with self._lifecycle_lock:
+            if (
+                self._state != "accepting"
+                or self._thread is None
+                or not self._thread.is_alive()
+            ):
+                raise WhatsAppError("WhatsApp Web sedang ditutup.")
+            self._jobs.put((function, future))
         try:
             return future.result(timeout=max(1.0, float(timeout)))
         except TimeoutError as exc:
@@ -803,25 +942,59 @@ class WhatsAppWebService:
         self._last_status = dict(result)
         return result
 
-    def stop(self) -> None:
+    def _fail_queued_locked(self) -> None:
+        while True:
+            try:
+                job = self._jobs.get_nowait()
+            except queue.Empty:
+                return
+            if job is None:
+                continue
+            _function, future = job
+            if not future.done():
+                future.set_exception(
+                    WhatsAppError("WhatsApp Web sedang ditutup.")
+                )
+
+    def stop(self, timeout: float = 8) -> bool:
         with self._lifecycle_lock:
             thread = self._thread
             if not thread or not thread.is_alive():
+                self._fail_queued_locked()
+                self._thread = None
                 self._state = "stopped"
-                return
+                self._stop_enqueued = False
+                self._last_status = {"state": "stopped"}
+                return True
             self._state = "closing"
-            self._jobs.put(None)
-        thread.join(timeout=8)
+            self._last_status = {"state": "closing"}
+            if not self._stop_enqueued:
+                self._fail_queued_locked()
+                self._jobs.put(None)
+                self._stop_enqueued = True
+        thread.join(max(0.0, float(timeout)))
+        if thread.is_alive():
+            _logger.warning("whatsapp.stop_timeout")
+            return False
+        with self._lifecycle_lock:
+            if self._thread is thread:
+                self._thread = None
+                self._state = "stopped"
+                self._stop_enqueued = False
+                self._last_status = {"state": "stopped"}
+        return True
 
 
-def _shutdown_existing() -> None:
+
+def shutdown_existing() -> None:
+    """Stop an existing owner without creating a browser/service instance."""
     with WhatsAppWebService._instance_lock:
         current = WhatsAppWebService._instance
     if current is not None:
         current.stop()
 
 
-atexit.register(_shutdown_existing)
+atexit.register(shutdown_existing)
 
 
 __all__ = [
@@ -831,4 +1004,5 @@ __all__ = [
     "available",
     "load_contacts",
     "resolve_contact",
+    "shutdown_existing",
 ]

@@ -72,6 +72,31 @@ def test_canonical_main_mengekspos_supervisor_runtime_dan_ui_factory():
     assert "ui_factory" in inspect.signature(main.run).parameters
 
 
+def test_whatsapp_shutdown_registration_does_not_create_browser(monkeypatch):
+    from jarvis import main
+    from jarvis.integrations import whatsapp_web
+    from jarvis.runtime.supervisor import RuntimeSupervisor
+
+    calls = []
+    monkeypatch.setattr(
+        whatsapp_web.WhatsAppWebService,
+        "get",
+        classmethod(lambda cls: calls.append("get")),
+    )
+    monkeypatch.setattr(
+        whatsapp_web,
+        "shutdown_existing",
+        lambda: calls.append("shutdown"),
+    )
+    supervisor = RuntimeSupervisor()
+
+    main._register_whatsapp_shutdown(supervisor)
+
+    assert calls == []
+    supervisor.shutdown()
+    assert calls == ["shutdown"]
+
+
 def test_legacy_voice_memiliki_request_stop_idempoten():
     import main as legacy
 
