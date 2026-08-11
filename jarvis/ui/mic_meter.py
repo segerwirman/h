@@ -1,0 +1,107 @@
+"""Mic stream controller for the legacy JarvisUI facade."""
+from __future__ import annotations
+
+import time
+
+from jarvis.core import log
+
+_logger = log.get("ui")
+
+
+def _playback_level(win) -> float:
+    """Measure current Jarvis playback level, with a safe echo fallback."""
+    explicit = getattr(win, "_playback_level", None)
+    if explicit is not None:
+        return max(0.0, min(1.0, float(explicit)))
+    try:
+        from jarvis.integrations import voice_playback_level as tap
+
+        if not tap.is_installed():
+            return 1.0
+        return max(0.0, min(1.0, float(tap.current_level())))
+    except Exception:                                        # noqa: BLE001
+        return 1.0
+
+
+class MicMeterController:
+    """Own the single microphone stream used for meter and barge-in."""
+
+    def __init__(self, win, stop_event):
+        self._win = win
+        self._stop_event = stop_event
+
+    def run(self) -> None:
+        # §19 — keputusan interupsi pindah ke jarvis/core/barge_in.py:
+        # noise floor adaptif, pembeda suara-vs-transien, dan echo guard yang
+        # berlaku SEPANJANG ucapan. Gerbang RMS ambang tetap 0.14 yang lama
+        # itulah yang membuat barge-in harus dimatikan sejak awal.
+        from jarvis.core.barge_in import BargeInAnalyzer, BargeInConfig
+
+        analyzer = BargeInAnalyzer(BargeInConfig.from_config())
+        analyzer.start_calibration(time.monotonic())
+        # §30 — stream yang sama sudah memegang seluruh audio mic, jadi
+        # pengenalan penutur tidak perlu membuka jalur audio kedua.
+        from jarvis.core import speaker_id
+        speaker_listener = speaker_id.Listener(16000)
+
+        try:
+            import numpy as np
+            import sounddevice as sd
+
+            def cb(indata, frames, t, status):
+                now = time.monotonic()
+                state = self._win._legacy_state
+                rms = float(np.sqrt(np.mean(indata ** 2)))
+                speaking = state == "SPEAKING"
+                if state == "LISTENING" and not self._win._muted:
+                    self._win.orb.feed_amplitude(min(1.0, rms * 12))
+                elif speaking:
+                    import random
+                    self._win.orb.feed_amplitude(random.uniform(0.35, 0.95))
+
+                if self._win._muted:
+                    return
+                verdict = analyzer.process_block(
+                    indata, now, speaking=speaking,
+                    speaking_since=getattr(self._win, "_speaking_since", 0.0),
+                    # Level playback DIUKUR dari audio yang benar-benar
+                    # diputar (voice_playback_level tap). Mengasumsikan volume
+                    # penuh membuat ambang begitu tinggi sehingga tidak ada
+                    # yang bisa memotong — barge-in "menyala" tapi mati dalam
+                    # praktik. Worst-case 1.0 hanya dipakai bila tap belum
+                    # terpasang, karena echo yang tak terukur lebih berbahaya
+                    # daripada interupsi yang terlewat.
+                    playback_level=_playback_level(self._win),
+                )
+                # §30 — mengamati saja secara default. Gerbangnya mati sampai
+                # Takeda melihat angka dari suaranya sendiri; verifikasi yang
+                # keliru membuat Jarvis TULI terhadap pemiliknya, dan itu jauh
+                # lebih buruk daripada menjawab orang lain sesekali.
+                try:
+                    who = speaker_listener.feed(
+                        indata, listening=(state == "LISTENING"))
+                    if who is not None and who.blocked:
+                        self._win.write_log(
+                            "SYS: Suara tidak dikenali — perintah diabaikan "
+                            f"(skor {who.score:.2f} < {who.threshold:.2f}).")
+                except Exception:                            # noqa: BLE001
+                    pass
+
+                if verdict.interrupt:
+                    _logger.info("voice.barge_in", rms=round(verdict.rms, 3),
+                                 threshold=round(verdict.threshold, 3),
+                                 noise_floor=round(verdict.noise_floor, 4))
+                    self._win.write_log("SYS: Interupsi suara terdeteksi.")
+                    self._win._do_interrupt()
+
+            with sd.InputStream(callback=cb, channels=1, samplerate=16000,
+                                blocksize=1024):
+                # §22 — penanda "mic meter HIDUP". Tanpa ini, thread yang mati
+                # dan barge-in yang tidak pernah memicu sama-sama terlihat
+                # sunyi di log, dan sunyi tidak membedakan apa pun.
+                _logger.info("mic_meter.started", **analyzer.diagnostics())
+                _logger.info("speaker_id.started", **speaker_id.diagnostics())
+                while not self._stop_event.wait(0.2):
+                    pass
+        except Exception as e:
+            _logger.warning("mic_meter.unavailable", error=str(e)[:100])

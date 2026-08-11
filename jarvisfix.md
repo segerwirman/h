@@ -4174,6 +4174,43 @@ sebagai temuan dan kerjakan terpisah.
 satu pun uji diubah. Uji yang harus ikut berubah adalah tanda perilaku ikut
 berubah.
 
+### Hasil Fase 40 — SELESAI DI KODE 2026-08-11
+
+Ekstraksi diselesaikan sebagai perpindahan ownership tanpa mengubah tes lama.
+`window.py` sekarang menjadi facade/orchestrator 520 baris. Implementasi
+`MainWindow` terbagi ke mixin command, action, layout, panel, dan voice;
+widget lokal berada di `window_widgets.py`; loop mic, barge-in, dan speaker-id
+berada di `mic_meter.py`. Facade mempertahankan ekspor helper lama dan peta
+ownership source-level yang masih dibaca characterization test.
+
+Audit AST terhadap `HEAD:jarvis/ui/window.py` membuktikan 104 method lama
+terpetakan tepat satu kali pada implementasi owner: 2 tetap di `MainWindow`,
+18 action, 8 command, 14 layout, 36 panel, dan 26 voice. Seluruh body/signature
+104 method serta 13 helper/widget yang dipindah identik; tiga salinan
+`MainWindow`/`JarvisUI` yang sempat tersisip dibuang. Import Qt diperbaiki ke
+owner resminya dan `ActionPanel` kembali memiliki import lokal sebelum dipakai.
+Audit yang sama menemukan 10 definisi panel dan 30 method provider lengkap,
+tanpa duplikat atau perubahan AST setelah dipindah.
+
+Batas 800 baris juga diterapkan pada dua file UI lama yang masih melampauinya.
+`panels.py` menjadi facade untuk capability, messaging, settings, dan widget
+panel; discovery model provider dipindah ke mixin terpisah. Berkas UI terbesar
+sekarang `orb.py` 725 baris, disusul `settings_providers.py` 697,
+`capabilities_panel.py` 532, dan `window.py` 520.
+
+**Bukti current-tree:** empat kegagalan awal di
+`test_action_hint_and_back.py` pulih dalam gate `22 passed`; regresi window
+`121 passed`; panel/provider `58 passed`; kontrak facade/source tambahan
+`43 passed`; full suite **2806 passed, 1 skipped, 5 warnings**. Skip adalah
+symlink Windows tanpa privilege (`WinError 1314`). Ruff seluruh bundle Fase 40
+bersih dan frozen verifier menghasilkan `FROZEN integrity: OK (10 files,
+baseline 094b696)`. Tidak ada file tes yang diubah.
+
+**Batas jujur:** Fase 40 selesai di kode dan focused-tested, bukan bukti live
+suara. Prasyarat Fase 38 tetap **SEBAGIAN/belum live-proven**; tidak ada
+mikrofon, Gemini/provider, credential, atau browser nyata yang dijalankan pada
+verifikasi ini.
+
 ---
 
 ## Fase 41 — Tabel status `live-proven`
