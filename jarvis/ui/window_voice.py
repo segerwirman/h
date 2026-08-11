@@ -349,7 +349,7 @@ class WindowVoiceMixin:
         if self.assistant is not None:
             self.assistant.ctx.uploaded_file = path
         self.write_log(f"FILE: {path}")
-        
+
         import os
         ext = os.path.splitext(path)[1].lower()
         if ext in {'.pdf', '.docx', '.doc', '.txt', '.md', '.csv'}:
@@ -417,7 +417,7 @@ class WindowVoiceMixin:
         img_url = Path(path).as_uri()
         html = f'<img src="{img_url}" width="400" />'
         self._content_sig.emit(f"Gambar: {os.path.basename(path)}", html)
-        
+
         def _run():
             try:
                 from jarvis.core import llm

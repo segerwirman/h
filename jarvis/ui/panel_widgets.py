@@ -508,6 +508,3 @@ class _PlatformRow(QFrame):
     def mousePressEvent(self, event) -> None:
         self.selected.emit(self.pid)
         super().mousePressEvent(event)
-
-
-

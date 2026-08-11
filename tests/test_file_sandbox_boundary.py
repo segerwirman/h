@@ -179,18 +179,11 @@ def test_odd_names_never_raise(raw):
 
 
 def test_a_path_that_cannot_be_resolved_is_treated_as_outside():
-    """S-39 — `_inside_sandbox` MELEMPAR alih-alih menolak.
+    """S-39 — path yang gagal di-resolve ditolak secara fail-closed.
 
-    `resolve()` melempar `ValueError` (bukan `OSError`) untuk path relatif
-    berisi null byte, dan `except OSError` tidak menangkapnya.
-
-    **Belum bisa dieksploitasi lewat toolnya:** `_resolve` selalu menghasilkan
-    path absolut, dan di jalur itu gerbangnya menjawab `True` dengan benar.
-    Tetapi `registry.execute` menelan lemparan `needs_confirmation` lalu jatuh
-    ke `tool.requires_confirmation`, yang `False` — jadi pemanggil baru mana
-    pun yang mengirim path relatif akan membuka gerbangnya tanpa suara.
-
-    Pemeriksa batas yang melempar sama buruknya dengan yang mengizinkan.
+    `Path.resolve()` dapat melempar `ValueError` untuk path yang berisi null
+    byte. `_inside_sandbox` harus menangkap kegagalan resolusi itu dan tetap
+    mengembalikan keputusan boolean yang menolak path tersebut.
     """
     assert isinstance(_inside_sandbox(Path("\x00tidak-valid")), bool)
 

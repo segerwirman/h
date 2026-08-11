@@ -4311,7 +4311,7 @@ Fase 24 sendiri).
 | 37 | Rotasi log + pisahkan kanal bukti (S-35) | SELESAI | focused-tested, runtime-wired |
 | 38 | Selesaikan migrasi FROZEN (S-33, S-34) | SEBAGIAN | focused-tested, runtime-wired |
 | 39 | Drift config jadi kegagalan uji (S-37) | SELESAI | — |
-| 40 | Pecah `jarvis/ui/window.py` (S-33) | — | — |
+| 40 | Pecah `jarvis/ui/window.py` (S-33) | SELESAI DI KODE | — |
 | 41 | Tabel status `live-proven` | SELESAI | — |
 | 42 | Ukur rentang yang masih gelap | — | — |
 

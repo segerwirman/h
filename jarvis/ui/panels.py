@@ -6,5 +6,3 @@ from jarvis.ui.messaging_panel import MessagingPanel
 from jarvis.ui.settings_panel import SettingsPanel
 
 __all__ = ["CapabilitiesPanel", "MessagingPanel", "SettingsPanel"]
-
-

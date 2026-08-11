@@ -6,13 +6,13 @@
 
 ```text
 Repository: E:\jarvis agent\h
-Branch: main
-HEAD: 987864e feat(live): call kill switch, visible hangup, and staged rollout rings (CLK)
-Last updated: 2026-08-03 — WA9-live COMPLETE (kill switch, LIVE-PROVEN x2)
+Branch: fase13-kejujuran-panggilan
+Code baseline: 7a7b256 refactor(ui): pecah window dan panel Fase 40
+Last updated: 2026-08-11 — audit HEAD dan finalisasi hygiene Fase 40
 ```
-Git staging/commit: index kosong; sesi 2026-08-03 berjalan: 93 commit (59 segmentation + DOC2 + PLAN + FIX + FIX2 + DOC3 + SCN + TIM + LIF + CAN + WAR + TIM2 + CAL + AUD + DIA + MEM + CAL2 + RES + CSE + WRO + RIN + FAC + RMF + UIF + CON + CST + CAP + AWK + TIM3 + DLG + DUR + CAL3 + ABD + ALH + ALH2 + CLK 987864e)
+Git staging/commit: index kosong after hygiene commit; code baseline 7a7b256; the synchronization is kept in a separate hygiene commit.
 Frozen: OK — 10 files, baseline 094b696
-Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) + `full_run.txt` (artifact run) — KEDUANYA JANGAN di-commit
+Worktree after hygiene commit: remaining local residue (`.curator_state.json`, `$null`, `.claude/`, `check_mail.ps1`, `check_mail.ps1.bak`) is not part of the code baseline and must not be committed without review.
 ```
 
 ## Read order
@@ -24,9 +24,9 @@ Worktree: bersih kecuali 2 artifact — `.curator_state.json` (timestamp noise) 
 5. `.hermes.md`
 6. Relevant domain roadmap listed below.
 
-Relevant stabilization roadmap:
+Current implementation record:
 
-`E:\jarvis agent\h\.hermes\plans\2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md`
+`E:\jarvis agent\h\jarvisfix.md` (Fase 35–42)
 
 ## Latest completed phase
 
@@ -374,9 +374,9 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: WA9-live — Call Live Controls (kill switch)
-Status: COMPLETE — 2026-08-03 (CLK 987864e)
-Priority: kill switch nyata, hangup, rings
+Phase: Fase 40 — Pecah jarvis/ui/window.py
+Status: COMPLETE IN CODE — 2026-08-11 (7a7b256)
+Priority: audit hygiene dan kesinambungan handoff
 ```
 
 ### Outcome
@@ -386,12 +386,12 @@ Priority: kill switch nyata, hangup, rings
 - TDD: RED 5 failed → GREEN 5 passed; regression 40 passed (controls + rollout + states + harness + audio + actor); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 18 passed; dua-approval (commit + live run).
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
-### Next phase (BELUM disetujui — DILARANG dieksekusi)
+### Next phase (audit read-only; cleanup menunggu persetujuan eksplisit)
 
 ```text
-Phase: Live lane lanjutan (WA6 write path / WA0 hardware / WA9 rings live) — butuh approval live
-Status: MENUNGGU KEPUTUSAN TAKEDA
-Guardrail: jangan mulai fase baru tanpa approval eksplisit Takeda.
+Phase: Audit 28 local worktrees
+Status: SIAP DIAUDIT, BELUM BOLEH DIBERSIHKAN
+Guardrail: audit read-only; minta persetujuan eksplisit sebelum remove/prune/clean.
 ```
 
 ## Planned phase order
@@ -455,23 +455,18 @@ Lanjutkan JARVIS di E:\jarvis agent\h.
 
 Baca berurutan:
 1. session.md
-2. .hermes/plans/2026-08-01_224934-jarvis-master-implementation-roadmap.md
-3. JARVIS.MD
-4. .hermes/handoffs/current.md
-5. .hermes.md
-6. roadmap stabilisasi yang disebut di session.md
+2. JARVIS.MD
+3. .hermes/handoffs/current.md
+4. .hermes.md
+5. jarvisfix.md untuk status Fase 35–42
 
-HEAD: 987864e (CLK). Index kosong. Frozen 094b696 OK. Worktree bersih
-kecuali 2 artifact (jarvis/agent/skills_data/.curator_state.json timestamp
-noise + full_run.txt) — KEDUANYA JANGAN di-commit.
+Code baseline: 7a7b256 pada branch fase13-kejujuran-panggilan; S-39 = 94e3596.
+Full suite 2806 passed, 1 skipped, 5 warnings; Ruff dan frozen verifier PASS.
+Worktree memiliki 2 tracked change dan 4 kelompok file lokal tak terlacak.
 
-WA9-live COMPLETE (2026-08-03): kill switch LIVE-PROVEN — session
-cancelled + audio proof done (tone loopback nyata 144000 samples);
-visible hangup + rollout rings bertingkat. CLK 987864e.
-
-Fase aktif: TIDAK ADA. Live lane lanjutan (WA6 write path / WA0
-hardware / WA9 rings live) DILARANG dimulai tanpa approval live
-eksplisit.
+Tugas berikutnya: audit 28 local worktrees secara read-only. Dilarang
+menjalankan cleanup sebelum persetujuan eksplisit. Fase 38 tetap parsial dan
+belum live-proven; live validation memerlukan approval live terpisah.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,

@@ -527,6 +527,3 @@ class CapabilitiesPanel(QWidget):
                          width, height)
         self.show()
         self.raise_()
-
-
-

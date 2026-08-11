@@ -349,5 +349,3 @@ class MessagingPanel(QWidget):
         self._enable_confirm_pending = False
         self._submit(lambda: self._service.set_enabled(
             pid, checked, allow_all_confirmed=confirmed))
-
-

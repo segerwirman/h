@@ -1,8 +1,8 @@
 # Current Handoff — JARVIS
 
-**Updated:** WA9-live COMPLETE — 2026-08-03 (kill switch, LIVE-PROVEN x2)
+**Updated:** 2026-08-11 — audit HEAD dan finalisasi Fase 40
 **Repository:** `E:\jarvis agent\h`
-**Git:** branch `main`, HEAD `987864e` (CLK); index kosong; frozen `094b696` OK; worktree bersih kecuali 2 artifact (`.curator_state.json`, `full_run.txt`) — keduanya JANGAN di-commit.
+**Git:** branch `fase13-kejujuran-panggilan`; code baseline `7a7b256` (Fase 40); hygiene synchronization is this separate commit; frozen `094b696` OK; remaining local residue is not part of the code baseline.
 
 ## Current status
 
@@ -89,9 +89,27 @@ WA6-lanjutan calendar review               COMPLETE
 WA3-live audio acceptance                 COMPLETE (LIVE-PROVEN)
   → ALH 74002ac + ALH2 3624b57 (tone loopback nyata RMS 0.337)
   → live lane pertama
-WA9-live call live controls               COMPLETE (LIVE-PROVEN)
+WA9-live call live controls               COMPLETE (LIVE-PROVEN, library)
   → CLK 987864e (kill switch nyata: session cancelled + proof done)
+  → BELUM tersambung runtime: nol pemanggil produksi di luar tests/
+      (verifikasi 2026-08-04: grep CallKillSwitch/RolloutRings/visible_hangup
+      di jarvis/ actions/ core/ dashboard/ main.py ui.py → nihil).
+     Kill switch belum dapat dipicu jalur runtime mana pun; wiring
+     terdaftar di "Next phase" (WA9 rings live integration).
   → berikutnya WA6/WA0 live (menunggu Takeda)
+```
+
+## Current repository position (2026-08-11)
+
+```text
+S-39 sandbox unresolved-path guard        COMPLETE — 94e3596
+Fase 40 UI split                          COMPLETE IN CODE — 7a7b256
+Fase 41 evidence status table              COMPLETE
+Fase 38 live validation                    SEBAGIAN / belum live-proven
+Full suite                                 2806 passed, 1 skipped, 5 warnings
+Ruff + frozen verifier                     PASS
+Immediate work                             audit 28 local worktrees (read-only)
+Cleanup guardrail                          explicit approval required
 ```
 
 ## Full-day segmentation milestone (2026-08-03)
@@ -112,11 +130,13 @@ Acceptance run menemukan 4 gap yang diremediasi TDD: G1 text_field tanpa `_uia_r
 
 **Phase 22 COMPLETE** — commit SCN `a54c9af`. Scene list `QListWidget` visible (`1. S0`, ...), klik = selection, ▲ Naik/▼ Turun deterministik reuse `move_scene()` (first-up/last-down reject), selected & asset mapping `_asset["scene_index"]` ikut reorder, timeline auto-refresh, accessibility identity stabil (`jarvis-scene-list`, `jarvis-scene-move-up/down`). TDD RED 6 → GREEN 6; regression content 41 passed; frozen `094b696` OK.
 
-⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1, tidak menyentuh Content Studio; remediasi terpisah.
+~~⚠️ Pre-existing (di luar scope): `test_window_integration.py::test_awareness_toggle...` gagal `KeyError: 'awareness'` — stale sejak UI U1.~~ **SUDAH BERES (verifikasi 2026-08-04):** test itu kini mendokumentasikan kontrak awareness-retired dan lulus (`test_window_integration.py` 25/25). Utang test awareness sejenis di `test_browser_routing_p0.py` dan `test_browser_takeover_and_panel.py` juga sudah dilunasi.
 
 ## WA9-live milestone (2026-08-03)
 
 **WA9-live COMPLETE — LIVE-PROVEN #2** — commit CLK `987864e`. `jarvis/live/call_live_controls.py`: `CallKillSwitch` one-shot (arm → kill = session cancel + proof stop + bus `call.killed`); `visible_hangup` (metadata-only, one-shot); `RolloutRings` bertingkat (test → trusted → business → public; butuh bukti accept ring sebelumnya). Live run nyata (approval live Takeda): session approved + audio proof tone loopback (144.000 samples) → arm → kill → `session: cancelled` + `proof: done`. RED 5 → GREEN 5; regression 40 passed; frozen `094b696` OK.
+
+⚠️ **Cakupan klaim ini (ditegaskan 2026-08-04):** yang LIVE-PROVEN adalah **library**-nya, dibuktikan lewat harness. Modul `jarvis/live/*` **belum tersambung runtime** — nol pemanggil produksi di luar `tests/`, jadi kill switch belum dapat dipicu jalur runtime mana pun. Penyambungannya terdaftar sebagai "Next phase" (WA9 rings live integration) dan menunggu approval Takeda. Baca "COMPLETE" di sini sebagai *tugas fase selesai*, bukan *kemampuan tersedia di produksi*.
 
 ## WA3-live milestone (2026-08-03)
 
@@ -336,23 +356,26 @@ JARVIS.MD
 
 ## Next phase
 
-**Live lane lanjutan — WA6 write path / WA0 hardware / WA9 rings live** (MENUNGGU KEPUTUSAN TAKEDA — DILARANG dieksekusi tanpa approval live)
+**Audit 28 local worktrees** (read-only terlebih dahulu; cleanup menunggu persetujuan eksplisit)
 
 ### Goal
 
-Melanjutkan acceptance live yang butuh kredensial/hardware.
+Catat path, branch, commit, lock, dan status dirty setiap worktree tanpa mengubah
+worktree mana pun.
 
-### Scope
+### Setelah audit
 
-- WA6 write path `gcal_create_proposed` (create kalender nyata, butuh kredensial);
-- WA0 call hardware checks (Playwright/profile/login, call button);
-- WA9 rings live integration (wire RolloutRings ke lane nyata).
+- Minta persetujuan eksplisit sebelum menjalankan cleanup.
+- Jangan menghapus worktree locked atau worktree dirty tanpa keputusan terarah.
+- Setelah hygiene lokal selesai, lanjutkan live validation Fase 38 hanya dengan
+  approval live yang sesuai.
 
 ### Guardrails
 
-- Tidak ada eksekusi tanpa approval eksplisit Takeda.
-- Tidak ada staging/commit tanpa exact allowlist + review + approval Takeda.
-- Provider/credential/live integration/authority/frozen tidak boleh berubah.
+- Tidak ada `git worktree remove`, `prune`, `clean`, atau penghapusan manual pada
+  langkah audit.
+- Tidak ada staging/commit tambahan di luar allowlist hygiene yang sudah selesai.
+- Provider, credential, live integration, authority, dan frozen files tidak boleh berubah.
 
 ## New-session prompt
 
@@ -361,24 +384,19 @@ Lanjutkan JARVIS di E:\jarvis agent\h.
 
 Baca berurutan:
 1. session.md
-2. .hermes/plans/2026-08-01_224934-jarvis-master-implementation-roadmap.md
-3. JARVIS.MD
-4. .hermes/handoffs/current.md
-5. .hermes.md
-6. roadmap stabilisasi yang disebut di session.md
+2. JARVIS.MD
+3. .hermes/handoffs/current.md
+4. .hermes.md
+5. jarvisfix.md untuk status Fase 35–42
 
-WA9-live COMPLETE (2026-08-03): kill switch LIVE-PROVEN (CLK 987864e) —
-session cancelled + audio proof done (tone loopback nyata 144000
-samples); visible hangup + rings bertingkat. LIVE-PROVEN x2 total.
-Worktree bersih kecuali 2 artifact (.curator_state.json, full_run.txt) —
-JANGAN di-commit. Index kosong. Frozen 094b696 OK.
+Code baseline 7a7b256 pada branch fase13-kejujuran-panggilan; S-39 adalah
+94e3596. Full suite 2806 passed, 1 skipped, 5 warnings; Ruff dan frozen
+verifier lulus. Worktree memiliki dirty docs/state dan artefak lokal; jangan
+anggap itu bagian dari HEAD.
 
-TIDAK ADA fase aktif — Live lane lanjutan (WA6 write path / WA0
-hardware / WA9 rings live) DILARANG dimulai tanpa approval live
-eksplisit.
-Tugas sesi: verifikasi posisi (read-only), audit worktree/HEAD/frozen,
-presentasikan status + opsi lanjutan, minta approval sebelum eksekusi
-apa pun. Jangan
-git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
+Tugas sesi berikutnya: audit 28 local worktrees secara read-only. Jangan
+menjalankan cleanup sebelum persetujuan eksplisit. Setelah cleanup disetujui,
+Fase 38 tetap belum live-proven dan memerlukan approval live terpisah.
+Jangan git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
 provider/credential/live integration/authority/frozen.
 ```

@@ -143,5 +143,3 @@ class ProviderDiscoveryMixin:
     def _test(self) -> None:
         """Kompatibilitas tombol TEST lama: kini selalu discovery non-blocking."""
         self._detect_models()
-
-
