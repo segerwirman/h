@@ -4153,6 +4153,125 @@ tugas agent native panjang, restart profil WhatsApp setelah login, dan penolakan
 owner profil kedua membutuhkan sesi Jarvis/Chrome nyata. Tidak ada operasi Gemini
 Live, mikrofon, browser WhatsApp, credential, atau provider live pada langkah ini.
 
+### Validasi live Fase 38 - BLOCKED / SEBAGIAN 2026-08-11
+
+Dengan persetujuan eksplisit untuk Google Gemini Live, preflight runtime lulus:
+mikrofon USB2.0 terdeteksi, speaker Realtek terdeteksi, credential LLM tersedia,
+dan `voice.pipeline_ready` terbit.
+
+Sesi canonical `python -m jarvis.main` berjalan dari
+`2026-08-11T14:03:40Z` sampai sekitar `2026-08-11T14:07:10Z` (sekitar 3,5 menit).
+Bukti metadata sesi:
+
+* `voice.pipeline_ready`: 1
+* `voice.connect_attempt`: 1
+* `turn.outcome=success`: 1
+* `pipeline.outcome`: 1
+* `barge_in.diagnostics`: 1 (`triggers=0`, `blocks_while_speaking=1`)
+* `voice.route_timeout`: 2
+* event reconnect: 0
+* event FunctionCall/native-agent: 0
+* `voice.pipeline_failed`: 0
+
+Sesi dihentikan sebelum 10-15 menit karena startup juga memuat provider agent
+`custom` pada endpoint HTTP, sedangkan persetujuan live hanya mencakup Google
+Gemini Live. Karena itu tugas native panjang tidak dijalankan dan tidak ada klaim
+reconnect, barge-in aktual, atau deduplikasi FunctionCall. Status tetap
+`SEBAGIAN/BLOCKED`, bukan `live-proven`.
+
+### Audit ulang Fase 22, 35, dan 38 - 2026-08-11
+
+Focused regression lintas tiga fase: **191 passed** dalam 26,48 detik.
+Batch ini mencakup adaptive barge-in, echo/playback guard, isolasi log dan
+diagnostik, quiet failure visibility, pipeline notices, legacy UI off-runtime,
+Live transport/session, route gate, reconnect, native tasks, dan FunctionCall
+gate.
+
+* **Fase 22 tetap SEBAGIAN.** Test dan diagnostik lulus; sesi live membuktikan
+  mic meter/calibration serta satu blok saat SPEAKING, tetapi `triggers=0`.
+  Tidak ada barge-in ucapan nyata yang dapat diklaim.
+* **Fase 35 tetap SEBAGIAN.** Test `quiet`, rotasi log, dan failure visibility
+  lulus. Ruff terfokus pada komponen fase lulus, tetapi `ruff` masih menemukan
+  satu debt `S110` yang terdaftar di `jarvis/main.py:76`; root belum green dan
+  178 blok legacy yang tercatat belum seluruhnya dikonversi.
+* **Fase 38 tetap SEBAGIAN/BLOCKED.** Test lifecycle/transport/route,
+  reconnect, native task, FunctionCall gate, legacy runtime path, dan
+  `scripts/verify_frozen.py` lulus (`FROZEN integrity: OK`). Bukti live wajib
+  tetap tertahan oleh durasi yang belum mencapai 10-15 menit dan mismatch
+  provider `custom` HTTP terhadap persetujuan Google Gemini Live.
+
+Kesimpulan audit: tidak ada regresi pada batch focused, tetapi tidak ada dasar
+untuk menaikkan fase mana pun menjadi `SELESAI` atau `live-proven`.
+
+### Validasi live rerun setelah provider switch - BLOCKED / SEBAGIAN 2026-08-11
+
+Konfigurasi jalur aktif diperbaiki sebelum sesi:
+
+* `config/providers.json`: provider aktif menjadi `gemini`.
+* `routing.heavy.provider`: menjadi `gemini`, sehingga tugas native tidak lagi
+  diarahkan ke provider custom HTTP.
+* Provider Gemini memakai client SDK Google tanpa `base_url` custom; tidak ada
+  event `agent.llm.insecure_base_url` pada sesi ini.
+
+Sesi canonical dimulai pada `2026-08-11T14:25:02Z` dan melewati 10 menit.
+Preflight dan koneksi live berhasil: `voice.pipeline_ready=1`,
+`voice.connect_attempt=2`, `boot.done=1`, `voice.pipeline_failed=0`, dan
+`agent.model_routing`/`agent.run.model` sama-sama menunjuk `gemini`.
+
+Bukti sesi:
+
+* turn outcome: **33**; pipeline outcome: **26**.
+* `barge_in.diagnostics`: **26**; `barge_in.triggered`: **10**.
+* Echo guard mencatat reject TTS/noise dan tidak menghasilkan false trigger
+  pada kandidat playback.
+* Reconnect: `voice.reconnect_scheduled` pada `14:35:16Z`, lalu
+  `voice.reconnect_restored` pada `14:35:20Z`.
+* Tidak ada `voice.pipeline_ready` atau `boot.done` kedua, sehingga tidak ada
+  pesan boot palsu saat sesi pulih.
+* `function_call`: **0**; pengulangan FunctionCall tidak dapat diverifikasi
+  karena tidak ada FunctionCall yang diterima.
+
+Tugas native sintetis read-only sempat dimulai melalui provider Gemini, tetapi
+provider mengembalikan `429 RESOURCE_EXHAUSTED` dan tidak menghasilkan
+`agent.dispatch.done`. Tugas native berbasis isi repository tidak dikirim karena
+guard privasi. Dengan demikian jalur provider sudah benar, tetapi quota/plan
+Gemini memblokir bukti tugas panjang dan FunctionCall. Status akhir tetap
+`SEBAGIAN/BLOCKED`, bukan `live-proven`.
+
+### Supersesi bukti live - LIVE-PROVEN split-provider 2026-08-11
+
+Keputusan provider diperjelas oleh user setelah sesi di atas: Gemini tetap
+menangani voice/light, sedangkan active/heavy native memakai provider `custom`
+HTTP dan model yang dipilih user. Risiko transport HTTP diterima secara
+eksplisit; ini bukan klaim bahwa endpoint tersebut terenkripsi.
+
+Konfigurasi efektif:
+
+* `routing.light.provider=gemini` dan model Live tetap milik Gemini.
+* `config/providers.json active=custom`.
+* `routing.heavy.provider=custom` dengan model `ds/deepseek-v4-flash`.
+
+Bukti live custom memakai payload sintetis tanpa file, URL, credential, atau
+data repository:
+
+* `scripts/validate_custom_function_call.py --allow-insecure-http` lulus:
+  provider `custom`, transport `http`, satu FunctionCall `validation_echo`,
+  call ID tersedia, dan **nol FunctionCall ulang** setelah synthetic tool-result.
+* `scripts/validate_custom_native_task.py --timeout 180` lulus: tugas native
+  `T-d1ab` berakhir `done` dalam **20,6 detik**, result tersedia, tanpa error.
+* Kontrak probe/routing/provider: **59 passed**; ruff seluruh file probe bersih.
+
+Digabung dengan sesi Gemini Live sebelumnya yang melewati 10 menit, memicu
+barge-in nyata, mengukur echo guard, dan memulihkan reconnect tanpa boot kedua,
+bukti runtime Fase 38 sekarang **`live-proven` dengan arsitektur split-provider**:
+Gemini untuk voice, custom untuk native task dan FunctionCall. Kegagalan quota
+Gemini tidak lagi memblokir lane native.
+
+Status migrasi struktural Fase 38 tetap `SEBAGIAN` sampai sisa seam legacy
+benar-benar dilipat. Yang ditutup di sini adalah blocker bukti live, bukan utang
+migrasi tersebut. FunctionCall yang terbukti adalah kontrak OpenAI-compatible
+provider custom; ia tidak diklaim sebagai FunctionCall transport Gemini Live.
+
 ---
 
 ## Fase 40 — Pecah `jarvis/ui/window.py` (S-33)
@@ -4207,9 +4326,10 @@ bersih dan frozen verifier menghasilkan `FROZEN integrity: OK (10 files,
 baseline 094b696)`. Tidak ada file tes yang diubah.
 
 **Batas jujur:** Fase 40 selesai di kode dan focused-tested, bukan bukti live
-suara. Prasyarat Fase 38 tetap **SEBAGIAN/belum live-proven**; tidak ada
+suara. Prasyarat Fase 38 tetap **SEBAGIAN secara struktural**, tetapi bukti
+runtime-nya menjadi `live-proven` split-provider pada 2026-08-11. Tidak ada
 mikrofon, Gemini/provider, credential, atau browser nyata yang dijalankan pada
-verifikasi ini.
+verifikasi Fase 40 itu sendiri.
 
 ---
 
@@ -4309,7 +4429,7 @@ Fase 24 sendiri).
 | 35 | Jadikan diam mustahil (S-32) | SEBAGIAN | focused-tested |
 | 36 | Batas sandbox dijaga uji (S-36) | SELESAI | focused-tested |
 | 37 | Rotasi log + pisahkan kanal bukti (S-35) | SELESAI | focused-tested, runtime-wired |
-| 38 | Selesaikan migrasi FROZEN (S-33, S-34) | SEBAGIAN | focused-tested, runtime-wired |
+| 38 | Selesaikan migrasi FROZEN (S-33, S-34) | SEBAGIAN | focused-tested, runtime-wired, live-proven (split-provider) |
 | 39 | Drift config jadi kegagalan uji (S-37) | SELESAI | — |
 | 40 | Pecah `jarvis/ui/window.py` (S-33) | SELESAI DI KODE | — |
 | 41 | Tabel status `live-proven` | SELESAI | — |

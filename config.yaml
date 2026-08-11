@@ -755,7 +755,7 @@ routing:
   heavy:
     # "" = belum diatur → dipakai provider aktif Settings bila BUKAN provider
     # light; selain itu tugas berat degrade jujur ("model berat belum diatur").
-    provider: custom             # tugas T2+ memakai provider kerja utama
+    provider: custom             # tugas T2+ memakai provider custom pilihan user
     model: ""                    # override model provider berat ("" = default)
     fallback: [openrouter, local]   # rantai bila 402/kredit habis/timeout;
                                     # entri yang belum dikonfigurasi dilewati
