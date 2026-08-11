@@ -20,11 +20,13 @@ _SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv",
 def _inside_sandbox(path: Path) -> bool:
     try:
         target = path.resolve()
-    except OSError:
+        roots = [workspace_root().resolve()]
+        roots.extend(
+            p.resolve() for p in allowed_paths() if p.exists()
+        )
+    except (OSError, TypeError, ValueError):
         return False
-    roots = [workspace_root().resolve()] + \
-        [p.resolve() for p in allowed_paths() if p.exists()]
-    return any(target == r or r in target.parents for r in roots)
+    return any(target == root or root in target.parents for root in roots)
 
 
 def _resolve(raw: str) -> Path:

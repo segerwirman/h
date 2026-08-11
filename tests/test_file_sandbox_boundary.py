@@ -178,7 +178,6 @@ def test_odd_names_never_raise(raw):
     assert isinstance(_inside_sandbox(_resolve(raw)), bool)
 
 
-@pytest.mark.xfail(strict=True, reason="S-39 — belum diperbaiki; fase ini uji saja")
 def test_a_path_that_cannot_be_resolved_is_treated_as_outside():
     """S-39 — `_inside_sandbox` MELEMPAR alih-alih menolak.
 
