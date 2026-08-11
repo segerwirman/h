@@ -4410,6 +4410,55 @@ struktural tetap **SEBAGIAN/BLOCKED**: bukti runtime split-provider tetap
 `live-proven`, tetapi validasi pascamigrasi ini belum mencakup input ucapan
 nyata untuk native task/FunctionCall dan barge-in.
 
+### Sesi interaktif dengan ucapan nyata — SEBAGIAN/BLOCKED 2026-08-11
+
+Sesi foreground custom-provider berjalan mulai `2026-08-11T16:31:30Z` dan
+dihentikan setelah bukti interaktif terkumpul. Mikrofon USB2.0 menangkap
+ucapan dan `speaker_id.match=0.896`.
+
+* Native task nyata memanggil `file_list` dan `file_search`; perintah
+  screenshot juga berhasil lewat `computer_control` dan menghasilkan file
+  screenshot.
+* Barge-in nyata terbukti: ada tiga `barge_in.triggered`, pipeline kembali ke
+  `LISTENING`, dan diagnostics terakhir mencatat `blocks_while_speaking=744`.
+  Echo/noise guard tetap aktif (`tts_onset=50`, `below_threshold=633`).
+* Tugas FunctionCall/status dikenali oleh lane `heavy` dengan provider
+  `custom`; tercatat tiga iterasi, empat `terminal` tool call sukses, dan
+  `agent.run_done`. Namun jalur voice juga mencatat `unrecognized_speech`
+  serta `voice.tool_cancelled=2`, tanpa metadata call-ID live yang dapat
+  membuktikan urutan FunctionCall bebas pengulangan.
+* Tidak ada reconnect yang diuji pada sesi ini; `agent.registry.log_call_failed`
+  juga muncul karena `record_tool` tidak tersedia pada logger sesi.
+
+Kesimpulan: jalur mikrofon, native task, dan barge-in sekarang memiliki bukti
+interaktif nyata; FunctionCall live masih belum bersih/terverifikasi penuh.
+Fase 38 tetap **SEBAGIAN/BLOCKED**, bukan `live-proven`.
+
+### Perbaikan korelasi FunctionCall — CODE/CUSTOM-PROVEN 2026-08-12
+
+Jalur voice sekarang mencatat lifecycle FunctionCall per `call_id`:
+`received`, `started`, `disposition`, `cancelled`, dan kegagalan delivery.
+Handoff agent membawa `voice_request_id` serta daftar `call_ids` sampai
+`voice.agent_task.outcome`. Turn yang sudah berhasil dialihkan ke agent native
+berakhir sebagai `success` dengan `completion=deferred_native_agent`, bukan
+lagi `unrecognized_speech`; outcome agent final tetap dicatat terpisah sebagai
+`success`, `failed`, atau `rejected`.
+
+Validasi setelah perubahan:
+
+* regresi voice/provider/ingress: **278 passed**;
+* FROZEN integrity: **OK** (10 files, baseline `094b696`);
+* probe provider nyata: `provider=custom`, `chat_ok=true`, `tools_ok=true`;
+* native task read-only: `ok=true`, hanya satu `capability_status` call
+  (`call_count=1`, `unique_call_count=1`), tanpa pengulangan;
+* session custom minimal tanpa `record_tool` tidak lagi menghasilkan
+  `agent.registry.log_call_failed`.
+
+Status Fase 38 tetap **SEBAGIAN/BLOCKED** sampai satu ucapan FunctionCall nyata
+diulang melalui sesi voice dan log baru menunjukkan call-ID yang sama dari
+`voice.function_call.received` sampai `voice.agent_task.outcome` tanpa
+`unrecognized_speech` atau eksekusi ulang.
+
 ---
 
 ## Lampiran — Status evidence fase (dibangkitkan)
