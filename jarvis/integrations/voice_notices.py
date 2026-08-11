@@ -135,12 +135,11 @@ def _reset_for_tests() -> None:
     _boundary_waiting.clear()
 
 
-def install(legacy: Any) -> bool:
-    """Assign seam only while feature flag is enabled; off is legacy no-op."""
-    if not _enabled():
-        return False
-    legacy.VOICE_NOTICE = __import__(__name__, fromlist=["*"])
-    return True
 
 
-__all__ = ["enqueue", "flush_at_turn_boundary", "install", "remember_action", "remember_agent_result"]
+__all__ = [
+    "enqueue",
+    "flush_at_turn_boundary",
+    "remember_action",
+    "remember_agent_result",
+]

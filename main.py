@@ -85,6 +85,11 @@ try:
 except Exception:
     _slog = None
     _HAS_PIPELINE = False
+
+try:
+    from jarvis.integrations import voice_notices as _voice_notices
+except Exception:
+    _voice_notices = None
 # Every external stage is bounded — a hung tool or a silent model can no
 # longer freeze the receive loop or leave the user without feedback.
 TOOL_TIMEOUT_S     = float(os.environ.get("JARVIS_TOOL_TIMEOUT_S", "60"))
@@ -94,7 +99,6 @@ VOICE_TOOL_FINAL_TIMEOUT_S = float(
     os.environ.get("JARVIS_VOICE_TOOL_FINAL_TIMEOUT_S", "2.5")
 )
 VOICE_L1_HOOK = None  # optional; None preserves the legacy voice path
-VOICE_NOTICE = None  # optional; None preserves legacy notice delivery
 VOICE_TEXT_ONLY_HOOK = None  # optional; None preserves legacy voice path
 
 
@@ -761,6 +765,14 @@ class JarvisLive:
         def _speak_brief(line: str) -> None:
             self.speak(str(line or ""))
 
+        def _deliver_agent_result(line: str, *, ok: bool) -> None:
+            queued = bool(
+                _voice_notices is not None
+                and _voice_notices.remember_agent_result(task, line, ok=ok)
+            )
+            if not queued:
+                _speak_brief(line)
+
         def _on_ack(ack: str) -> None:
             brief = str(ack or "")
             delivery_lifecycle.acknowledged("voice", brief)
@@ -776,13 +788,13 @@ class JarvisLive:
                 conversation_id, task=task, delivery=delivery
             )
             self.ui.write_log(f"Agent: {delivery.display_text[:600]}")
-            _speak_brief(delivery.speech_text) if not globals().get("VOICE_NOTICE") else VOICE_NOTICE.remember_agent_result(task, delivery.speech_text, ok=True)
+            _deliver_agent_result(delivery.speech_text, ok=True)
 
         def _on_error(error: str) -> None:
             delivery = delivery_lifecycle.failure(error, task, source="voice")
             self.ui.write_log(f"ERR: Agent native gagal: "
                               f"{delivery.display_text[:300]}")
-            _speak_brief(delivery.speech_text) if not globals().get("VOICE_NOTICE") else VOICE_NOTICE.remember_agent_result(task, delivery.speech_text, ok=False)
+            _deliver_agent_result(delivery.speech_text, ok=False)
 
         adapter = None
         window = getattr(self.ui, "_win", None)
@@ -1394,7 +1406,8 @@ class JarvisLive:
                             voice_turn_complete_seen = True
                             if had_output_payload:
                                 _mark_live_healthy()
-                            if VOICE_NOTICE: await VOICE_NOTICE.flush_at_turn_boundary(self)
+                            if _voice_notices is not None:
+                                await _voice_notices.flush_at_turn_boundary(self)
                             if voice_gate.route is None:
                                 # Input transcription is explicitly unordered
                                 # relative to model turns. Keep even an empty

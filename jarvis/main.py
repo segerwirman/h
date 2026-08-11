@@ -81,7 +81,7 @@ def _install_voice_seams(legacy, logger) -> None:
     """Pasang seluruh seam suara pada modul legacy (main.py tetap FROZEN)."""
     from jarvis.core import llm
     from jarvis.integrations import (google_voice, voice_clarify,
-                                     voice_l1, voice_notices, voice_persona,
+                                     voice_l1, voice_persona,
                                      voice_safety, voice_tasks,
                                      voice_text_only_observer,
                                      voice_live_transport,
@@ -111,7 +111,6 @@ def _install_voice_seams(legacy, logger) -> None:
     voice_l1.install(legacy)
     # 18A proposal hook is config-gated and fail-open; it never executes.
     voice_proposal_install.install(legacy)
-    voice_notices.install(legacy)
     voice_text_only_observer.install(legacy)
     voice_live_transport.install(legacy)
     voice_playback_level.install(legacy)   # §19 — ukur level untuk echo guard

@@ -2,11 +2,11 @@
   "schema_version": 1,
   "algorithm": "sha256",
   "baseline_commit": "094b696",
-  "description": "MK50 Frozen-zone integrity baseline. Text files use canonical LF bytes so checkout line-ending conversion cannot create false failures. Fase 38 (2026-08-09): baseline main.py digeser DENGAN SADAR untuk melepas import UI legacy dari jalur kesiapan suara. Stabilisasi prasyarat Fase 39 (2026-08-10): baseline main.py digeser lagi DENGAN SADAR untuk menyimpan bounded FunctionCall history lintas reconnect, memisahkan watchdog agent native dari reply Gemini, mengklasifikasikan leaf ExceptionGroup secara aman, membedakan initial/restored connection, dan membatasi Relay boot briefing satu kali per proses. Stabilisasi lanjutan (2026-08-11): baseline main.py digeser DENGAN SADAR untuk lifecycle FunctionCall at-most-once, replay response tersimpan, disposition eksplisit saat L1 menangani aksi, serta reset backoff hanya setelah milestone sesi sehat atau reauth. `ui.py` dan berkas FROZEN lain TIDAK disentuh.",
+  "description": "MK50 Frozen-zone integrity baseline. Text files use canonical LF bytes so checkout line-ending conversion cannot create false failures. Fase 38 (2026-08-09): baseline main.py digeser DENGAN SADAR untuk melepas import UI legacy dari jalur kesiapan suara. Stabilisasi prasyarat Fase 39 (2026-08-10): baseline main.py digeser lagi DENGAN SADAR untuk menyimpan bounded FunctionCall history lintas reconnect, memisahkan watchdog agent native dari reply Gemini, mengklasifikasikan leaf ExceptionGroup secara aman, membedakan initial/restored connection, dan membatasi Relay boot briefing satu kali per proses. Stabilisasi lanjutan (2026-08-11): baseline main.py digeser DENGAN SADAR untuk lifecycle FunctionCall at-most-once, replay response tersimpan, disposition eksplisit saat L1 menangani aksi, serta reset backoff hanya setelah milestone sesi sehat atau reauth. Fase 38 voice_notices (2026-08-11): konsumsi notice dipindahkan dari global VOICE_NOTICE ke API langsung jarvis.integrations.voice_notices; assignment installer dihapus. `ui.py` dan berkas FROZEN lain TIDAK disentuh.",
   "files": {
     "main.py": {
       "mode": "text-lf",
-      "sha256": "0c4c3830fec0e8a20219064a7b3984aff23cdbbd28bb188522bbe07d55ac5c81"
+      "sha256": "9c3cb9612e3f69595ff08b561f1e974fb1c0f613127cbd8a84277c19d6d7387b"
     },
     "ui.py": {
       "mode": "text-lf",

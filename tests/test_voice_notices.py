@@ -153,14 +153,7 @@ def test_agent_result_uses_same_queue(monkeypatch, tmp_path):
     assert bridge.pending_snapshot()[0].startswith("[TUGAS]")
 
 
-def test_install_sets_generic_notice_only_when_enabled(monkeypatch):
+def test_notice_delivery_no_longer_requires_legacy_assignment():
     from jarvis.integrations import voice_notices
 
-    legacy = types.SimpleNamespace(VOICE_NOTICE=None)
-    monkeypatch.setattr(voice_notices, "_enabled", lambda: False)
-    assert voice_notices.install(legacy) is False
-    assert legacy.VOICE_NOTICE is None
-
-    monkeypatch.setattr(voice_notices, "_enabled", lambda: True)
-    assert voice_notices.install(legacy) is True
-    assert legacy.VOICE_NOTICE is voice_notices
+    assert not hasattr(voice_notices, "install")

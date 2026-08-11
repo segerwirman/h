@@ -229,7 +229,6 @@ def test_frozen_hook_guard_is_default_noop_shape():
     source = Path("main.py").read_text(encoding="utf-8-sig").replace("\r\n", "\n")
     expected = (
         "VOICE_L1_HOOK = None  # optional; None preserves the legacy voice path\n"
-        "VOICE_NOTICE = None  # optional; None preserves legacy notice delivery\n"
         "VOICE_TEXT_ONLY_HOOK = None  # optional; None preserves legacy voice path\n"
         "\n\nclass _VoiceStopRequested"
     )

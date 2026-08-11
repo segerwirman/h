@@ -32,7 +32,7 @@ def _receive_method(
         "_clean_transcript": lambda value: str(value or "").strip(),
         "VOICE_TOOL_FINAL_TIMEOUT_S": timeout_s,
         "VOICE_L1_HOOK": l1_hook,
-        "VOICE_NOTICE": None,
+        "_voice_notices": None,
         "VOICE_TEXT_ONLY_HOOK": text_only_hook,
         "Outcome": SimpleNamespace(SUCCESS="success"),
     }
