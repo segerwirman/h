@@ -4094,6 +4094,10 @@ Perbaikan berikutnya tetap berada di scope stabilisasi/Fase 39, sementara Fase 4
   bergantung pada baris SQLite seed. Candidate kosong memiliki 0 baris, dan
   root data lokal memiliki 354 baris sehingga dua tes itu lulus; tidak ada
   perubahan pada `memory_store.py` maupun tes tersebut.
+* Pada workspace campuran saat ini, batch yang sama menghasilkan `203 passed,
+  4 failed`. Keempatnya adalah `test_action_hint_and_back` yang mengimpor
+  modul Fase40 dirty dan gagal pada `QKeySequence` dari `PyQt6.QtCore`; batch
+  tanpa test UI itu menghasilkan `185 passed`.
 * Ruff target stabilisasi dan generator lulus. Ruff root penuh belum dijadikan
   klaim hijau karena debt Fase 35 dan working tree Fase 40 memang masih ada.
 
