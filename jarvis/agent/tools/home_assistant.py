@@ -12,15 +12,14 @@ import time
 
 from pydantic import BaseModel, Field
 
-from jarvis.core import config, secrets_store
+from jarvis.core import secrets_store
 from jarvis.agent.base import Tool, ToolResult
 
 _cache: dict = {"entities": None, "ts": 0.0}
 
 
 def _url() -> str:
-    return (os.environ.get("HA_URL", "")
-            or str(config.get("agent.home_assistant.url", ""))).rstrip("/")
+    return os.environ.get("HA_URL", "").rstrip("/")
 
 
 def _token() -> str:

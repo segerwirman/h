@@ -58,11 +58,10 @@ class EmailFiltering:
 
     def __init__(self) -> None:
         e = config.section("nlp.email")
-        # secrets: env vars first (JARVIS_IMAP_*), config.yaml fallback
+        # Kredensial hanya dari environment; config.yaml ter-track git.
         self._host = config.secret("JARVIS_IMAP_HOST", "nlp.email.imap_host")
-        self._user = config.secret("JARVIS_IMAP_USER", "nlp.email.imap_user")
-        self._password = config.secret("JARVIS_IMAP_PASSWORD",
-                                       "nlp.email.imap_password")
+        self._user = config.secret("JARVIS_IMAP_USER")
+        self._password = config.secret("JARVIS_IMAP_PASSWORD")
         self._read_only = bool(e.get("read_only", True))
 
     @property

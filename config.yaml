@@ -42,7 +42,6 @@ ui:
   # pengguna memilih nama panel stage secara eksplisit (mis. "vision").
   startup:
     panel: null
-    show_briefing: false
   content_stage:
     empty_frame_visible: true
     empty_frame_opacity: 42
@@ -57,10 +56,14 @@ ui:
     card_border: false            # kartu INFO borderless (tanpa garis kotak)
     orb_recenter_ms: 4000         # orb balik ke tengah setelah kartu tampil (0 = nonaktif)
     max_cards: 12
+  home_panel:
+    snapshot_s: 10
+    refresh_s: 300
+    max_cameras: 4
+    max_lights: 12
   orb:
     transition:
       docking_ms: 400
-      easing: "InOutCubic"
     docking:
       inset_px: 200
       margin_right_px: 132
@@ -86,13 +89,10 @@ ui:
           alpha_range: 145
           stroke_px: 2.6
         particles:
-          enabled: true
           mode: orbit
           count: 48
-          orbit_layers: [1.18, 1.42]
       active_content:
         diameter: 140
-        docked: true
         waveform:
           mode: radial
           bars: 24
@@ -102,7 +102,6 @@ ui:
           alpha_range: 145
           stroke_px: 2.6
         particles:
-          enabled: false
           mode: none
     halo_aperture:
       enabled: true
@@ -131,8 +130,6 @@ ui:
     cinematic_enabled: true
     cinematic_duration_ms: 900
     ready_label: "READY"
-    morning_briefing_enabled: false
-  fps: 60                       # orb redraw target → after(16)
   reduced_motion: false          # true → halo/reticle rotation near-static, parallax minimal
   parallax:
     enabled: true
@@ -141,11 +138,9 @@ ui:
     reduced_motion_max_px: 1
     pause_when_inactive: true
   notifications:
-    style: blip                  # minimal dot + optional short label
     dot_px: 8
     duration_ms: 3800
     max_stack: 4
-    chime_enabled: false
     placement: "top_right"       # never overlaps ContentStage
   sentiment_glow:
     enabled: true
@@ -266,7 +261,6 @@ hotkeys:
 
 notifications:                   # Mark L Change 1 — boot notification hub
   poll_timeout_s: 8              # hard deadline for all sources combined
-  email_limit: 200               # max UNSEEN ids counted
   # SECURITY: token Graph API TIDAK pernah ditulis di file ini (file ini
   # ter-track git). Sumber Instagram/Facebook belum punya pembaca di kode;
   # bila nanti diaktifkan, ambil dari env atau jarvis/core/secrets_store.py.
@@ -322,33 +316,9 @@ overlays:
 
 llm:
   live_model: "models/gemini-3.1-flash-live-preview"
-  live_voice: "Charon"                                                 # do-not-regress
   text_model: "gemini-3.5-flash"
   classify_model: "gemini-3.5-flash"
   api_key_file: "config/api_keys.json"   # relative to project root
-  request_timeout_s: 45
-
-  # ── Live API — nilai di bawah diverifikasi langsung (2026-07-29) ──────────
-  # Endpoint persisnya (WebSocket, dibentuk oleh google-genai 2.11.0):
-  #   wss://generativelanguage.googleapis.com
-  #       /ws/google.ai.generativelanguage.<api_version>.GenerativeService.BidiGenerateContent
-  # live_model terdaftar di ListModels v1beta DAN v1alpha dengan
-  # supportedGenerationMethods == ["bidiGenerateContent"] (version 3.1-flash-live-03-2026).
-  live_host: "generativelanguage.googleapis.com"
-  live_api_version: "v1beta"     # v1alpha diuji juga: lolos, perilaku identik
-  live_endpoint_method: "BidiGenerateContent"
-
-  # Hasil uji sample-rate (ucapan nyata, dinilai dari input transcription):
-  #   16000 / 24000 / 48000 Hz PCM s16le mono SEMUANYA lolos di kedua api_version,
-  #   SYARAT: rate= pada mime type sama persis dengan rate data sebenarnya.
-  #   Salah label terbukti merusak, bukan diabaikan server —
-  #     data 24k dilabeli 16k → transkrip terpotong; data 48k dilabeli 16k → tanpa balasan.
-  #   Jadi yang menentukan adalah kecocokan label, bukan angka rate-nya.
-  live_input_sample_rate: 16000  # harus sama dengan main.SEND_SAMPLE_RATE
-  live_output_sample_rate: 24000 # server selalu balas audio/pcm;rate=24000
-  # Vertex AI (host <region>-aiplatform.googleapis.com, path .../ws/
-  # google.cloud.aiplatform.<ver>.LlmBidiService/BidiGenerateContent) TIDAK diuji:
-  # mesin ini hanya punya API key Gemini, tanpa kredensial project.
 
 boot:
   fade_in_ms: 800
@@ -362,11 +332,7 @@ boot:
     - core.browser
     - core.system
 
-# ── Tombstone migrasi Hermes ─────────────────────────────────────────────────
-# Kunci lama dipertahankan agar config lama tetap dapat dibaca. Runtime tidak
-# dapat mengaktifkannya; seluruh eksekusi tugas memakai agent native Jarvis.
-hermes:
-  enabled: false
+# Hermes CLI retired permanently; seluruh eksekusi tugas memakai agent native.
 
 router:
   classify_budget_ms: 100
@@ -409,6 +375,7 @@ whatsapp_web:
   # `allow_direct_numbers` di atas: keduanya sekaligus berarti satu salah
   # dengar STT bisa menelepon nomor acak.
   call_confirmation: allowlisted_only    # nomor harus ada dalam contacts_file
+  call_confirm_timeout_s: 8       # tunggu bukti ringing/in_call setelah klik
   contact_fuzzy_threshold: 0.68  # toleransi nama hasil STT; tetap hanya allowlist
   # S-26 — WhatsApp Web butuh beberapa detik untuk siap. Bentuk lama membaca
   # status SEKALI lalu gagal, sehingga perintah pertama setelah Jarvis menyala
@@ -448,7 +415,6 @@ browser:
   dom_ready_extra_ms: 1200       # settle time after loadFinished before extraction
   extract_max_chars: 18000
   video:                         # Mark L Change 6 — video path
-    yt_embed_template: "https://www.youtube-nocookie.com/embed/{vid}?autoplay=1&rel=0"
     yt_results_template: "https://www.youtube.com/results?search_query={query}"
     embed_referer: "https://embed.jarvis.local/"   # baseUrl for the iframe wrapper
     autoplay: true
@@ -471,6 +437,10 @@ wake:                            # Modul 10 — double-clap wake trigger
   diagnostics: false             # true → log every candidate accept/reject
 
 voice:                           # Mark L Change 4 — barge-in interrupt
+  speaker_id:
+    gate: false                  # observe-only sampai profil pemilik terkalibrasi
+    threshold: null             # null = ambang hasil enrollment
+    margin: 0.04
   # Batas tunggu API key sebelum pipeline suara menyerah dan MELAPOR.
   # Bentuk lama menunggu tanpa batas di thread non-daemon: bila key belum
   # diisi, JarvisLive tak pernah dibuat sehingga on_text_command tak pernah
@@ -598,17 +568,15 @@ relay:                           # Fase 5 — Relay.app integration (read-only)
   request_timeout_seconds: 10    # outbound client (only when base_url is set)
   max_retries: 2
   # base_url: ""                 # ONLY if you exposed an endpoint yourself
-  # endpoints:                   # name → path on base_url (never invented)
-  #   laporan_harian: "/workflows/laporan-harian/result"
+  endpoints: {}                  # name → path on base_url (never invented)
+  # laporan_harian: "/workflows/laporan-harian/result"
 
 docs:                            # Fase 4 — document upload limits
   max_file_mb: 25                # reject larger uploads with a friendly error
-  summary_chunk_chars: 8000      # hierarchical summarization chunk size
 
 nlp:
   route_threshold: 0.6
   history_file: "config/command_history.json"
-  predictive_max_suggestions: 1
   chat_context_turns: 12
   translation_langs: [id, en, ja, ko, zh, ar, es, fr, de, ru, pt, tr]
   sentiment_log: "logs/sentiment.jsonl"
@@ -636,6 +604,8 @@ logging:
   dir: "logs"
   file: "jarvis.log"
   level: "INFO"
+  max_bytes: 10485760            # 10 MiB per process-owned log
+  backup_count: 5
 
 memory:                          # jarvis.core.memory — layered memory (redesign §12)
   deduplication:
@@ -684,25 +654,27 @@ integrations:                    # this-prompt §19-§24 — secrets via keyring
   telegram:
     enabled: true               # master toggle; token + IDs hanya secrets_store
     voice_max_bytes: 20971520    # 20 MiB; ditolak sebelum download bila lebih besar
+  call:
+    memory_enabled: false       # hanya metadata allowlist; tanpa audio/transcript
+  whatsapp:
+    enabled: false              # Cloud API gate; terpisah dari whatsapp_web
+    allowed_ids: []             # recipient IDs yang diizinkan
+    rollout_enabled: false      # outbound tetap deny-by-default
+    allowlist: []
+    rate_per_minute: 5
+    daily_cap: 50
   youtube:
-    enabled: true
     # secret NAMES only — never the values (values live in the OS keyring via
     # jarvis.core.secrets_store). API key alone is read-only; OAuth is
     # required for any reply/write operation (§20).
     api_key_secret_name: "jarvis/youtube/data_api_v3"
+    oauth_token_secret_name: "jarvis/youtube/oauth_token"
     # OAuth YouTube memakai provider Google terpadu di bawah; tidak ada token
     # YouTube terpisah dan tidak ada material credential di YAML.
-    reply_mode: draft             # draft | auto — auto needs explicit per-session opt-in
-    auto_send: false
-    confirmation_required: true
-    poll_interval_floor_seconds: 5   # never poll faster than the API tells us
-    max_results: 50
-    quota_warning_threshold: 8000
 
 providers:
   google:
     enabled: false              # true hanya setelah OAuth tersimpan aman
-    auth: oauth
     apis:
       calendar:
         enabled: false
@@ -715,6 +687,7 @@ providers:
         write: false
       drive:
         enabled: false
+        write: false
 
 live_comments:                   # jarvis.integrations.comments (redesign §15)
   default_reply_mode: draft        # draft | auto — auto requires explicit per-session activation
@@ -735,8 +708,10 @@ live_comments:                   # jarvis.integrations.comments (redesign §15)
       enabled: false
     instagram:
       enabled: false
+      media_id: ""                 # ID media live; token tetap di keyring
     facebook:
       enabled: false
+      live_video_id: ""            # ID live video Page; token tetap di keyring
   sentiment:
     enabled: true
     window_size: 100
@@ -819,7 +794,6 @@ agent:
   max_concurrent_tasks: 3        # tugas paralel; >3 mulai berebut CPU/API quota
   queue_max: 20                  # tugas aktif (QUEUED+RUNNING) sebelum ditolak
   exclusive_resources: [desktop, camera, browser_context]
-  orphan_policy: report          # report | resume | discard (tugas saat crash)
   cron_timeout_s: 900
   request_timeout_s: 60
   llm_retries: 1
@@ -836,6 +810,13 @@ agent:
     # Satu tab per pencarian, bukan satu per hasil. Nilai tak dikenal jatuh
     # ke `on_request`.
     open_sources: on_request
+  command_index:
+    enabled: true
+    threshold: 0.75             # diukur: same-tool terendah 0.814, beda-tool tertinggi 0.649
+  command_plan:
+    enabled: true               # ulang rencana exact yang sudah terbukti
+  prewarm:
+    enabled: true               # siapkan SDK/tool schema lokal tanpa network
   memory:
     # §24 — recall semantik diberi TENGGAT. Terukur: memory_store.search
     # 3250 ms dingin / 422 ms hangat, hampir seluruhnya embedding — round trip
@@ -923,11 +904,6 @@ agent:
   image_provider: ""             # "" = provider aktif; atau gemini/openai/local
   image_model: "imagen-4.0-generate-001"
   image_model_openai: "gpt-image-1"
-  home_assistant:
-    # URL instance via env HA_URL; token via secrets_store
-    # ("jarvis/home_assistant/token") atau env HA_TOKEN. Keduanya sengaja
-    # tidak punya slot di file ini — file ini ter-track git.
-    {}
   spotify:
     # client_id via env SPOTIFY_CLIENT_ID (identifier OAuth, bukan rahasia,
     # tapi tetap per-mesin sehingga tidak layak di-commit).
@@ -996,7 +972,6 @@ auxiliary:                       # PARITY v2 §7.1 — model terpisah per side-t
 curator:                         # PARITY v2 §8 — lifecycle skill learned
   enabled: true
   stale_after_days: 14           # tak terpakai → stale
-  archive_after_days: 45         # tak terpakai → pindah .archive/ (recoverable)
   interval_hours: 24             # jarak minimum antar run curator
 
 mcp:                             # PARITY v2 §5.7 — server MCP eksternal (stdio)

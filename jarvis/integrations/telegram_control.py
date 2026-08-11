@@ -184,8 +184,7 @@ def migrate_legacy() -> bool:
     except Exception:  # noqa: BLE001
         pass
     legacy_token = legacy_token or os.environ.get("TG_BOT_TOKEN", "")
-    legacy_ids = (os.environ.get("TG_ALLOWED_IDS", "") or
-                  str(config.get("agent.telegram.allowed_ids", "") or ""))
+    legacy_ids = os.environ.get("TG_ALLOWED_IDS", "")
     if not legacy_token or not legacy_ids:
         return False
     result = save_credentials(legacy_token, legacy_ids)

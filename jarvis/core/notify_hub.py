@@ -140,8 +140,8 @@ def _poll_email() -> SourceResult:
     try:
         import imaplib
         host = config.secret("JARVIS_IMAP_HOST", "nlp.email.imap_host")
-        user = config.secret("JARVIS_IMAP_USER", "nlp.email.imap_user")
-        pwd = config.secret("JARVIS_IMAP_PASSWORD", "nlp.email.imap_password")
+        user = config.secret("JARVIS_IMAP_USER")
+        pwd = config.secret("JARVIS_IMAP_PASSWORD")
 
         if not (host and user and pwd):
             return SourceResult("email", 0, False,

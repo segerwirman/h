@@ -17,7 +17,7 @@ from __future__ import annotations
 import threading
 import time
 
-from jarvis.core import config, log
+from jarvis.core import log
 from jarvis.core.bus import BUS
 from jarvis.integrations.hermes.bridge import HermesBridge, is_enabled
 
@@ -62,7 +62,7 @@ def dispatch_async(task: str,
             return False
         _active[k] = time.monotonic()
 
-    ack = str(config.get("hermes.ack_phrase", "Baik, sedang saya kerjakan."))
+    ack = "Baik, sedang saya kerjakan."
     if on_ack:
         try:
             on_ack(ack)

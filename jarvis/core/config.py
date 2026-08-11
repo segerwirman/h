@@ -92,6 +92,28 @@ def validate() -> list[str]:
     issues: list[str] = []
     if not CONFIG_PATH.exists():
         issues.append("config.yaml tidak ditemukan — semua nilai memakai default.")
+    elif not getattr(sys, "frozen", False):
+        source_root = base_dir()
+        # Fixture/unit test sering memindahkan CONFIG_PATH ke temp. Source tree
+        # itu tidak mewakili YAML fixture, jadi audit kontrak repo dijalankan
+        # hanya untuk config canonical. CI memanggil audit_repository eksplisit.
+        try:
+            is_canonical = CONFIG_PATH.resolve() == (
+                source_root / "config.yaml"
+            ).resolve()
+        except OSError:
+            is_canonical = False
+        if is_canonical:
+            try:
+                from jarvis.core import config_contract
+
+                report = config_contract.audit_repository(CONFIG_PATH, source_root)
+                issues.extend(config_contract.issues(report))
+            except Exception as exc:
+                issues.append(
+                    "Kontrak config tidak dapat diperiksa "
+                    f"({type(exc).__name__})."
+                )
     try:
         from jarvis.core import llm
         if not llm.api_key():
@@ -104,8 +126,8 @@ def validate() -> list[str]:
         if not secret("RELAY_WEBHOOK_SECRET"):
             issues.append("Relay aktif tetapi RELAY_WEBHOOK_SECRET kosong — "
                           "webhook tidak akan berjalan.")
-    imap_user = secret("JARVIS_IMAP_USER", "nlp.email.imap_user")
-    imap_pass = secret("JARVIS_IMAP_PASSWORD", "nlp.email.imap_password")
+    imap_user = secret("JARVIS_IMAP_USER")
+    imap_pass = secret("JARVIS_IMAP_PASSWORD")
     if bool(imap_user) != bool(imap_pass):
         issues.append("Konfigurasi email tidak lengkap (user/password salah "
                       "satunya kosong) — modul email nonaktif.")

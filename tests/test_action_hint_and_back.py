@@ -179,7 +179,7 @@ def test_install_bisa_dimatikan_config(app, monkeypatch) -> None:
     real = config.get
     monkeypatch.setattr(
         config, "get",
-        lambda k, d=None: (False if k == "ui.action_panel.hint.enabled"
+        lambda k, d=None: (False if k == "action_panel.hint.enabled"
                            else real(k, d)))
     from jarvis.ui.actionpanel import ActionPanel
     assert action_hint.install(ActionPanel(None), QWidget()) is None

@@ -17,15 +17,9 @@ caller legacy tidak dapat menjalankan CLI setelah flag dimatikan.
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
+import shutil as shutil  # compatibility seam for tests proving CLI stays untouched
+import subprocess as subprocess  # compatibility seam; retired runtime never calls it
 import threading
-import time
-
-from jarvis.core import config, log
-from jarvis.core.circuit import CircuitBreaker
-
-_logger = log.get("hermes.bridge")
 
 _DISABLED_ERROR = (
     "Integrasi Hermes dinonaktifkan; gunakan agent native Jarvis."
@@ -54,7 +48,7 @@ def _disabled_result() -> dict:
 
 
 class HermesBridge:
-    """Singleton — resolusi executable & circuit state dibagikan."""
+    """Import-compatible tombstone for retired Hermes integrations."""
 
     _instance: "HermesBridge | None" = None
     _lock = threading.Lock()
@@ -72,83 +66,27 @@ class HermesBridge:
             cls._instance = None
 
     def __init__(self):
-        self.executable = str(config.get("hermes.executable", "hermes"))
+        self.executable = "hermes"
         self._resolved: str | None = None
-        self.profile = str(config.get("hermes.profile", "") or "")
-        self.send_timeout_s = float(config.get("hermes.send_timeout_s", 20))
-        self.task_timeout_s = float(config.get("hermes.task_timeout_s", 600))
-        self.model = str(config.get("hermes.model", "") or "")
-        self.toolsets = str(config.get("hermes.toolsets", "") or "")
-        # Circuit: 3 kegagalan beruntun → open 30 s → half-open probe.
-        self.circuit = CircuitBreaker(
-            "hermes",
-            failure_threshold=int(config.get("hermes.circuit.failures", 3)),
-            reset_timeout_s=float(config.get("hermes.circuit.reset_s", 30)),
-        )
+        self.profile = ""
+        self.send_timeout_s = 20.0
+        self.task_timeout_s = 600.0
+        self.model = ""
+        self.toolsets = ""
 
     # ── plumbing ──────────────────────────────────────────────────────────
 
     def _exe(self) -> str | None:
-        """Resolve CLI → path (cached). Windows: npm/pip shims butuh path
-        penuh (.CMD/.EXE) karena CreateProcess tanpa shell hanya cari .exe."""
-        if not is_enabled():
-            return None
-        if self._resolved is None:
-            self._resolved = shutil.which(self.executable) or ""
-        return self._resolved or None
+        """Retired runtime never resolves an executable."""
+        return None
 
     def available(self) -> bool:
-        """Flag aktif, CLI ada di PATH, dan circuit tidak open."""
-        if not is_enabled():
-            return False
-        return self._exe() is not None and self.circuit.allow()
-
-    def _base(self) -> list[str]:
-        cmd = [self._exe() or self.executable]
-        if self.profile:
-            cmd += ["--profile", self.profile]
-        return cmd
+        """Hermes runtime is retired and never available."""
+        return False
 
     def _run(self, args: list[str], timeout: float) -> dict:
-        """Jalankan CLI, kembalikan {ok, stdout, stderr, exit, elapsed_ms}.
-        Tidak pernah raise — kegagalan tercatat di circuit + log."""
-        # Security boundary: keep this guard immediately before every possible
-        # executable lookup/subprocess call. Public methods all converge here.
-        if not is_enabled():
-            return _disabled_result()
-        exe = self._exe()
-        if exe is None:
-            self.circuit.record_failure()
-            return {"ok": False, "error": "hermes CLI tidak ditemukan di PATH",
-                    "stdout": "", "stderr": "", "exit": -1, "elapsed_ms": 0.0}
-        if not self.circuit.allow():
-            return {"ok": False, "error": "circuit open — Hermes sedang di-skip",
-                    "stdout": "", "stderr": "", "exit": -1, "elapsed_ms": 0.0}
-        t0 = time.perf_counter()
-        try:
-            r = subprocess.run(self._base() + args, capture_output=True,
-                               text=True, encoding="utf-8", errors="replace",
-                               timeout=timeout)
-            elapsed = (time.perf_counter() - t0) * 1000
-            ok = r.returncode == 0
-            (self.circuit.record_success if ok
-             else self.circuit.record_failure)()
-            _logger.info("hermes.run", args=args[:2], ok=ok,
-                         exit=r.returncode, elapsed_ms=round(elapsed, 1))
-            return {"ok": ok, "stdout": r.stdout or "", "stderr": r.stderr or "",
-                    "exit": r.returncode, "elapsed_ms": elapsed}
-        except subprocess.TimeoutExpired:
-            self.circuit.record_failure()
-            _logger.warning("hermes.timeout", args=args[:2], timeout_s=timeout)
-            return {"ok": False, "error": f"timeout {timeout:.0f}s",
-                    "stdout": "", "stderr": "", "exit": -1,
-                    "elapsed_ms": (time.perf_counter() - t0) * 1000}
-        except Exception as e:                              # noqa: BLE001
-            self.circuit.record_failure()
-            _logger.error("hermes.run_error", error=str(e)[:120])
-            return {"ok": False, "error": str(e)[:200], "stdout": "",
-                    "stderr": "", "exit": -1,
-                    "elapsed_ms": (time.perf_counter() - t0) * 1000}
+        """Return retired-runtime result without touching executable or process."""
+        return _disabled_result()
 
     # ── Tier 2: no-LLM direct send ────────────────────────────────────────
 

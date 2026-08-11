@@ -27,22 +27,22 @@ class RelayClientError(RuntimeError):
         self.code = code
 
 
-def _env(name: str, default: str = "") -> str:
-    return os.environ.get(name, "") or str(config.get(
-        "relay." + name.removeprefix("RELAY_").lower(), default) or "")
-
-
 class RelayClient:
     def __init__(self, base_url: str | None = None, token: str | None = None,
                  timeout_s: float | None = None, max_retries: int | None = None,
                  session=None):
         self.base_url = (base_url if base_url is not None
-                         else _env("RELAY_BASE_URL")).rstrip("/")
-        self.token = token if token is not None else _env("RELAY_API_TOKEN")
-        self.timeout_s = float(timeout_s if timeout_s is not None
-                               else _env("RELAY_REQUEST_TIMEOUT_SECONDS", "10"))
-        self.max_retries = int(max_retries if max_retries is not None
-                               else _env("RELAY_MAX_RETRIES", "2"))
+                         else os.environ.get("RELAY_BASE_URL", "")).rstrip("/")
+        self.token = (token if token is not None
+                      else os.environ.get("RELAY_API_TOKEN", ""))
+        self.timeout_s = float(timeout_s if timeout_s is not None else (
+            os.environ.get("RELAY_REQUEST_TIMEOUT_SECONDS", "")
+            or config.get("relay.request_timeout_seconds", 10)
+        ))
+        self.max_retries = int(max_retries if max_retries is not None else (
+            os.environ.get("RELAY_MAX_RETRIES", "")
+            or config.get("relay.max_retries", 2)
+        ))
         self._session = session          # injectable for tests
         self.breaker = CircuitBreaker("relay", failure_threshold=4,
                                       reset_timeout_s=60.0)

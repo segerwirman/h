@@ -31,7 +31,7 @@ def _disabled_get(monkeypatch) -> None:
 
 
 def test_config_and_missing_config_default_to_disabled(monkeypatch):
-    assert config.get("hermes.enabled") is False
+    assert config.get("hermes.enabled", False) is False
     assert bridge_module.is_enabled() is False
 
     monkeypatch.setattr(config, "get", lambda _path, default=None: default)

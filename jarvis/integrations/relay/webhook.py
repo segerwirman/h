@@ -35,11 +35,6 @@ TOKEN_HEADER = "X-Relay-Token"
 SIGNATURE_HEADER = "X-Relay-Signature"
 
 
-def _env(name: str, default: str = "") -> str:
-    return os.environ.get(name, "") or str(config.get(
-        "relay." + name.removeprefix("RELAY_").lower(), default) or "")
-
-
 def verify_request(headers, body: bytes, secret: str,
                    replay_window_s: float, now: float | None = None
                    ) -> tuple[bool, str]:
@@ -76,17 +71,29 @@ class WebhookReceiver:
                  host: str | None = None, port: int | None = None,
                  path: str | None = None, secret: str | None = None):
         self.store = store or RelayStore()
-        self.host = host or _env("RELAY_WEBHOOK_HOST", "127.0.0.1")
+        self.host = host or (
+            os.environ.get("RELAY_WEBHOOK_HOST", "")
+            or str(config.get("relay.webhook_host", "127.0.0.1") or "")
+        )
         # ``port or default`` SALAH: 0 itu falsy, padahal port=0 adalah
         # permintaan EKSPLISIT "pilih port bebas". Dengan bentuk lama setiap
         # pemanggil ephemeral diam-diam merebut port produksi 8791 — dan
         # dengan SO_REUSEADDR di Windows dua proses bisa sama-sama "berhasil"
         # bind ke sana sehingga permintaan nyasar ke server yang salah.
-        self.port = int(port if port is not None
-                        else _env("RELAY_WEBHOOK_PORT", "8791"))
-        self.path = path or _env("RELAY_WEBHOOK_PATH", "/relay/webhook")
-        self.secret = secret if secret is not None else _env("RELAY_WEBHOOK_SECRET")
-        self.replay_window_s = float(_env("RELAY_REPLAY_WINDOW_S", "300"))
+        self.port = int(port if port is not None else (
+            os.environ.get("RELAY_WEBHOOK_PORT", "")
+            or config.get("relay.webhook_port", 8791)
+        ))
+        self.path = path or (
+            os.environ.get("RELAY_WEBHOOK_PATH", "")
+            or str(config.get("relay.webhook_path", "/relay/webhook") or "")
+        )
+        self.secret = (secret if secret is not None
+                       else os.environ.get("RELAY_WEBHOOK_SECRET", ""))
+        self.replay_window_s = float(
+            os.environ.get("RELAY_REPLAY_WINDOW_S", "")
+            or config.get("relay.replay_window_s", 300)
+        )
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self.stats = {"accepted": 0, "duplicates": 0, "rejected": 0}

@@ -28,8 +28,7 @@ _lock = threading.Lock()
 
 
 def _client_id() -> str:
-    return os.environ.get("SPOTIFY_CLIENT_ID", "") \
-        or str(config.get("agent.spotify.client_id", ""))
+    return os.environ.get("SPOTIFY_CLIENT_ID", "")
 
 
 def _redirect_uri() -> str:

@@ -50,7 +50,7 @@ class ActionHint(QLabel):
 
     def __init__(self, parent: QWidget) -> None:
         super().__init__(parent)
-        c = config.section("ui.action_panel.hint")
+        c = config.section("action_panel.hint")
         self._delay_in = int(c.get("delay_in_ms", 120))
         self._delay_out = int(c.get("delay_out_ms", 80))
         self._offset = int(c.get("offset_px", 10))
@@ -175,7 +175,7 @@ class ActionHint(QLabel):
 
 def install(action_panel, parent: QWidget | None = None) -> ActionHint | None:
     """Pasang hint ke seluruh tombol ActionPanel. ``None`` bila dimatikan."""
-    if not bool(config.get("ui.action_panel.hint.enabled", True)):
+    if not bool(config.get("action_panel.hint.enabled", True)):
         return None
     buttons = getattr(action_panel, "_buttons", None)
     if not buttons:
