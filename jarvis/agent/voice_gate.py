@@ -7,8 +7,9 @@ VAD, STT, TTS, or playback.
 """
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Iterator
 
 from jarvis.agent.router import Route, Tier, classify
 
@@ -21,6 +22,104 @@ class VoiceToolBatch:
     timed_out: bool = False
 
 
+@dataclass
+class _CallRecord:
+    state: str
+    result: Any = None
+
+
+class FunctionCallHistory:
+    """Bounded cross-reconnect lifecycle for non-empty FunctionCall IDs.
+
+    A released batch is deliberately absent from this history. ``start`` is the
+    first terminal boundary: once execution may have begun, reconnect must not
+    repeat an external side effect. A completed response is cached before the
+    network send and remains replayable until/after delivery.
+    """
+
+    def __init__(self, limit: int = 256) -> None:
+        self._limit = max(1, int(limit))
+        self._ids: deque[str] = deque()
+        self._records: dict[str, _CallRecord] = {}
+
+    def __contains__(self, call_id: object) -> bool:
+        return self.state(call_id) != "new"
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(tuple(self._ids))
+
+    def state(self, call_id: object) -> str:
+        value = str(call_id or "")
+        if not value:
+            return "new"
+        record = self._records.get(value)
+        return record.state if record is not None else "new"
+
+    def result(self, call_id: object) -> Any:
+        value = str(call_id or "")
+        record = self._records.get(value)
+        return record.result if record is not None else None
+
+    def start(self, call_id: object) -> bool:
+        value = str(call_id or "")
+        if not value:
+            return True
+        if value in self._records:
+            return False
+        self._append(value, _CallRecord("in_flight"))
+        return True
+
+    def mark_unknown(self, call_id: object) -> None:
+        value = str(call_id or "")
+        record = self._records.get(value)
+        if record is not None and record.state == "in_flight":
+            record.state = "unknown"
+
+    def store_result(self, call_id: object, result: Any) -> None:
+        value = str(call_id or "")
+        if not value:
+            return
+        record = self._records.get(value)
+        if record is None:
+            return
+        if record.state == "cancelled":
+            return
+        record.state = "result_cached"
+        record.result = result
+
+    def mark_delivered(
+        self,
+        call_id: object,
+        *,
+        result: Any = None,
+    ) -> None:
+        value = str(call_id or "")
+        if not value:
+            return
+        record = self._records.get(value)
+        if record is None or record.state == "cancelled":
+            return
+        if result is not None:
+            record.result = result
+        record.state = "delivered"
+
+    def cancel(self, call_id: object) -> None:
+        value = str(call_id or "")
+        if not value:
+            return
+        record = self._records.get(value)
+        if record is None:
+            self._append(value, _CallRecord("cancelled"))
+        else:
+            return
+
+    def _append(self, call_id: str, record: _CallRecord) -> None:
+        while len(self._ids) >= self._limit:
+            self._records.pop(self._ids.popleft(), None)
+        self._ids.append(call_id)
+        self._records[call_id] = record
+
+
 class VoiceToolGate:
     """Per-turn state machine that prevents actions on partial speech."""
 
@@ -29,9 +128,11 @@ class VoiceToolGate:
         classifier: Callable[[str, dict], Route] = classify,
         *,
         source: str = "voice",
+        history: FunctionCallHistory | None = None,
     ) -> None:
         self._classifier = classifier
         self._source = source
+        self._history = history or FunctionCallHistory()
         self.reset()
 
     def reset(self) -> None:
@@ -39,6 +140,7 @@ class VoiceToolGate:
         self._final_text: str | None = None
         self._route: Route | None = None
         self._pending: list[Any] = []
+        self._pending_ids: set[str] = set()
         self._fallback_task = ""
         self._agent_claimed = False
 
@@ -77,19 +179,34 @@ class VoiceToolGate:
         return self._take_ready(timed_out=False)
 
     def queue_calls(self, calls: Iterable[Any]) -> VoiceToolBatch | None:
-        incoming = tuple(calls)
+        incoming = []
+        for call in calls:
+            call_id = _call_id(call)
+            if call_id and call_id in self._pending_ids:
+                continue
+            if call_id and self._history.state(call_id) == "cancelled":
+                continue
+            incoming.append(call)
+            if call_id:
+                self._pending_ids.add(call_id)
         if not self._fallback_task:
             self._fallback_task = _task_from_pending_calls(incoming) or ""
         self._pending.extend(incoming)
         return self._take_ready(timed_out=False)
 
     def cancel(self, ids: Iterable[str]) -> int:
-        cancelled = {str(value) for value in ids if value is not None}
+        cancelled = {str(value) for value in ids if str(value or "")}
         before = len(self._pending)
-        self._pending = [
-            call for call in self._pending
-            if str(getattr(call, "id", "")) not in cancelled
-        ]
+        kept = []
+        for call in self._pending:
+            call_id = _call_id(call)
+            if call_id in cancelled:
+                self._pending_ids.discard(call_id)
+            else:
+                kept.append(call)
+        self._pending = kept
+        for call_id in cancelled:
+            self._history.cancel(call_id)
         return before - len(self._pending)
 
     def timeout(self) -> VoiceToolBatch | None:
@@ -145,7 +262,12 @@ class VoiceToolGate:
             return None
         calls = tuple(self._pending)
         self._pending.clear()
+        self._pending_ids.clear()
         return VoiceToolBatch(calls, self.text, self._route, timed_out)
+
+
+def _call_id(call: Any) -> str:
+    return str(getattr(call, "id", "") or "")
 
 
 def _task_from_pending_calls(calls: Iterable[Any]) -> str | None:
@@ -182,4 +304,4 @@ def _safe_heavy(reason: str) -> Route:
     )
 
 
-__all__ = ["VoiceToolBatch", "VoiceToolGate"]
+__all__ = ["FunctionCallHistory", "VoiceToolBatch", "VoiceToolGate"]

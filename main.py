@@ -1058,17 +1058,30 @@ class JarvisLive:
     async def _receive_audio(self):
         print("[JARVIS] 👂 Recv started")
         from jarvis.agent.router import Tier
-        from jarvis.agent.voice_gate import VoiceToolGate
+        from jarvis.agent.voice_gate import FunctionCallHistory, VoiceToolGate
 
         out_buf, in_buf = [], []
         turn_had_audio = False
-        voice_gate = VoiceToolGate()
+        history = getattr(self, "_voice_call_history", None)
+        if history is None:
+            history = FunctionCallHistory()
+            self._voice_call_history = history
+        voice_gate = VoiceToolGate(history=history)
         pending_tool_timeout = None
         agent_status = ""
         agent_notice = ""
         suppress_live_output = False
         voice_turn_complete_seen = False
         voice_action_cancelled = False
+        l1_handled = False
+
+        def _mark_live_healthy():
+            tracker = getattr(self, "_voice_reconnect_backoff", None)
+            if tracker is not None:
+                self._conn_backoff = tracker.healthy()
+            else:
+                from jarvis.integrations import voice_live_lifecycle
+                self._conn_backoff = voice_live_lifecycle.reset_backoff()
 
         def _cancel_tool_timeout():
             nonlocal pending_tool_timeout
@@ -1078,7 +1091,7 @@ class JarvisLive:
 
         def _reset_voice_turn(*, deliver_notice: bool = True):
             nonlocal agent_status, agent_notice, suppress_live_output
-            nonlocal voice_turn_complete_seen, voice_action_cancelled
+            nonlocal voice_turn_complete_seen, voice_action_cancelled, l1_handled
             notice = agent_notice if deliver_notice else ""
             _cancel_tool_timeout()
             voice_gate.reset()
@@ -1087,6 +1100,7 @@ class JarvisLive:
             suppress_live_output = False
             voice_turn_complete_seen = False
             voice_action_cancelled = False
+            l1_handled = False
             if notice:
                 # The original heavy turn has reached a safe boundary, so the
                 # Live response carrying this honest failure will not be
@@ -1101,6 +1115,7 @@ class JarvisLive:
             if route is None or route.tier < Tier.AGENT:
                 return
             suppress_live_output = True
+            self._awaiting_since = None
             task = voice_gate.claim_agent_task()
             if task:
                 started, agent_status = self._dispatch_native_agent(task)
@@ -1116,29 +1131,82 @@ class JarvisLive:
                 _ensure_tool_timeout()
 
         async def _flush_tool_batch(batch):
-            nonlocal agent_status
+            nonlocal agent_status, l1_handled
             if batch is None:
-                return
+                return False
             _cancel_tool_timeout()
-            if batch.route.tier >= Tier.AGENT:
+            fn_responses = []
+            fresh_calls = []
+            delivery_records = []
+            for fc in batch.calls:
+                call_id = str(getattr(fc, "id", "") or "")
+                state = history.state(call_id)
+                if state in {"result_cached", "delivered"}:
+                    cached = history.result(call_id)
+                    if cached is not None:
+                        fn_responses.append(cached)
+                        delivery_records.append((call_id, cached))
+                    continue
+                if state == "in_flight":
+                    continue
+                if state == "unknown":
+                    response = self._native_agent_tool_responses(
+                        [fc],
+                        "Outcome tindakan sebelumnya tidak diketahui; "
+                        "Jarvis tidak mengulanginya secara otomatis.",
+                    )[0]
+                    fn_responses.append(response)
+                    delivery_records.append((call_id, response))
+                    continue
+                if history.start(call_id):
+                    fresh_calls.append(fc)
+
+            if l1_handled and fresh_calls:
+                responses = self._native_agent_tool_responses(
+                    fresh_calls,
+                    "Aksi ditangani satu kali oleh jalur lokal L1; "
+                    "tool Gemini tidak dijalankan.",
+                )
+            elif batch.route.tier >= Tier.AGENT and fresh_calls:
                 _claim_heavy_route()
-                fn_responses = self._native_agent_tool_responses(
-                    batch.calls,
+                responses = self._native_agent_tool_responses(
+                    fresh_calls,
                     agent_status or "Tugas dialihkan ke agent native Jarvis.",
                 )
             else:
-                fn_responses = []
-                for fc in batch.calls:
+                responses = []
+                for fc in fresh_calls:
                     print(f"[JARVIS] 📞 {fc.name}")
-                    fn_responses.append(await self._execute_tool(fc))
+                    responses.append(await self._execute_tool(fc))
+
+            for fc, response in zip(fresh_calls, responses):
+                call_id = str(getattr(fc, "id", "") or "")
+                history.store_result(call_id, response)
+                delivery_records.append((call_id, response))
+            fn_responses.extend(responses)
+            sent_responses = False
             if fn_responses and self.session:
                 await self.session.send_tool_response(
                     function_responses=fn_responses
                 )
-                # after a tool response the model owes us a spoken answer
-                self._awaiting_since = time.monotonic()
+                sent_responses = True
+                for call_id, response in delivery_records:
+                    history.mark_delivered(call_id, result=response)
+                _mark_live_healthy()
+                # Native/L1 owns its own bounded lifecycle and callbacks. Only a
+                # legacy light tool leaves Gemini owing a spoken answer.
+                self._awaiting_since = (
+                    time.monotonic()
+                    if fresh_calls
+                    and not l1_handled
+                    and batch.route.tier < Tier.AGENT
+                    else None
+                )
+                if l1_handled:
+                    l1_handled = False
             if agent_notice:
                 _ensure_tool_timeout()
+            return sent_responses
 
         async def _tool_final_timeout():
             try:
@@ -1170,6 +1238,7 @@ class JarvisLive:
             while True:
                 async for response in self.session.receive():
                     reset_voice_after_response = False
+                    batch_sent = False
 
                     if response.data:
                         self._awaiting_since = None      # model is answering
@@ -1222,10 +1291,19 @@ class JarvisLive:
                                 # model-only turn boundary.
                                 _ensure_tool_timeout(restart=True)
                             if finished:
-                                if VOICE_L1_HOOK and await VOICE_L1_HOOK(self, voice_gate):
-                                    continue
-                                _claim_heavy_route()
-                                await _flush_tool_batch(batch)
+                                final_voice_text = voice_gate.text
+                                l1_handled = bool(
+                                    VOICE_L1_HOOK
+                                    and await VOICE_L1_HOOK(self, voice_gate)
+                                )
+                                if l1_handled and voice_gate.route is None:
+                                    voice_gate.add_transcription(
+                                        final_voice_text,
+                                        finished=True,
+                                    )
+                                if not l1_handled:
+                                    _claim_heavy_route()
+                                batch_sent = await _flush_tool_batch(batch)
 
                         if sc.turn_complete:
                             if self._turn_done_event:
@@ -1260,6 +1338,7 @@ class JarvisLive:
                                         "text": full_out,
                                         "ts": datetime.now().isoformat(),
                                     }))
+                            had_output_payload = bool(full_out or turn_had_audio)
                             if VOICE_TEXT_ONLY_HOOK and full_out:
                                 await VOICE_TEXT_ONLY_HOOK(
                                     self, full_out, had_audio=turn_had_audio)
@@ -1313,6 +1392,8 @@ class JarvisLive:
                                 # asyncio.create_task(_cam_close())
 
                             voice_turn_complete_seen = True
+                            if had_output_payload:
+                                _mark_live_healthy()
                             if VOICE_NOTICE: await VOICE_NOTICE.flush_at_turn_boundary(self)
                             if voice_gate.route is None:
                                 # Input transcription is explicitly unordered
@@ -1321,7 +1402,9 @@ class JarvisLive:
                                 # final transcript or pending call may follow.
                                 _ensure_tool_timeout()
                             else:
-                                reset_voice_after_response = True
+                                reset_voice_after_response = not l1_handled
+                                if l1_handled:
+                                    _ensure_tool_timeout()
 
                     if response.tool_call_cancellation:
                         cancelled = voice_gate.cancel(
@@ -1341,24 +1424,35 @@ class JarvisLive:
                             response.tool_call.function_calls or []
                         )
                         if batch is not None:
-                            await _flush_tool_batch(batch)
+                            batch_sent = await _flush_tool_batch(batch)
                         elif voice_gate.pending_count:
                             # Do not execute a FunctionCall until the SDK's
                             # final input-transcription boundary arrives.
                             _ensure_tool_timeout()
 
                     if reset_voice_after_response:
-                        _reset_voice_turn()
+                        if not l1_handled or batch_sent:
+                            _reset_voice_turn()
+                        else:
+                            _ensure_tool_timeout()
                     elif (voice_turn_complete_seen
                           and voice_gate.route is not None
-                          and voice_gate.pending_count == 0):
+                          and voice_gate.pending_count == 0
+                          and (not l1_handled or batch_sent)):
                         _reset_voice_turn()
         except Exception as e:
-            print(f"[JARVIS] ❌ Recv: {e}")
-            traceback.print_exc()
+            from jarvis.integrations import voice_live_lifecycle
+            failure = voice_live_lifecycle.classify(e)
+            print(
+                f"[JARVIS] ❌ Recv: {failure.leaf_type} "
+                f"({failure.kind})"
+            )
             raise
         finally:
             _cancel_tool_timeout()
+            for call_id in tuple(history):
+                if history.state(call_id) == "in_flight":
+                    history.mark_unknown(call_id)
 
     async def _play_audio(self):
         print("[JARVIS] 🔊 Play started")
@@ -1734,8 +1828,17 @@ class JarvisLive:
             print(f"[Dashboard] Disabled: {e}")
             self._dashboard = None
 
+        from jarvis.integrations import voice_live_lifecycle
+
+        connection = voice_live_lifecycle.ConnectionTracker()
+        reconnect_backoff = voice_live_lifecycle.ReconnectBackoff()
+        self._voice_reconnect_backoff = reconnect_backoff
+        self._conn_backoff = reconnect_backoff.current
+        attempt = 0
         while True:
             try:
+                attempt += 1
+                self._trace("voice.connect_attempt", attempt=attempt)
                 print("[JARVIS] Connecting...")
                 self.ui.set_state("THINKING")
                 config = self._build_config()
@@ -1763,29 +1866,37 @@ class JarvisLive:
                     self._vision_last_time     = 0.0
                     self._interrupted          = False
                     self._awaiting_since       = None
+                    self._conn_backoff = reconnect_backoff.connected()
 
+                    state = connection.connected()
                     print("[JARVIS] Connected.")
                     self._sm_to("LISTENING")
                     self.ui.set_state("LISTENING")
-                    self.ui.write_log("SYS: JARVIS online.")
+                    if state == "initial":
+                        self.ui.write_log("SYS: JARVIS online.")
+                    elif state == "restored":
+                        self.ui.write_log("SYS: Koneksi suara dipulihkan.")
+                        self._trace("voice.reconnect_restored", attempt=attempt)
 
-                    try:
-                        from jarvis.integrations.relay.service import RelayService
-                        relay_svc = RelayService.get()
-                        if relay_svc.enabled:
-                            recent = relay_svc.recent_events(limit=10)
-                            if recent:
-                                greeting_prompt = (
-                                    "Sistem baru saja booting. Ini adalah data terbaru yang masuk dari webhook (Relay.app):\n"
-                                    + str(recent)
-                                    + "\n\nBerikan briefing sapaan lisan (briefing pagi/sistem) yang merangkum email baru, jadwal kalender, statistik YouTube, dan Instagram tersebut secara natural dan profesional."
-                                )
-                                await session.send_client_content(
-                                    turns={"parts": [{"text": greeting_prompt}]},
-                                    turn_complete=True,
-                                )
-                    except Exception as e:
-                        print(f"[JARVIS] Failed to fetch boot briefing: {e}")
+                    if not self._briefing_sent:
+                        self._briefing_sent = True
+                        try:
+                            from jarvis.integrations.relay.service import RelayService
+                            relay_svc = RelayService.get()
+                            if relay_svc.enabled:
+                                recent = relay_svc.recent_events(limit=10)
+                                if recent:
+                                    greeting_prompt = (
+                                        "Sistem baru saja booting. Ini adalah data terbaru yang masuk dari webhook (Relay.app):\n"
+                                        + str(recent)
+                                        + "\n\nBerikan briefing sapaan lisan (briefing pagi/sistem) yang merangkum email baru, jadwal kalender, statistik YouTube, dan Instagram tersebut secara natural dan profesional."
+                                    )
+                                    await session.send_client_content(
+                                        turns={"parts": [{"text": greeting_prompt}]},
+                                        turn_complete=True,
+                                    )
+                        except Exception as e:
+                            print(f"[JARVIS] Failed to fetch boot briefing: {e}")
 
                     if self._dashboard:
                         await self._dashboard.broadcast({"type": "status", "state": "active"})
@@ -1813,43 +1924,32 @@ class JarvisLive:
             except BaseException as e:
                 if self._stop_requested.is_set():
                     break
-                # Catches both Exception and BaseExceptionGroup (Python 3.11+
-
-                # externally, which `except Exception` would miss, letting the
-                # exception escape the while-loop and causing asyncio.run() to
-                # start shutdown — resulting in "executor after shutdown" errors).
-                err_str = str(e)
-                print(f"[JARVIS] Error ({type(e).__name__}): {e}")
-                traceback.print_exc()
-                self._trace("session.error", exc_type=type(e).__name__,
-                            error=err_str[:160])
+                failure = voice_live_lifecycle.classify(e)
+                safe = failure.safe_fields()
+                print(f"[JARVIS] Error ({failure.leaf_type}, {failure.kind})")
+                self._trace("session.error", **safe)
                 self._sm_to("RECOVERING")
+                connection.failed()
 
-                # Invalid API key — stop hammering the API, prompt re-configuration
-                if "API key not valid" in err_str:
+                if failure.auth_confirmed:
                     self.ui.write_log("ERR: API key invalid — please re-enter your key.")
                     self.ui.set_state("SLEEPING")
                     self.ui.prompt_reconfig()
-                    while not self.ui._win._ready:
-                        await asyncio.sleep(1)
+                    ready = await voice_live_lifecycle.wait_until(
+                        lambda: bool(getattr(self.ui._win, "_ready", False)),
+                        self._stop_requested.is_set,
+                    )
+                    if not ready:
+                        break
                     print("[JARVIS] New API key saved — reconnecting...")
-                    _conn_backoff = 3
+                    self._conn_backoff = reconnect_backoff.healthy()
                     continue
 
-                # Network / timeout errors — log clearly and back off
-                is_net_err = any(k in err_str for k in (
-                    "TimeoutError", "timed out", "getaddrinfo", "CancelledError",
-                    "ConnectionRefusedError", "OSError", "Cannot connect",
-                ))
-                if is_net_err:
-                    _conn_backoff = min(getattr(self, "_conn_backoff", 3) * 2, 60)
-                    self._conn_backoff = _conn_backoff
-                    self.ui.write_log(
-                        f"NET: Bağlantı kurulamadı — {_conn_backoff}s sonra tekrar deneniyor. "
-                        "(VPN gerekiyor olabilir)"
-                    )
-                else:
-                    self._conn_backoff = 3
+                self._conn_backoff = reconnect_backoff.failed()
+                self.ui.write_log(
+                    f"SYS: Koneksi suara terputus ({failure.kind}); "
+                    f"mencoba lagi dalam {self._conn_backoff}s."
+                )
             finally:
                 self.session = None
 
@@ -1862,7 +1962,8 @@ class JarvisLive:
 
             if self._stop_requested.is_set():
                 break
-            delay = getattr(self, "_conn_backoff", 3)
+            delay = self._conn_backoff
+            self._trace("voice.reconnect_scheduled", delay_s=delay)
             print(f"[JARVIS] Reconnecting in {delay}s...")
             await asyncio.sleep(delay)
 

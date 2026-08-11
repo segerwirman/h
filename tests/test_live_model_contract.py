@@ -35,7 +35,10 @@ def test_live_audio_input_declares_the_required_pcm_sample_rate():
 
 
 def test_live_invalid_argument_is_not_misreported_as_an_invalid_api_key():
-    source = Path("main.py").read_text(encoding="utf-8")
+    from jarvis.integrations import voice_live_lifecycle
 
-    assert 'if "API key not valid" in err_str:' in source
-    assert 'or "1007" in err_str' not in source
+    invalid_argument = RuntimeError("websocket 1007 invalid frame payload")
+    invalid_key = RuntimeError("API key not valid")
+
+    assert voice_live_lifecycle.classify(invalid_argument).auth_confirmed is False
+    assert voice_live_lifecycle.classify(invalid_key).auth_confirmed is True

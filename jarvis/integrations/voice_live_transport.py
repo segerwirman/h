@@ -9,6 +9,7 @@ request.
 from __future__ import annotations
 
 from jarvis.core import log
+from jarvis.integrations import voice_live_lifecycle
 
 _logger = log.get("voice.live_transport")
 _PCM_16KHZ = "audio/pcm;rate=16000"
@@ -72,6 +73,10 @@ def _shape(message) -> dict[str, int | str]:
     }
 
 
+def _safe_error_fields(exc: BaseException) -> dict[str, object]:
+    return voice_live_lifecycle.classify(exc).safe_fields()
+
+
 def install_turn_role() -> bool:
     """Complete the turn role on every outbound Live client-content message.
 
@@ -119,7 +124,7 @@ def install(legacy_module) -> bool:
         except Exception as exc:  # re-raise: legacy reconnect policy remains authoritative
             _logger.error(
                 "voice.live_receive_rejected",
-                exc_type=type(exc).__name__,
+                **_safe_error_fields(exc),
                 last_input=getattr(self, "_voice_live_last_input", None),
             )
             raise

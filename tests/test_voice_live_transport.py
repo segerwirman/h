@@ -80,6 +80,31 @@ def test_shape_never_includes_audio_data():
     assert "data" not in shape
 
 
+def test_api_error_metadata_excludes_details_key_token_and_audio(monkeypatch):
+    errors = pytest.importorskip("google.genai.errors")
+    secret = "api-key-secret-never-log"
+    audio = "audio-payload-never-log"
+    exc = errors.APIError(503, {
+        "error": {
+            "code": 503,
+            "status": "UNAVAILABLE",
+            "message": "server unavailable",
+            "details": [{"api_key": secret, "audio": audio}],
+        }
+    })
+
+    fields = voice_live_transport._safe_error_fields(exc)
+    rendered = repr(fields)
+
+    assert fields["leaf_type"] == "APIError"
+    assert fields["kind"] == "server"
+    assert fields["code"] == 503
+    assert fields["status"] == "UNAVAILABLE"
+    assert secret not in rendered
+    assert audio not in rendered
+    assert "details" not in fields
+
+
 def test_install_normalises_outbound_pcm_and_logs_receive_context(monkeypatch):
     events = []
 
@@ -126,7 +151,8 @@ def test_install_normalises_outbound_pcm_and_logs_receive_context(monkeypatch):
         {"audio": {"data": b"pcm", "mime_type": "audio/pcm;rate=16000"}}
     ]
     assert events == [("voice.live_receive_rejected", {
-        "exc_type": "RuntimeError",
+        "kind": "local",
+        "leaf_type": "RuntimeError",
         "last_input": {
             "message_type": "dict",
             "mime_type": "audio/pcm;rate=16000",

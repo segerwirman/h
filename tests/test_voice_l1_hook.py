@@ -235,10 +235,19 @@ def test_frozen_hook_guard_is_default_noop_shape():
     )
     boundary = (
         "if finished:\n"
-        "                                if VOICE_L1_HOOK and await VOICE_L1_HOOK(self, voice_gate):\n"
-        "                                    continue\n"
-        "                                _claim_heavy_route()\n"
-        "                                await _flush_tool_batch(batch)"
+        "                                final_voice_text = voice_gate.text\n"
+        "                                l1_handled = bool(\n"
+        "                                    VOICE_L1_HOOK\n"
+        "                                    and await VOICE_L1_HOOK(self, voice_gate)\n"
+        "                                )\n"
+        "                                if l1_handled and voice_gate.route is None:\n"
+        "                                    voice_gate.add_transcription(\n"
+        "                                        final_voice_text,\n"
+        "                                        finished=True,\n"
+        "                                    )\n"
+        "                                if not l1_handled:\n"
+        "                                    _claim_heavy_route()\n"
+        "                                batch_sent = await _flush_tool_batch(batch)"
     )
     text_only_boundary = (
         "if VOICE_TEXT_ONLY_HOOK and full_out:\n"
