@@ -4385,6 +4385,33 @@ Fase 24 sendiri).
 
 ---
 
+### Validasi live setelah migrasi `voice_notices` — SEBAGIAN/BLOCKED 2026-08-11
+
+Commit migrasi: `8f24b42`. Regression voice current-tree lulus **319 passed**;
+custom split-provider juga lulus: FunctionCall memiliki satu call ID tanpa
+pengulangan (`followup_call_count=0`), dan native task custom HTTP selesai
+`done` dalam 15,6 detik tanpa error.
+
+Sesi Gemini Live nyata dijalankan dengan `PYTHONIOENCODING=utf-8` sejak
+`2026-08-11T16:14:50Z` sampai sekitar `16:24:48Z` (sekitar 10 menit):
+
+* `voice.pipeline_ready=1` dan `voice.connect_attempt=2`;
+* `voice.reconnect_restored=1`, tanpa boot kedua atau `voice.pipeline_failed`;
+* `turn.outcome=success`, `had_output=true`, `had_input=false`;
+* `barge_in.diagnostics`: `blocks_while_speaking=314`, `triggers=0`, dengan
+  penolakan TTS/noise tercatat;
+* mikrofon USB2.0 terdeteksi pada preflight, tetapi tidak ada ucapan manual
+  selama sesi, sehingga native task, barge-in ucapan nyata, dan FunctionCall
+  melalui voice tidak diklaim.
+
+Percobaan awal tanpa UTF-8 menghasilkan `UnicodeEncodeError` sebelum menerima
+audio; percobaan ulang UTF-8 menghilangkan error tersebut. Status Fase 38
+struktural tetap **SEBAGIAN/BLOCKED**: bukti runtime split-provider tetap
+`live-proven`, tetapi validasi pascamigrasi ini belum mencakup input ucapan
+nyata untuk native task/FunctionCall dan barge-in.
+
+---
+
 ## Lampiran — Status evidence fase (dibangkitkan)
 
 <!-- Dibangkitkan dengan: python scripts/evidence_status.py -->
