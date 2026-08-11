@@ -732,7 +732,12 @@ class JarvisLive:
         return await asyncio.wait_for(loop.run_in_executor(None, fn),
                                       TOOL_TIMEOUT_S)
 
-    def _dispatch_native_agent(self, task: str) -> tuple[bool, str]:
+    def _dispatch_native_agent(
+        self,
+        task: str,
+        *,
+        telemetry: dict | None = None,
+    ) -> tuple[bool, str]:
         """Thin MK50 handoff with ACK-before-work and a concrete report.
 
         This wraps ``jarvis.agent.dispatch``; it does not replace the registry,
@@ -740,12 +745,44 @@ class JarvisLive:
         running Live session so a background result is not silent.
         """
         task = str(task or "").strip()
+        trace_context = telemetry if isinstance(telemetry, dict) else {}
+        trace_context.setdefault(
+            "request_id", str(getattr(self, "_turn_id", "") or "")
+        )
+        trace_context.setdefault("call_ids", [])
+        trace_context.setdefault("call_names", [])
+        trace_started = False
+
+        def _trace_agent(event: str, **fields) -> None:
+            trace = getattr(self, "_trace", None)
+            if not callable(trace):
+                return
+            call_ids = list(dict.fromkeys(
+                str(value) for value in trace_context.get("call_ids", [])
+                if str(value or "")
+            ))
+            trace(
+                event,
+                voice_request_id=str(trace_context.get("request_id", "")),
+                call_ids=call_ids,
+                function_call_count=len(call_ids),
+                **fields,
+            )
+
+        def _trace_started_once() -> None:
+            nonlocal trace_started
+            if trace_started:
+                return
+            trace_started = True
+            _trace_agent("voice.agent_task.started")
+
         if not task:
             message = (
                 "Transkripsi suara belum lengkap; tidak ada tindakan yang "
                 "dijalankan. Silakan ulangi perintah."
             )
             self.ui.write_log(f"SYS: {message}")
+            _trace_agent("voice.agent_task.outcome", outcome="rejected")
             return False, message
 
         try:
@@ -766,14 +803,16 @@ class JarvisLive:
             self.speak(str(line or ""))
 
         def _deliver_agent_result(line: str, *, ok: bool) -> None:
+            notices = globals().get("_voice_notices")
             queued = bool(
-                _voice_notices is not None
-                and _voice_notices.remember_agent_result(task, line, ok=ok)
+                notices is not None
+                and notices.remember_agent_result(task, line, ok=ok)
             )
             if not queued:
                 _speak_brief(line)
 
         def _on_ack(ack: str) -> None:
+            _trace_started_once()
             brief = str(ack or "")
             delivery_lifecycle.acknowledged("voice", brief)
             self.ui.write_log(f"Jarvis: {brief}")
@@ -789,12 +828,16 @@ class JarvisLive:
             )
             self.ui.write_log(f"Agent: {delivery.display_text[:600]}")
             _deliver_agent_result(delivery.speech_text, ok=True)
+            _trace_started_once()
+            _trace_agent("voice.agent_task.outcome", outcome="success")
 
         def _on_error(error: str) -> None:
             delivery = delivery_lifecycle.failure(error, task, source="voice")
             self.ui.write_log(f"ERR: Agent native gagal: "
                               f"{delivery.display_text[:300]}")
             _deliver_agent_result(delivery.speech_text, ok=False)
+            _trace_started_once()
+            _trace_agent("voice.agent_task.outcome", outcome="failed")
 
         adapter = None
         window = getattr(self.ui, "_win", None)
@@ -813,10 +856,12 @@ class JarvisLive:
                 unavailable_reason(task), task, source="voice"
             )
             self.ui.write_log(f"SYS: {delivery.display_text}")
+            _trace_agent("voice.agent_task.outcome", outcome="rejected")
             # VoiceToolGate akan menyampaikan notice ini setelah boundary
             # turn aman, saat output Gemini lama tidak lagi ditekan.
             return False, delivery.speech_text
 
+        _trace_started_once()
         self.ui.set_state("THINKING")
         self.ui.write_log(f"SYS: Agent native mengerjakan — {task[:120]}")
         return True, "Tugas dialihkan satu kali ke agent native Jarvis."
@@ -1086,6 +1131,12 @@ class JarvisLive:
         voice_turn_complete_seen = False
         voice_action_cancelled = False
         l1_handled = False
+        turn_action_started = False
+        turn_completion_source = ""
+        turn_tool_response_sent = False
+        observed_call_ids = []
+        observed_call_names = []
+        active_agent_telemetry = None
 
         def _mark_live_healthy():
             tracker = getattr(self, "_voice_reconnect_backoff", None)
@@ -1104,6 +1155,9 @@ class JarvisLive:
         def _reset_voice_turn(*, deliver_notice: bool = True):
             nonlocal agent_status, agent_notice, suppress_live_output
             nonlocal voice_turn_complete_seen, voice_action_cancelled, l1_handled
+            nonlocal turn_action_started, turn_completion_source
+            nonlocal turn_tool_response_sent, observed_call_ids
+            nonlocal observed_call_names, active_agent_telemetry
             notice = agent_notice if deliver_notice else ""
             _cancel_tool_timeout()
             voice_gate.reset()
@@ -1113,14 +1167,48 @@ class JarvisLive:
             voice_turn_complete_seen = False
             voice_action_cancelled = False
             l1_handled = False
+            turn_action_started = False
+            turn_completion_source = ""
+            turn_tool_response_sent = False
+            observed_call_ids = []
+            observed_call_names = []
+            active_agent_telemetry = None
             if notice:
                 # The original heavy turn has reached a safe boundary, so the
                 # Live response carrying this honest failure will not be
                 # swallowed by suppress_live_output.
                 self.speak(notice)
 
+        def _remember_function_call(call) -> tuple[str, str]:
+            call_id = str(getattr(call, "id", "") or "")
+            function = str(getattr(call, "name", "") or "")
+            if call_id and call_id not in observed_call_ids:
+                observed_call_ids.append(call_id)
+            if function and function not in observed_call_names:
+                observed_call_names.append(function)
+            if active_agent_telemetry is not None:
+                linked_ids = active_agent_telemetry.setdefault("call_ids", [])
+                linked_names = active_agent_telemetry.setdefault("call_names", [])
+                newly_linked = bool(call_id and call_id not in linked_ids)
+                if newly_linked:
+                    linked_ids.append(call_id)
+                if function and function not in linked_names:
+                    linked_names.append(function)
+                if newly_linked:
+                    self._trace(
+                        "voice.agent_task.linked",
+                        voice_request_id=str(
+                            active_agent_telemetry.get("request_id", "")
+                        ),
+                        call_id=call_id,
+                        function=function,
+                    )
+            return call_id, function
+
         def _claim_heavy_route():
             nonlocal agent_status, agent_notice, suppress_live_output
+            nonlocal turn_action_started, turn_completion_source
+            nonlocal active_agent_telemetry
             if voice_action_cancelled:
                 return
             route = voice_gate.route
@@ -1130,7 +1218,19 @@ class JarvisLive:
             self._awaiting_since = None
             task = voice_gate.claim_agent_task()
             if task:
-                started, agent_status = self._dispatch_native_agent(task)
+                if active_agent_telemetry is None:
+                    active_agent_telemetry = {
+                        "request_id": str(self._turn_id or ""),
+                        "call_ids": list(observed_call_ids),
+                        "call_names": list(observed_call_names),
+                    }
+                started, agent_status = self._dispatch_native_agent(
+                    task,
+                    telemetry=active_agent_telemetry,
+                )
+                if started:
+                    turn_action_started = True
+                    turn_completion_source = "native_agent"
                 if not started:
                     agent_notice = agent_status
                     _ensure_tool_timeout()
@@ -1143,7 +1243,8 @@ class JarvisLive:
                 _ensure_tool_timeout()
 
         async def _flush_tool_batch(batch):
-            nonlocal agent_status, l1_handled
+            nonlocal agent_status, l1_handled, turn_action_started
+            nonlocal turn_completion_source, turn_tool_response_sent
             if batch is None:
                 return False
             _cancel_tool_timeout()
@@ -1152,14 +1253,23 @@ class JarvisLive:
             delivery_records = []
             for fc in batch.calls:
                 call_id = str(getattr(fc, "id", "") or "")
+                function = str(getattr(fc, "name", "") or "")
                 state = history.state(call_id)
                 if state in {"result_cached", "delivered"}:
                     cached = history.result(call_id)
                     if cached is not None:
                         fn_responses.append(cached)
-                        delivery_records.append((call_id, cached))
+                        delivery_records.append(
+                            (call_id, function, cached, "replayed_cached")
+                        )
                     continue
                 if state == "in_flight":
+                    self._trace(
+                        "voice.function_call.suppressed",
+                        call_id=call_id,
+                        function=function,
+                        state=state,
+                    )
                     continue
                 if state == "unknown":
                     response = self._native_agent_tool_responses(
@@ -1168,24 +1278,40 @@ class JarvisLive:
                         "Jarvis tidak mengulanginya secara otomatis.",
                     )[0]
                     fn_responses.append(response)
-                    delivery_records.append((call_id, response))
+                    delivery_records.append(
+                        (call_id, function, response, "unknown_previous_outcome")
+                    )
                     continue
                 if history.start(call_id):
                     fresh_calls.append(fc)
+                    self._trace(
+                        "voice.function_call.started",
+                        call_id=call_id,
+                        function=function,
+                        state=history.state(call_id),
+                    )
 
             if l1_handled and fresh_calls:
+                fresh_disposition = "handled_l1"
+                turn_action_started = True
+                turn_completion_source = "local_l1"
                 responses = self._native_agent_tool_responses(
                     fresh_calls,
                     "Aksi ditangani satu kali oleh jalur lokal L1; "
                     "tool Gemini tidak dijalankan.",
                 )
             elif batch.route.tier >= Tier.AGENT and fresh_calls:
+                fresh_disposition = "routed_to_native"
                 _claim_heavy_route()
                 responses = self._native_agent_tool_responses(
                     fresh_calls,
                     agent_status or "Tugas dialihkan ke agent native Jarvis.",
                 )
             else:
+                fresh_disposition = "executed"
+                if fresh_calls:
+                    turn_action_started = True
+                    turn_completion_source = "legacy_tool"
                 responses = []
                 for fc in fresh_calls:
                     print(f"[JARVIS] 📞 {fc.name}")
@@ -1193,17 +1319,40 @@ class JarvisLive:
 
             for fc, response in zip(fresh_calls, responses):
                 call_id = str(getattr(fc, "id", "") or "")
+                function = str(getattr(fc, "name", "") or "")
                 history.store_result(call_id, response)
-                delivery_records.append((call_id, response))
+                delivery_records.append(
+                    (call_id, function, response, fresh_disposition)
+                )
             fn_responses.extend(responses)
             sent_responses = False
             if fn_responses and self.session:
-                await self.session.send_tool_response(
-                    function_responses=fn_responses
-                )
+                try:
+                    await self.session.send_tool_response(
+                        function_responses=fn_responses
+                    )
+                except Exception as exc:
+                    for call_id, function, _response, disposition in delivery_records:
+                        self._trace(
+                            "voice.function_call.delivery_failed",
+                            call_id=call_id,
+                            function=function,
+                            disposition=disposition,
+                            state=history.state(call_id),
+                            error_type=type(exc).__name__,
+                        )
+                    raise
                 sent_responses = True
-                for call_id, response in delivery_records:
+                turn_tool_response_sent = True
+                for call_id, function, response, disposition in delivery_records:
                     history.mark_delivered(call_id, result=response)
+                    self._trace(
+                        "voice.function_call.disposition",
+                        call_id=call_id,
+                        function=function,
+                        disposition=disposition,
+                        state=history.state(call_id),
+                    )
                 _mark_live_healthy()
                 # Native/L1 owns its own bounded lifecycle and callbacks. Only a
                 # legacy light tool leaves Gemini owing a spoken answer.
@@ -1362,13 +1511,30 @@ class JarvisLive:
                             if full_in or full_out:
                                 if full_out:
                                     outcome = "success"
+                                    completion = "model_output"
                                 elif self._pending_vision:
                                     outcome = "success"      # tool turn
+                                    completion = "vision_tool"
+                                elif voice_action_cancelled:
+                                    outcome = "cancelled"
+                                    completion = "cancelled"
+                                elif turn_action_started or turn_tool_response_sent:
+                                    outcome = "success"
+                                    completion = (
+                                        "deferred_native_agent"
+                                        if turn_completion_source == "native_agent"
+                                        else (turn_completion_source or "tool_response")
+                                    )
                                 else:
                                     outcome = "unrecognized_speech"
+                                    completion = "none"
                                 self._trace("turn.outcome", outcome=outcome,
                                             had_input=bool(full_in),
-                                            had_output=bool(full_out))
+                                            had_output=bool(full_out),
+                                            completion=completion,
+                                            function_call_ids=list(
+                                                observed_call_ids
+                                            ))
                                 if self._sm and outcome == "success":
                                     self._sm.finish(Outcome.SUCCESS)
 
@@ -1420,12 +1586,26 @@ class JarvisLive:
                                     _ensure_tool_timeout()
 
                     if response.tool_call_cancellation:
-                        cancelled = voice_gate.cancel(
-                            response.tool_call_cancellation.ids or []
-                        )
+                        requested_ids = tuple(dict.fromkeys(
+                            str(value)
+                            for value in (response.tool_call_cancellation.ids or [])
+                            if str(value or "")
+                        ))
+                        cancelled = voice_gate.cancel(requested_ids)
+                        for call_id in requested_ids:
+                            self._trace(
+                                "voice.function_call.cancelled",
+                                call_id=call_id,
+                                accepted=history.state(call_id) == "cancelled",
+                                state=history.state(call_id),
+                            )
                         if cancelled:
                             voice_action_cancelled = True
-                            self._trace("voice.tool_cancelled", count=cancelled)
+                            self._trace(
+                                "voice.tool_cancelled",
+                                count=cancelled,
+                                call_ids=list(requested_ids),
+                            )
                         if cancelled and voice_gate.pending_count == 0:
                             # Keep a short cleanup timer: final transcription
                             # and cancellation are independently ordered too.
@@ -1433,9 +1613,20 @@ class JarvisLive:
 
                     if response.tool_call:
                         self._awaiting_since = None
-                        batch = voice_gate.queue_calls(
+                        function_calls = tuple(
                             response.tool_call.function_calls or []
                         )
+                        for function_call in function_calls:
+                            call_id, function = _remember_function_call(
+                                function_call
+                            )
+                            self._trace(
+                                "voice.function_call.received",
+                                call_id=call_id,
+                                function=function,
+                                id_present=bool(call_id),
+                            )
+                        batch = voice_gate.queue_calls(function_calls)
                         if batch is not None:
                             batch_sent = await _flush_tool_batch(batch)
                         elif voice_gate.pending_count:

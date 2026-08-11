@@ -186,9 +186,14 @@ class _VoiceHarness:
     def __init__(self):
         self.ui = _VoiceUI()
         self.spoken = []
+        self._turn_id = "voice-test-1"
+        self.trace_events = []
 
     def speak(self, text):
         self.spoken.append(text)
+
+    def _trace(self, event, **fields):
+        self.trace_events.append((event, fields))
 
 
 def test_voice_t2_queues_brief_ack_before_work_and_deterministic_report(monkeypatch):
@@ -281,6 +286,40 @@ def test_voice_t2_melaporkan_completion_melalui_delivery_lifecycle(monkeypatch):
     assert acknowledgements == [("voice", "Baik, sir. Saya kerjakan.")]
     assert calls == [("Laporan build 123 selesai.", "cek build", "voice", True)]
     assert harness.spoken == ["Baik, sir. Saya kerjakan.", "Build 123 telah selesai, sir."]
+
+
+def test_voice_t2_final_outcome_keeps_function_call_correlation(monkeypatch):
+    from jarvis.agent import dispatch
+
+    def primitive(_task, **kwargs):
+        kwargs["on_ack"]("Baik, sir. Saya kerjakan.")
+        kwargs["on_done"]("Status sistem normal.")
+        return True
+
+    monkeypatch.setattr(dispatch, "dispatch_async", primitive)
+    harness = _VoiceHarness()
+    telemetry = {
+        "request_id": "voice-test-1",
+        "call_ids": ["status-call-7"],
+        "call_names": ["system_reflex"],
+    }
+
+    started, _ = _method_from_main("_dispatch_native_agent")(
+        harness,
+        "jalankan fungsi status sistem",
+        telemetry=telemetry,
+    )
+
+    assert started is True
+    events = [event for event, _fields in harness.trace_events]
+    assert events == ["voice.agent_task.started", "voice.agent_task.outcome"]
+    final = harness.trace_events[-1][1]
+    assert final == {
+        "voice_request_id": "voice-test-1",
+        "call_ids": ["status-call-7"],
+        "function_call_count": 1,
+        "outcome": "success",
+    }
 
 
 def test_voice_unavailable_defers_honest_report_without_false_ack(monkeypatch):

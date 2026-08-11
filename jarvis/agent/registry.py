@@ -335,7 +335,9 @@ def _log_call(name: str, args: dict, res: ToolResult, elapsed_s: float,
         try:
             session_result = ToolResult(
                 ok=res.ok, content=None, display=None, error=safe_error, meta={})
-            session.record_tool(name, safe_args, session_result, elapsed_s)
+            record_tool = getattr(session, "record_tool", None)
+            if callable(record_tool):
+                record_tool(name, safe_args, session_result, elapsed_s)
         except Exception as exc:                                    # noqa: BLE001
             quiet.swallowed("agent.registry.log_call_failed", exc)
         # Kanal bukti kontrak (S-12) — hasil UTUH, terpisah dari audit di atas.

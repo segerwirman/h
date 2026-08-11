@@ -23,6 +23,7 @@ boleh memuat keluaran tool mentah. Karena itu bukti mendapat kanal sendiri.
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
@@ -71,6 +72,31 @@ def test_audit_transcript_stays_redacted():
     for entry in session.tool_calls:
         assert set(entry) <= {"tool", "ok", "error", "elapsed_ms"}, (
             "audit hanya boleh memuat metadata, bukan isi hasil tool")
+
+
+def test_registry_accepts_telemetry_only_session_without_record_tool(monkeypatch):
+    """Custom-provider session minimal tidak boleh memicu log_call_failed."""
+    swallowed = []
+    monkeypatch.setattr(
+        registry.quiet,
+        "swallowed",
+        lambda event, exc: swallowed.append((event, exc)),
+    )
+
+    result = asyncio.run(registry.execute(
+        "capability_status",
+        {},
+        adapter=None,
+        session=SimpleNamespace(id="custom-telemetry-only"),
+    ))
+
+    assert result.ok is True
+    assert not [
+        exc for event, exc in swallowed
+        if event == "agent.registry.log_call_failed"
+        and isinstance(exc, AttributeError)
+        and "record_tool" in str(exc)
+    ]
 
 
 def test_youtube_contract_can_pass_through_the_production_seam(monkeypatch):

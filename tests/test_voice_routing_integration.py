@@ -122,6 +122,7 @@ class _Harness:
         self.spoken = []
         self.spoken_event = asyncio.Event()
         self.dispatch_result = dispatch_result
+        self.native_telemetry = []
 
     def _sm_to(self, _state):
         return None
@@ -129,8 +130,9 @@ class _Harness:
     def _trace(self, event, **fields):
         self.trace_events.append((event, fields))
 
-    def _dispatch_native_agent(self, task):
+    def _dispatch_native_agent(self, task, *, telemetry=None):
         self.native_tasks.append(task)
+        self.native_telemetry.append(telemetry)
         return self.dispatch_result
 
     def speak(self, text):
@@ -573,6 +575,59 @@ def test_heavy_native_handoff_does_not_arm_live_response_watchdog():
     assert harness._awaiting_since is None
 
 
+def test_heavy_function_call_has_correlated_id_and_deferred_success_outcome():
+    call = SimpleNamespace(id="status-live-1", name="system_reflex", args={})
+    harness = _Harness([
+        _response(text="jalankan fungsi status sistem", finished=True),
+        _response(calls=[call]),
+        _response(turn_complete=True),
+    ])
+
+    async def _run():
+        task = asyncio.create_task(_receive_method()(harness))
+        await asyncio.wait_for(harness.session.sent_event.wait(), timeout=1.0)
+        await asyncio.sleep(0)
+        await _cancel(task)
+
+    asyncio.run(_run())
+
+    assert harness.native_tasks == ["jalankan fungsi status sistem"]
+    assert harness.native_telemetry[0]["call_ids"] == ["status-live-1"]
+
+    received = [
+        fields for event, fields in harness.trace_events
+        if event == "voice.function_call.received"
+    ]
+    assert received == [{
+        "call_id": "status-live-1",
+        "function": "system_reflex",
+        "id_present": True,
+    }]
+
+    dispositions = [
+        fields for event, fields in harness.trace_events
+        if event == "voice.function_call.disposition"
+    ]
+    assert dispositions == [{
+        "call_id": "status-live-1",
+        "function": "system_reflex",
+        "disposition": "routed_to_native",
+        "state": "delivered",
+    }]
+
+    outcomes = [
+        fields for event, fields in harness.trace_events
+        if event == "turn.outcome"
+    ]
+    assert outcomes == [{
+        "outcome": "success",
+        "had_input": True,
+        "had_output": False,
+        "completion": "deferred_native_agent",
+        "function_call_ids": ["status-live-1"],
+    }]
+
+
 def test_voice_agent_unavailable_is_spoken_after_turn_boundary():
     harness = _Harness(
         [
@@ -631,6 +686,15 @@ def test_cancellation_after_turn_complete_still_runs_zero_actions():
     assert harness.legacy_calls == []
     assert harness.session.sent == []
     assert harness.spoken == []
+    cancelled = [
+        fields for event, fields in harness.trace_events
+        if event == "voice.function_call.cancelled"
+    ]
+    assert cancelled == [{
+        "call_id": "cancel-late",
+        "accepted": True,
+        "state": "cancelled",
+    }]
 
 
 def test_text_only_output_is_reported_at_the_turn_boundary():
