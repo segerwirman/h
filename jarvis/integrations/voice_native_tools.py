@@ -9,6 +9,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from jarvis.integrations import google_voice
+
+_legacy = None
+
 _REPLACED_LEGACY_NAMES = frozenset({
     "browser_control",
     "youtube_video",
@@ -444,7 +448,23 @@ def declarations() -> list[dict]:
     return [dict(item) for item in _DECLARATIONS]
 
 
+def sync_google_declarations(legacy_module=None) -> None:
+    """Refresh scope-gated Google declarations without installing a wrapper."""
+    global _legacy
+    if legacy_module is not None:
+        _legacy = legacy_module
+    if _legacy is None:
+        return
+    current = [
+        item for item in _legacy.TOOL_DECLARATIONS
+        if item.get("name") not in google_voice.GOOGLE_TOOL_NAMES
+    ]
+    _legacy.TOOL_DECLARATIONS[:] = [*current, *google_voice.declarations()]
+
+
 def install(legacy_module) -> None:
+    global _legacy
+    _legacy = legacy_module
     current = [
         item for item in legacy_module.TOOL_DECLARATIONS
         if item.get("name") not in (_TOOL_NAMES | _REPLACED_LEGACY_NAMES)
@@ -468,13 +488,29 @@ def install(legacy_module) -> None:
 
     async def wrapped_exec(self, fc):
         name = str(getattr(fc, "name", ""))
-        if name not in _TOOL_NAMES:
+        if name not in (_TOOL_NAMES | google_voice.GOOGLE_TOOL_NAMES):
             return await original_exec(self, fc)
 
         from jarvis.agent import registry
-        from jarvis.agent.base import ToolResult
 
         args = dict(getattr(fc, "args", None) or {})
+        if name in google_voice.GOOGLE_TOOL_NAMES:
+            self.ui.set_state("THINKING")
+            result = await registry.execute(name, args)
+            if not self.ui.muted:
+                self.ui.set_state("LISTENING")
+            return legacy_module.types.FunctionResponse(
+                id=fc.id,
+                name=name,
+                response={
+                    "result": result.for_llm(),
+                    "ok": result.ok,
+                    "error": result.error or "",
+                },
+            )
+
+        from jarvis.agent.base import ToolResult
+
         session = SimpleNamespace(id="voice-native-direct")
         adapter = None
         if name == "message_send":
@@ -513,4 +549,8 @@ def install(legacy_module) -> None:
     cls._execute_tool = wrapped_exec
 
 
-__all__ = ["declarations", "install"]
+__all__ = [
+    "declarations",
+    "install",
+    "sync_google_declarations",
+]

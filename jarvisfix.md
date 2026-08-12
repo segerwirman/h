@@ -130,7 +130,7 @@ Tambahan di `jarvis/main.py`:
 | `_import_legacy()` | seam impor terpisah — kegagalan bisa diuji tanpa merusak lingkungan |
 | `_voice_failure_detail(exc)` | exception → kalimat yang bisa ditindaklanjuti |
 | `_publish_voice_status(ok, detail)` | terbitkan `boot.check` untuk `core.voice`; dibungkus try/except supaya visibilitas tak pernah mematikan boot |
-| `_install_voice_seams(legacy, logger)` | 10 installer legacy masih aktif setelah empat seam dimigrasikan atau dilipat |
+| `_install_voice_seams(legacy, logger)` | 9 installer legacy masih aktif setelah lima seam dimigrasikan atau dilipat |
 | `voice.pipeline_ready` | log + publish ONLINE tepat setelah `on_text_command` ter-bind |
 
 Klasifikasi pesan:
@@ -4656,6 +4656,48 @@ yang sudah ada; `git diff --check` bersih; dan `FROZEN integrity: OK` untuk 10
 berkas pada baseline `094b696`. Migrasi ini **focused-tested** dan
 **runtime-wired**; cabang proposal tetap default-off sehingga tidak diklaim
 `live-proven`.
+
+
+### Audit dan migrasi `google_voice` — MIGRATED 2026-08-12
+
+Knowledge graph diindeks ulang dari HEAD `d4bcdfb` sebelum audit: 12.443 node
+dan 74.571 edge. Graph source kemudian mengonfirmasi hanya bootstrap
+`_install_voice_seams` yang memanggil `google_voice.install`; refresh OAuth
+memanggil `sync_installed_declarations`, sedangkan `voice_native_tools` dipasang
+sesudah wrapper Google. Urutan runtime lama adalah wrapper native di luar wrapper
+Google, lalu fallback seam/legacy di bawahnya.
+
+Empat tes karakterisasi ditambahkan dan dijalankan pada implementasi lama lebih
+dulu (**4 passed**). Kontrak yang dikunci: registry menerima nama/argumen tepat
+sekali; `FunctionResponse` mempertahankan call ID, nama, `result`, `ok`, dan
+`error`; UI berpindah ke `THINKING` lalu `LISTENING` hanya bila tidak muted;
+`ToolResult.fail` tetap response normal; exception registry tetap merambat; tool
+non-Google jatuh ke fallback tepat sekali; installer idempoten; refresh deklarasi
+mengganti schema scope-gated tanpa duplikasi.
+
+Routing Google kini dilipat ke satu wrapper `voice_native_tools`, tetapi memakai
+cabang khusus agar kontrak lama tidak tercampur dengan kontrak native lain.
+Cabang native tetap mempertahankan adapter konfirmasi, session
+`voice-native-direct`, fail-closed exception conversion, dan cleanup browser.
+`google_voice` sekarang helper deklarasi murni: nama Google, sanitizer schema,
+dan schema registry scope-gated. `google_auth.refresh_registry()` mengarahkan
+refresh deklarasi ke owner baru. Sinkronisasi deklarasi tetap dipanggil pada
+posisi bootstrap lama; installer `voice_native_tools` tetap pada posisi lama,
+sehingga urutan deklarasi dan wrapper seam lain tidak bergeser.
+
+Tes akhir komposisi juga membuktikan Google, native, dan fallback masing-masing
+dieksekusi tepat sekali, himpunan nama Google/native tidak tumpang tindih, dan
+install ulang tidak membangun wrapper bertingkat. Pemanggilan
+`google_voice.install(legacy)` dihapus. Jumlah installer aktif turun **10 menjadi 9**.
+Tidak ada berkas FROZEN yang diubah; baseline manifest tetap `094b696`.
+
+Verifikasi akhir: **43 focused passed** dan **251 expanded voice/Google regression
+passed**; `git diff --check` bersih; FROZEN verifier
+**OK (10 files, baseline 094b696)**.
+Ruff pada seluruh file Python terkait hanya melaporkan debt lama
+`jarvis/main.py:76 S110`; tidak ada pelanggaran baru pada patch ini. Migrasi ini
+**focused-tested** dan **runtime-wired**; belum diklaim `live-proven` karena tidak
+ada sesi Gemini Live/mikrofon baru pada perubahan ini.
 
 ---
 

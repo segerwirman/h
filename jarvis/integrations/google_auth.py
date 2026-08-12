@@ -333,7 +333,7 @@ def refresh_registry() -> None:
         _logger.debug("google.registry_refresh_failed",
                       error=type(exc).__name__)
     try:
-        from jarvis.integrations import google_voice
-        google_voice.sync_installed_declarations()
+        from jarvis.integrations import voice_native_tools
+        voice_native_tools.sync_google_declarations()
     except Exception:
         pass

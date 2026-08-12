@@ -8,8 +8,8 @@ Akar 'kosakata terpotong' saat SUARA JARVIS (audit voice):
 - Stream ditutup di ``finally`` tanpa men-drain buffer internal → blok terakhir
   ikut terpotong.
 
-Modul ini memasang ulang ``_play_audio`` versi drain-aware lewat monkeypatch
-(pola sama dengan ``google_voice.install``). File FROZEN tidak diubah, sha tetap.
+Modul ini memasang ulang ``_play_audio`` versi drain-aware lewat installer seam
+yang idempoten. File FROZEN tidak diubah, sha tetap.
 Aman & idempotent: gagal apa pun → biarkan perilaku lama, jangan crash.
 """
 from __future__ import annotations

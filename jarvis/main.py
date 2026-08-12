@@ -80,8 +80,7 @@ def _publish_voice_status(ok: bool, detail: str) -> None:
 def _install_voice_seams(legacy, logger) -> None:
     """Pasang seluruh seam suara pada modul legacy (main.py tetap FROZEN)."""
     from jarvis.core import llm
-    from jarvis.integrations import (google_voice, voice_clarify,
-                                     voice_l1,
+    from jarvis.integrations import (voice_clarify, voice_l1,
                                      voice_safety, voice_tasks,
                                      voice_live_transport,
                                      voice_native_tools,
@@ -94,7 +93,7 @@ def _install_voice_seams(legacy, logger) -> None:
         config.get("llm.live_model", legacy.LIVE_MODEL)
         or legacy.LIVE_MODEL
     )
-    google_voice.install(legacy)
+    voice_native_tools.sync_google_declarations(legacy)
     # Perbaikan 'kosakata terpotong' saat suara: drain-aware playback
     # dipasang via monkeypatch (file main.py FROZEN tidak diubah).
     try:

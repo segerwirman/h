@@ -1,19 +1,19 @@
-"""Wrapper schema/dispatch Google untuk Gemini Live tanpa mengubah main.py.
+"""Helper deklarasi tool Google untuk Gemini Live tanpa mengubah main.py.
 
 Schema diambil dari registry nyata, sehingga toggle API dan scope benar-benar
-menentukan tool yang terlihat pada sesi Live berikutnya.
+menentukan tool yang terlihat pada sesi Live berikutnya. Dispatch dimiliki oleh
+``voice_native_tools`` agar hanya ada satu wrapper registry pada lane suara.
 """
 from __future__ import annotations
 
 from typing import Any
 
-_GOOGLE_NAMES = {
+GOOGLE_TOOL_NAMES = frozenset({
     "gcal_events", "gcal_create", "gcal_next",
     "yt_subscriptions", "yt_latest", "yt_search_data", "yt_my_stats",
     "gmail_list", "gmail_read", "gmail_send",
     "gdrive_search", "gdrive_read",
-}
-_legacy = None
+})
 
 
 def _gemini_schema(value: Any):
@@ -40,7 +40,7 @@ def declarations() -> list[dict]:
 
     out = []
     disabled = sorted(toolgroups.disabled_tool_names())
-    for schema in registry.schemas(allowed=sorted(_GOOGLE_NAMES),
+    for schema in registry.schemas(allowed=sorted(GOOGLE_TOOL_NAMES),
                                    exclude=disabled):
         fn = schema.get("function") or {}
         if fn.get("name"):
@@ -53,40 +53,4 @@ def declarations() -> list[dict]:
     return out
 
 
-def sync_installed_declarations() -> None:
-    if _legacy is None:
-        return
-    current = [item for item in _legacy.TOOL_DECLARATIONS
-               if item.get("name") not in _GOOGLE_NAMES]
-    _legacy.TOOL_DECLARATIONS[:] = [*current, *declarations()]
-
-
-def install(legacy_module) -> None:
-    """Pasang sekali pada modul root main yang sudah di-import READ/WRAP only."""
-    global _legacy
-    _legacy = legacy_module
-    sync_installed_declarations()
-    cls = legacy_module.JarvisLive
-    original = cls._execute_tool
-    if getattr(original, "_jarvis_google_wrapper", False):
-        return
-
-    async def wrapped(self, fc):
-        if str(getattr(fc, "name", "")) not in _GOOGLE_NAMES:
-            return await original(self, fc)
-        from jarvis.agent import registry
-
-        name = str(fc.name)
-        args = dict(getattr(fc, "args", None) or {})
-        self.ui.set_state("THINKING")
-        result = await registry.execute(name, args)
-        if not self.ui.muted:
-            self.ui.set_state("LISTENING")
-        return legacy_module.types.FunctionResponse(
-            id=fc.id, name=name,
-            response={"result": result.for_llm(), "ok": result.ok,
-                      "error": result.error or ""},
-        )
-
-    wrapped._jarvis_google_wrapper = True
-    cls._execute_tool = wrapped
+__all__ = ["GOOGLE_TOOL_NAMES", "declarations"]

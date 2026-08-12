@@ -9,7 +9,6 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
     from jarvis import main as jmain
     from jarvis.core import llm
     from jarvis.integrations import (
-        google_voice,
         voice_clarify,
         voice_l1,
         voice_live_transport,
@@ -22,7 +21,6 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
     )
 
     modules = [
-        google_voice,
         voice_playback_fix,
         voice_tasks,
         voice_l1,
@@ -34,6 +32,12 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
         voice_safety,
     ]
     calls = []
+    sync_calls = []
+    monkeypatch.setattr(
+        voice_native_tools,
+        "sync_google_declarations",
+        lambda _legacy: sync_calls.append("google"),
+    )
     for module in modules:
         monkeypatch.setattr(
             module,
@@ -49,6 +53,7 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
 
     jmain._install_voice_seams(legacy, logger)
 
+    assert sync_calls == ["google"]
     assert calls == [module.__name__ for module in modules]
     assert legacy._get_api_key() == "test-key"
     assert legacy.LIVE_MODEL == "fallback-live-model"
