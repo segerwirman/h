@@ -4523,6 +4523,21 @@ provider masih mengirimnya, event itu ditolak dan dijawab eksplisit. Karena
 perilaku tersebut belum diulang melalui mikrofon/provider nyata, status Fase 38
 tetap **SEBAGIAN/BLOCKED**, bukan `live-proven`.
 
+### Percobaan live guard — BLOCKED sebelum sesi 2026-08-12
+
+Percobaan baru dijalankan melalui entry point `python -m jarvis.main` dengan
+provider berat `custom` dan lane voice Gemini. Sesi tidak mencapai koneksi Live:
+
+* `config/api_keys.json` tidak memiliki `gemini_api_key`;
+* environment tidak memiliki `GEMINI_API_KEY`/`GOOGLE_API_KEY`;
+* secure store aktif (`keyring`), tetapi credential Gemini dan custom tidak ada;
+* preflight audio melihat `USB2.0 Device`, namun stream aktual gagal dengan
+  PortAudio `-9999` (`Unanticipated host error`).
+
+Karena tidak ada input suara yang diterima dan tidak ada `voice_request_id`,
+`call_id`, atau `voice.agent_task.outcome`, percobaan ini tidak menambah bukti
+live dan tidak boleh dipakai untuk menaikkan Fase 38.
+
 ---
 
 ## Lampiran — Status evidence fase (dibangkitkan)
