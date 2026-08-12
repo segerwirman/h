@@ -78,10 +78,12 @@ def _response(
 
 
 class _Session:
-    def __init__(self, responses):
+    def __init__(self, responses, *, pause_after_first_send=False):
         self.responses = list(responses)
         self.sent = []
         self.sent_event = asyncio.Event()
+        self.resume_after_first_send = asyncio.Event()
+        self.pause_after_first_send = pause_after_first_send
         self._hold = asyncio.Event()
         self.send_error = None
 
@@ -96,11 +98,34 @@ class _Session:
             raise error
         self.sent.append(function_responses)
         self.sent_event.set()
+        if self.pause_after_first_send and len(self.sent) == 1:
+            await self.resume_after_first_send.wait()
+
+
+class _RequestSequence:
+    def __init__(self, request_ids):
+        self._request_ids = iter(request_ids)
+
+    def begin_request(self):
+        return next(self._request_ids)
+
+    def finish(self, _outcome):
+        return None
 
 
 class _Harness:
-    def __init__(self, responses, *, dispatch_result=(True, "native started")):
-        self.session = _Session(responses)
+    def __init__(
+        self,
+        responses,
+        *,
+        dispatch_result=(True, "native started"),
+        request_ids=(),
+        pause_after_first_send=False,
+    ):
+        self.session = _Session(
+            responses,
+            pause_after_first_send=pause_after_first_send,
+        )
         self.ui = SimpleNamespace(
             write_log=lambda _line: None,
             set_state=lambda _state: None,
@@ -109,7 +134,7 @@ class _Harness:
         self.audio_in_queue = asyncio.Queue()
         self._turn_done_event = None
         self._interrupted = False
-        self._sm = None
+        self._sm = _RequestSequence(request_ids) if request_ids else None
         self._turn_id = ""
         self._awaiting_since = None
         self._last_user_speech = 0.0
@@ -155,6 +180,13 @@ async def _cancel(task):
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await task
+
+
+async def _wait_for_sent(session, count):
+    deadline = time.monotonic() + 1.0
+    while len(session.sent) < count and time.monotonic() < deadline:
+        await asyncio.sleep(0.01)
+    assert len(session.sent) >= count
 
 
 async def _exercise_with_history(harness, history):
@@ -626,6 +658,88 @@ def test_heavy_function_call_has_correlated_id_and_deferred_success_outcome():
         "completion": "deferred_native_agent",
         "function_call_ids": ["status-live-1"],
     }]
+
+
+def test_post_agent_outcome_call_is_suppressed_for_the_same_voice_request():
+    first = SimpleNamespace(id="status-first", name="system_reflex", args={})
+    followup = SimpleNamespace(id="status-followup", name="system_reflex", args={})
+    harness = _Harness(
+        [
+            _response(text="jalankan fungsi status sistem", finished=True),
+            _response(calls=[first]),
+            _response(turn_complete=True),
+            _response(calls=[followup]),
+        ],
+        request_ids=["voice-request-one"],
+        pause_after_first_send=True,
+    )
+
+    async def _run():
+        task = asyncio.create_task(_receive_method(timeout_s=0.01)(harness))
+        await asyncio.wait_for(harness.session.sent_event.wait(), timeout=1.0)
+        harness.native_telemetry[0]["terminal_outcome"] = "success"
+        harness.session.resume_after_first_send.set()
+        await _wait_for_sent(harness.session, 2)
+        await _cancel(task)
+
+    asyncio.run(_run())
+
+    assert harness.native_tasks == ["jalankan fungsi status sistem"]
+    assert harness.legacy_calls == []
+    assert harness.session.sent[1][0].id == "status-followup"
+    assert "sudah selesai" in harness.session.sent[1][0].status.lower()
+    suppressed = [
+        fields for event, fields in harness.trace_events
+        if event == "voice.function_call.suppressed"
+        and fields.get("call_id") == "status-followup"
+    ]
+    assert suppressed == [{
+        "call_id": "status-followup",
+        "function": "system_reflex",
+        "state": "new",
+        "reason": "request_already_terminal",
+        "agent_outcome": "success",
+    }]
+
+
+def test_post_agent_outcome_guard_does_not_block_a_new_voice_request():
+    first = SimpleNamespace(id="request-one", name="system_reflex", args={})
+    second = SimpleNamespace(id="request-two", name="system_reflex", args={})
+    harness = _Harness(
+        [
+            _response(text="jalankan fungsi status sistem", finished=True),
+            _response(calls=[first]),
+            _response(turn_complete=True),
+            _response(text="jalankan fungsi status sistem lagi", finished=True),
+            _response(calls=[second]),
+        ],
+        request_ids=["voice-request-one", "voice-request-two"],
+        pause_after_first_send=True,
+    )
+
+    async def _run():
+        task = asyncio.create_task(_receive_method()(harness))
+        await asyncio.wait_for(harness.session.sent_event.wait(), timeout=1.0)
+        harness.native_telemetry[0]["terminal_outcome"] = "success"
+        harness.session.resume_after_first_send.set()
+        await _wait_for_sent(harness.session, 2)
+        await _cancel(task)
+
+    asyncio.run(_run())
+
+    assert harness.native_tasks == [
+        "jalankan fungsi status sistem",
+        "jalankan fungsi status sistem lagi",
+    ]
+    assert [item[0].id for item in harness.session.sent] == [
+        "request-one",
+        "request-two",
+    ]
+    assert not [
+        fields for event, fields in harness.trace_events
+        if event == "voice.function_call.suppressed"
+        and fields.get("reason") == "request_already_terminal"
+    ]
 
 
 def test_voice_agent_unavailable_is_spoken_after_turn_boundary():

@@ -753,6 +753,12 @@ class JarvisLive:
         trace_context.setdefault("call_names", [])
         trace_started = False
 
+        def _mark_terminal(outcome: str) -> None:
+            # The receive loop retains this same dict by request ID.  Marking
+            # it before publishing the outcome closes the request against a
+            # provider FunctionCall that arrives after native completion.
+            trace_context["terminal_outcome"] = str(outcome or "")
+
         def _trace_agent(event: str, **fields) -> None:
             trace = getattr(self, "_trace", None)
             if not callable(trace):
@@ -782,6 +788,7 @@ class JarvisLive:
                 "dijalankan. Silakan ulangi perintah."
             )
             self.ui.write_log(f"SYS: {message}")
+            _mark_terminal("rejected")
             _trace_agent("voice.agent_task.outcome", outcome="rejected")
             return False, message
 
@@ -794,6 +801,8 @@ class JarvisLive:
         except Exception as exc:
             message = f"Agent native Jarvis tidak dapat dimuat: {str(exc)[:120]}"
             self.ui.write_log(f"ERR: {message}")
+            _mark_terminal("rejected")
+            _trace_agent("voice.agent_task.outcome", outcome="rejected")
             return False, message
 
         conversation_id = "voice-live"
@@ -826,6 +835,7 @@ class JarvisLive:
             conversation_context.STORE.remember_success(
                 conversation_id, task=task, delivery=delivery
             )
+            _mark_terminal("success")
             self.ui.write_log(f"Agent: {delivery.display_text[:600]}")
             _deliver_agent_result(delivery.speech_text, ok=True)
             _trace_started_once()
@@ -833,6 +843,7 @@ class JarvisLive:
 
         def _on_error(error: str) -> None:
             delivery = delivery_lifecycle.failure(error, task, source="voice")
+            _mark_terminal("failed")
             self.ui.write_log(f"ERR: Agent native gagal: "
                               f"{delivery.display_text[:300]}")
             _deliver_agent_result(delivery.speech_text, ok=False)
@@ -856,6 +867,7 @@ class JarvisLive:
                 unavailable_reason(task), task, source="voice"
             )
             self.ui.write_log(f"SYS: {delivery.display_text}")
+            _mark_terminal("rejected")
             _trace_agent("voice.agent_task.outcome", outcome="rejected")
             # VoiceToolGate akan menyampaikan notice ini setelah boundary
             # turn aman, saat output Gemini lama tidak lagi ditekan.
@@ -1123,6 +1135,10 @@ class JarvisLive:
         if history is None:
             history = FunctionCallHistory()
             self._voice_call_history = history
+        agent_requests = getattr(self, "_voice_agent_requests", None)
+        if not isinstance(agent_requests, dict):
+            agent_requests = {}
+            self._voice_agent_requests = agent_requests
         voice_gate = VoiceToolGate(history=history)
         pending_tool_timeout = None
         agent_status = ""
@@ -1137,6 +1153,25 @@ class JarvisLive:
         observed_call_ids = []
         observed_call_names = []
         active_agent_telemetry = None
+
+        def _current_agent_request():
+            request_id = str(self._turn_id or "")
+            return agent_requests.get(request_id) if request_id else None
+
+        def _remember_agent_request(telemetry):
+            request_id = str(telemetry.get("request_id", "") or "")
+            if not request_id:
+                return
+            agent_requests.pop(request_id, None)
+            agent_requests[request_id] = telemetry
+            while len(agent_requests) > 64:
+                agent_requests.pop(next(iter(agent_requests)))
+
+        def _terminal_agent_request():
+            telemetry = _current_agent_request()
+            if telemetry and telemetry.get("terminal_outcome"):
+                return telemetry
+            return None
 
         def _mark_live_healthy():
             tracker = getattr(self, "_voice_reconnect_backoff", None)
@@ -1219,11 +1254,14 @@ class JarvisLive:
             task = voice_gate.claim_agent_task()
             if task:
                 if active_agent_telemetry is None:
-                    active_agent_telemetry = {
-                        "request_id": str(self._turn_id or ""),
-                        "call_ids": list(observed_call_ids),
-                        "call_names": list(observed_call_names),
-                    }
+                    active_agent_telemetry = _current_agent_request()
+                    if active_agent_telemetry is None:
+                        active_agent_telemetry = {
+                            "request_id": str(self._turn_id or ""),
+                            "call_ids": list(observed_call_ids),
+                            "call_names": list(observed_call_names),
+                        }
+                        _remember_agent_request(active_agent_telemetry)
                 started, agent_status = self._dispatch_native_agent(
                     task,
                     telemetry=active_agent_telemetry,
@@ -1251,6 +1289,7 @@ class JarvisLive:
             fn_responses = []
             fresh_calls = []
             delivery_records = []
+            terminal_agent = _terminal_agent_request()
             for fc in batch.calls:
                 call_id = str(getattr(fc, "id", "") or "")
                 function = str(getattr(fc, "name", "") or "")
@@ -1282,6 +1321,17 @@ class JarvisLive:
                         (call_id, function, response, "unknown_previous_outcome")
                     )
                     continue
+                if terminal_agent is not None and state == "new":
+                    self._trace(
+                        "voice.function_call.suppressed",
+                        call_id=call_id,
+                        function=function,
+                        state=state,
+                        reason="request_already_terminal",
+                        agent_outcome=str(
+                            terminal_agent.get("terminal_outcome", "")
+                        ),
+                    )
                 if history.start(call_id):
                     fresh_calls.append(fc)
                     self._trace(
@@ -1291,7 +1341,18 @@ class JarvisLive:
                         state=history.state(call_id),
                     )
 
-            if l1_handled and fresh_calls:
+            if terminal_agent is not None and fresh_calls:
+                fresh_disposition = "suppressed_after_agent_outcome"
+                terminal_outcome = str(
+                    terminal_agent.get("terminal_outcome", "selesai")
+                )
+                responses = self._native_agent_tool_responses(
+                    fresh_calls,
+                    "Request voice ini sudah selesai "
+                    f"({terminal_outcome}); FunctionCall susulan tidak "
+                    "dijalankan. Ucapkan perintah baru untuk tindakan lain.",
+                )
+            elif l1_handled and fresh_calls:
                 fresh_disposition = "handled_l1"
                 turn_action_started = True
                 turn_completion_source = "local_l1"
@@ -1627,6 +1688,13 @@ class JarvisLive:
                                 id_present=bool(call_id),
                             )
                         batch = voice_gate.queue_calls(function_calls)
+                        if (batch is None
+                                and voice_gate.pending_count
+                                and _terminal_agent_request() is not None):
+                            # A completed native request is already a safe
+                            # boundary; do not wait for another transcript just
+                            # to reject a provider follow-up call.
+                            batch = voice_gate.timeout()
                         if batch is not None:
                             batch_sent = await _flush_tool_batch(batch)
                         elif voice_gate.pending_count:

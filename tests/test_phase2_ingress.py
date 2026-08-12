@@ -320,6 +320,7 @@ def test_voice_t2_final_outcome_keeps_function_call_correlation(monkeypatch):
         "function_call_count": 1,
         "outcome": "success",
     }
+    assert telemetry["terminal_outcome"] == "success"
 
 
 def test_voice_unavailable_defers_honest_report_without_false_ack(monkeypatch):
@@ -327,15 +328,20 @@ def test_voice_unavailable_defers_honest_report_without_false_ack(monkeypatch):
 
     monkeypatch.setattr(dispatch, "dispatch_async", lambda *a, **k: False)
     harness = _VoiceHarness()
+    telemetry = {"request_id": "voice-unavailable"}
 
     started, notice = _method_from_main("_dispatch_native_agent")(
-        harness, "please research and create a report")
+        harness,
+        "please research and create a report",
+        telemetry=telemetry,
+    )
 
     assert started is False
     assert harness.spoken == []
     assert "PERSIS" not in notice
     assert "Sorry, sir" in notice
-    assert "not configured" in notice
+    assert "not configured" in notice or "not set up" in notice
+    assert telemetry["terminal_outcome"] == "rejected"
 
 
 def test_telegram_t2_ack_precedes_work_and_sends_concrete_report(monkeypatch):

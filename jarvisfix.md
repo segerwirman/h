@@ -4490,6 +4490,39 @@ Kesimpulan: korelasi call-ID dan outcome final sudah terbukti live, tetapi
 guard satu-ucapan/satu-FunctionCall per request belum lulus. Fase 38 tetap
 **SEBAGIAN/BLOCKED**, bukan `live-proven`.
 
+### Guard pasca-agent_task.outcome — CODE-PROVEN 2026-08-12
+
+Audit dari HEAD menemukan state korelasi agent sebelumnya ikut dibuang saat
+boundary model mereset `VoiceToolGate`. Callback agent masih dapat mencatat
+`voice.agent_task.outcome`, tetapi FunctionCall ber-ID baru yang datang sesudah
+reset tidak lagi dapat melihat bahwa request voice yang sama sudah terminal.
+
+Jalur voice sekarang mempertahankan record bounded per `voice_request_id`.
+Outcome `success`, `failed`, atau `rejected` menandai record sebagai terminal.
+FunctionCall baru pada request terminal langsung mendapat FunctionResponse
+dengan disposition `suppressed_after_agent_outcome`, trace
+`reason=request_already_terminal`, dan tidak membuka handoff native kedua.
+Ucapan berikutnya memperoleh request ID baru sehingga tetap dapat menjalankan
+FunctionCall normal. Record dibatasi 64 request dan tetap hidup melintasi reset
+turn/reconnect pada proses yang sama.
+
+Tes regresi membuktikan ordering yang sebelumnya terbuka: FunctionCall pertama
+diserahkan, outcome agent menjadi terminal, boundary turn mereset gate, lalu
+FunctionCall kedua dengan ID baru tiba pada request yang sama. Hasilnya hanya
+satu native task. Tes pasangan membuktikan request dari ucapan baru tidak ikut
+terblokir. Implementasi juga menyimpan `terminal_outcome` pada telemetry outcome
+agent final.
+
+Verifikasi pada tree ini: dua suite ingress/routing **34 passed**, regresi luas
+voice/provider/evidence **280 passed**, verifikasi dokumen/FROZEN **18 passed**,
+dan `FROZEN integrity: OK` (10 files, baseline `094b696`).
+
+Ini adalah guard lokal yang menjamin tidak ada eksekusi/handoff kedua; aplikasi
+tidak dapat melarang provider remote mengirim event FunctionCall baru. Jika
+provider masih mengirimnya, event itu ditolak dan dijawab eksplisit. Karena
+perilaku tersebut belum diulang melalui mikrofon/provider nyata, status Fase 38
+tetap **SEBAGIAN/BLOCKED**, bukan `live-proven`.
+
 ---
 
 ## Lampiran — Status evidence fase (dibangkitkan)
