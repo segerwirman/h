@@ -86,7 +86,6 @@ def _install_voice_seams(legacy, logger) -> None:
                                      voice_live_transport,
                                      voice_native_tools,
                                      voice_playback_level,
-                                     voice_proposal_install,
                                      whatsapp_voice)
     # Adapter credential di luar file FROZEN: suara tetap identik,
     # hanya sumber API key yang berpindah dari plaintext ke store.
@@ -108,8 +107,6 @@ def _install_voice_seams(legacy, logger) -> None:
     # core/prompt.txt tetap tidak tersentuh.
     voice_tasks.install(legacy)
     voice_l1.install(legacy)
-    # 18A proposal hook is config-gated and fail-open; it never executes.
-    voice_proposal_install.install(legacy)
     voice_live_transport.install(legacy)
     voice_playback_level.install(legacy)   # §19 — ukur level untuk echo guard
     whatsapp_voice.install(legacy)

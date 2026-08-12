@@ -130,7 +130,7 @@ Tambahan di `jarvis/main.py`:
 | `_import_legacy()` | seam impor terpisah — kegagalan bisa diuji tanpa merusak lingkungan |
 | `_voice_failure_detail(exc)` | exception → kalimat yang bisa ditindaklanjuti |
 | `_publish_voice_status(ok, detail)` | terbitkan `boot.check` untuk `core.voice`; dibungkus try/except supaya visibilitas tak pernah mematikan boot |
-| `_install_voice_seams(legacy, logger)` | 11 seam legacy masih aktif setelah migrasi langsung `voice_notices`, `voice_persona`, dan `voice_text_only_observer` |
+| `_install_voice_seams(legacy, logger)` | 10 installer legacy masih aktif setelah empat seam dimigrasikan atau dilipat |
 | `voice.pipeline_ready` | log + publish ONLINE tepat setelah `on_text_command` ter-bind |
 
 Klasifikasi pesan:
@@ -4623,6 +4623,39 @@ bersih; dan `FROZEN integrity: OK` untuk 10 berkas pada baseline `094b696`.
 Observer berstatus **focused-tested** dan **runtime-wired**; karena fitur tetap
 default-off, smoke live di atas tidak mengklaim cabang diagnostik text-only
 telah terpicu.
+
+### Audit dan migrasi `voice_proposal_install` — MIGRATED 2026-08-12
+
+Audit dari HEAD `57c2448` mengonfirmasi bahwa
+`routing.voice_desktop_proposals.enabled` dan `routing.voice_l1_hook.enabled`
+sama-sama default `false`. Baseline **12 passed** membuktikan proposal yang
+diterima menang sebelum fallback L1, frasa unsupported jatuh ke fallback tanpa
+reset gate, dan konfigurasi mati tidak memasang hook.
+
+Urutan lama tidak boleh dihapus begitu saja: proposal sebelumnya dipasang
+sesudah `voice_l1.install`, sehingga proposal-on/L1-off tetap harus berfungsi.
+Installer proposal kini menjadi `compose(fallback)` tanpa mutasi modul legacy,
+dan komposisi tersebut dilipat ke satu-satunya installer L1 yang sudah ada.
+Marker kini melekat pada fungsi composite, sehingga pemasangan ulang
+mengembalikan objek yang sama tanpa wrapper bertingkat.
+
+| L1 | proposal | hasil setelah migrasi |
+|---|---|---|
+| off | off | true no-op; hook lama dipertahankan identik |
+| on | off | `VoiceL1Hook` seperti sebelumnya |
+| off | on | proposal aktif dengan fallback kosong |
+| on | on | proposal lebih dulu, lalu L1 sebagai fallback |
+
+Pemanggilan `voice_proposal_install.install(legacy)` dan entri installer dari
+bootstrap/tes ordering dihapus. Jumlah installer aktif turun **11 → 10**.
+Tidak ada berkas FROZEN yang berubah, sehingga baseline manifest tidak digeser.
+
+Verifikasi akhir: regresi proposal/L1/routing **60 passed**; seluruh seleksi tes
+voice **270 passed**; lint perubahan hijau dengan pengecualian `S110` legacy
+yang sudah ada; `git diff --check` bersih; dan `FROZEN integrity: OK` untuk 10
+berkas pada baseline `094b696`. Migrasi ini **focused-tested** dan
+**runtime-wired**; cabang proposal tetap default-off sehingga tidak diklaim
+`live-proven`.
 
 ---
 

@@ -14,7 +14,7 @@ from typing import Any
 from jarvis.core import config, log
 from jarvis.core.action_registry import Action
 from jarvis.core.resolver import FallthroughToLLM, Resolution, resolve
-from jarvis.integrations import local_action_executor
+from jarvis.integrations import local_action_executor, voice_proposal_install
 
 _logger = log.get("voice.l1")
 Resolver = Callable[..., Resolution]
@@ -148,13 +148,18 @@ def _install_meter(legacy: Any) -> None:
 
 
 def install(legacy: Any) -> bool:
-    """Pasang hook hanya saat feature flag aktif; default benar-benar no-op."""
-    if not _enabled():
-        return False
-    if getattr(legacy, "VOICE_L1_HOOK", None) is None:
-        legacy.VOICE_L1_HOOK = VoiceL1Hook()
-    _install_meter(legacy)
-    return True
+    """Compose opt-in L1/proposal hooks; both-off is a true no-op."""
+    l1_enabled = _enabled()
+    current = getattr(legacy, "VOICE_L1_HOOK", None)
+    hook = VoiceL1Hook() if l1_enabled and current is None else current
+    hook = voice_proposal_install.compose(hook)
+    if hook is not current:
+        legacy.VOICE_L1_HOOK = hook
+    if l1_enabled:
+        _install_meter(legacy)
+    return bool(
+        l1_enabled or getattr(hook, "_jarvis_voice_proposal_hook", False)
+    )
 
 
 __all__ = ["VoiceL1Hook", "install"]
