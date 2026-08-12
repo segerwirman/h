@@ -19,7 +19,6 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
         voice_proposal_install,
         voice_safety,
         voice_tasks,
-        voice_text_only_observer,
         whatsapp_voice,
     )
 
@@ -29,7 +28,6 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
         voice_tasks,
         voice_l1,
         voice_proposal_install,
-        voice_text_only_observer,
         voice_live_transport,
         voice_playback_level,
         whatsapp_voice,

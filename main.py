@@ -94,6 +94,12 @@ try:
     from jarvis.integrations import voice_persona as _voice_persona
 except Exception:
     _voice_persona = None
+try:
+    from jarvis.integrations import (
+        voice_text_only_observer as _voice_text_only_observer,
+    )
+except Exception:
+    _voice_text_only_observer = None
 # Every external stage is bounded — a hung tool or a silent model can no
 # longer freeze the receive loop or leave the user without feedback.
 TOOL_TIMEOUT_S     = float(os.environ.get("JARVIS_TOOL_TIMEOUT_S", "60"))
@@ -103,7 +109,6 @@ VOICE_TOOL_FINAL_TIMEOUT_S = float(
     os.environ.get("JARVIS_VOICE_TOOL_FINAL_TIMEOUT_S", "2.5")
 )
 VOICE_L1_HOOK = None  # optional; None preserves the legacy voice path
-VOICE_TEXT_ONLY_HOOK = None  # optional; None preserves legacy voice path
 
 
 class _VoiceStopRequested(Exception):
@@ -1568,8 +1573,8 @@ class JarvisLive:
                                         "ts": datetime.now().isoformat(),
                                     }))
                             had_output_payload = bool(full_out or turn_had_audio)
-                            if VOICE_TEXT_ONLY_HOOK and full_out:
-                                await VOICE_TEXT_ONLY_HOOK(
+                            if _voice_text_only_observer is not None and full_out:
+                                await _voice_text_only_observer.observe(
                                     self, full_out, had_audio=turn_had_audio)
                             out_buf = []
                             turn_had_audio = False

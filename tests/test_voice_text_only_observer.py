@@ -3,39 +3,46 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import asyncio
+
 from jarvis.integrations import voice_text_only_observer
 
 
-def test_disabled_preserves_legacy_hook(monkeypatch):
-    legacy = SimpleNamespace(VOICE_TEXT_ONLY_HOOK=None)
+def test_disabled_observer_is_true_noop(monkeypatch):
+    events = []
+    logs = []
     monkeypatch.setattr(voice_text_only_observer.config, "get",
                         lambda _key, default=None: default)
+    monkeypatch.setattr(voice_text_only_observer._logger, "warning",
+                        lambda event, **fields: events.append((event, fields)))
+    live = SimpleNamespace(
+        _turn_id="turn-disabled",
+        ui=SimpleNamespace(write_log=logs.append),
+    )
 
-    assert voice_text_only_observer.install(legacy) is False
-    assert legacy.VOICE_TEXT_ONLY_HOOK is None
+    asyncio.run(voice_text_only_observer.observe(
+        live, "Jawaban teks tanpa audio.", had_audio=False))
+
+    assert events == []
+    assert logs == []
+    assert not hasattr(voice_text_only_observer, "install")
 
 
 def test_text_only_turn_is_logged_once_and_never_spoken(monkeypatch):
     events = []
     logs = []
-    legacy = SimpleNamespace(VOICE_TEXT_ONLY_HOOK=None)
     monkeypatch.setattr(voice_text_only_observer.config, "get",
                         lambda _key, default=None: True)
     monkeypatch.setattr(voice_text_only_observer._logger, "warning",
                         lambda event, **fields: events.append((event, fields)))
-    monkeypatch.setattr(voice_text_only_observer._logger, "info",
-                        lambda *_args, **_kwargs: None)
-
-    assert voice_text_only_observer.install(legacy) is True
     live = SimpleNamespace(
         _turn_id="turn-1",
         ui=SimpleNamespace(write_log=logs.append),
     )
 
-    import asyncio
-    asyncio.run(legacy.VOICE_TEXT_ONLY_HOOK(
+    asyncio.run(voice_text_only_observer.observe(
         live, "Jawaban  teks   tanpa audio.", had_audio=False))
-    asyncio.run(legacy.VOICE_TEXT_ONLY_HOOK(
+    asyncio.run(voice_text_only_observer.observe(
         live, "Audio normal.", had_audio=True))
 
     assert events == [("voice.text_only_output", {

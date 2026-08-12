@@ -130,7 +130,7 @@ Tambahan di `jarvis/main.py`:
 | `_import_legacy()` | seam impor terpisah — kegagalan bisa diuji tanpa merusak lingkungan |
 | `_voice_failure_detail(exc)` | exception → kalimat yang bisa ditindaklanjuti |
 | `_publish_voice_status(ok, detail)` | terbitkan `boot.check` untuk `core.voice`; dibungkus try/except supaya visibilitas tak pernah mematikan boot |
-| `_install_voice_seams(legacy, logger)` | 12 seam legacy masih aktif setelah migrasi langsung `voice_notices` dan `voice_persona` |
+| `_install_voice_seams(legacy, logger)` | 11 seam legacy masih aktif setelah migrasi langsung `voice_notices`, `voice_persona`, dan `voice_text_only_observer` |
 | `voice.pipeline_ready` | log + publish ONLINE tepat setelah `on_text_command` ter-bind |
 
 Klasifikasi pesan:
@@ -4593,6 +4593,35 @@ seleksi tes voice **268 passed**; `git diff --check` bersih; dan
 `FROZEN integrity: OK` untuk 10 berkas pada baseline `094b696`. Migrasi ini
 **focused-tested** dan **runtime-wired**, tetapi belum dinilai ulang melalui
 sesi suara nyata khusus perubahan persona.
+
+### Smoke live persona + migrasi `voice_text_only_observer` — 2026-08-12
+
+Jarvis di-restart dari commit `1c50af2`. Boot baru mencapai
+`voice.pipeline_ready` pada `03:18:31.089Z`; mikrofon `USB2.0 Device` dan output
+Realtek sama-sama ONLINE. Startup briefing menghasilkan output audio sukses.
+Ucapan nyata berikutnya terikat ke `request_id=f393b08f`: input mulai pada
+`03:19:52.912Z`, transisi ke SPEAKING pada `03:19:52.926Z`, lalu
+`turn.outcome=success` dengan `had_input=true`, `had_output=true`, dan kembali
+ke LISTENING pada `03:20:08.353Z`. Loader langsung persona aktif pada proses
+ini dan tidak menghasilkan error prompt/audio. Smoke pasca-migrasi persona
+dinilai **live-proven** untuk wiring serta audio dua arah; penilaian gaya bahasa
+secara subjektif tetap bergantung pada apa yang didengar pengguna.
+
+Karakterisasi `voice_text_only_observer` kemudian mengunci tiga kontrak:
+default-off adalah no-op, teks tanpa audio menghasilkan tepat satu event dan
+pesan diagnostik UI tanpa TTS, sedangkan turn dengan audio tidak dilaporkan.
+Global `VOICE_TEXT_ONLY_HOOK` dan installernya dihapus. Boundary turn FROZEN
+sekarang memanggil `observe()` secara langsung; observer melakukan config gate
+sendiri dan tetap fail-open. Urutan installer lain tidak berubah, dan jumlah
+seam aktif turun **12 → 11**.
+
+Verifikasi migrasi observer: karakterisasi awal **4 passed**; regresi terkait
+**43 passed**; seluruh seleksi tes voice **268 passed**; lint perubahan hijau
+dengan hanya dua pengecualian `S110` legacy yang sudah ada; `git diff --check`
+bersih; dan `FROZEN integrity: OK` untuk 10 berkas pada baseline `094b696`.
+Observer berstatus **focused-tested** dan **runtime-wired**; karena fitur tetap
+default-off, smoke live di atas tidak mengklaim cabang diagnostik text-only
+telah terpicu.
 
 ---
 

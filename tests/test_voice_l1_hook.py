@@ -229,7 +229,6 @@ def test_frozen_hook_guard_is_default_noop_shape():
     source = Path("main.py").read_text(encoding="utf-8-sig").replace("\r\n", "\n")
     expected = (
         "VOICE_L1_HOOK = None  # optional; None preserves the legacy voice path\n"
-        "VOICE_TEXT_ONLY_HOOK = None  # optional; None preserves legacy voice path\n"
         "\n\nclass _VoiceStopRequested"
     )
     boundary = (
@@ -249,13 +248,14 @@ def test_frozen_hook_guard_is_default_noop_shape():
         "                                batch_sent = await _flush_tool_batch(batch)"
     )
     text_only_boundary = (
-        "if VOICE_TEXT_ONLY_HOOK and full_out:\n"
-        "                                await VOICE_TEXT_ONLY_HOOK(\n"
+        "if _voice_text_only_observer is not None and full_out:\n"
+        "                                await _voice_text_only_observer.observe(\n"
         "                                    self, full_out, had_audio=turn_had_audio)"
     )
     assert expected in source
     assert boundary in source
     assert text_only_boundary in source
+    assert "VOICE_TEXT_ONLY_HOOK" not in source
 
 
 def test_disabled_guard_preserves_legacy_body_for_ten_voice_commands():

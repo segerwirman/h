@@ -33,7 +33,9 @@ def _receive_method(
         "VOICE_TOOL_FINAL_TIMEOUT_S": timeout_s,
         "VOICE_L1_HOOK": l1_hook,
         "_voice_notices": None,
-        "VOICE_TEXT_ONLY_HOOK": text_only_hook,
+        "_voice_text_only_observer": (
+            SimpleNamespace(observe=text_only_hook) if text_only_hook else None
+        ),
         "Outcome": SimpleNamespace(SUCCESS="success"),
     }
     exec(compile(module, "main.py", "exec"), namespace)
