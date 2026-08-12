@@ -8,9 +8,9 @@ DIAGNOSIS_2 MASALAH 2 membuktikan dua hal:
   *"CRITICAL: Speak/Take action immediately based on available info. Assume
   and proceed."*
 
-Keduanya diperbaiki lewat seam yang sudah terbukti di
-``jarvis.integrations.voice_tasks`` (Fase 3): menyuntik ``TOOL_DECLARATIONS``
-in-place dan membungkus method. **main.py dan core/prompt.txt tidak disentuh** —
+Deklarasi, aturan prompt, dan handler tetap dimiliki modul ini. Komposisi ke
+pipeline Live dilakukan oleh ``voice_native_tools`` agar lane suara hanya punya
+satu wrapper dispatch. **main.py dan core/prompt.txt tidak disentuh** —
 verify_frozen tetap hijau dan persona user tetap byte-identik.
 
 Kenapa tidak memakai schema registry seperti voice_tasks: tool ``clarify``
@@ -78,19 +78,13 @@ _AMBIGUITY_RULES = """
   dengan menebak salah.
 """
 
-_legacy = None
-
-
 def declarations() -> list[dict]:
     return [dict(_DECLARATION)]
 
 
-def sync_installed_declarations() -> None:
-    if _legacy is None:
-        return
-    current = [item for item in _legacy.TOOL_DECLARATIONS
-               if item.get("name") not in CLARIFY_TOOL_NAMES]
-    _legacy.TOOL_DECLARATIONS[:] = [*current, *declarations()]
+def apply_to_prompt(base: str) -> str:
+    """Tambahkan aturan ambiguitas tepat sekali tanpa mengubah persona dasar."""
+    return base if "[SAAT RAGU" in base else base + _AMBIGUITY_RULES
 
 
 def handle(args: dict) -> str:
@@ -116,40 +110,4 @@ def handle(args: dict) -> str:
             f"Jangan melakukan tindakan apa pun sampai user menjawab.")
 
 
-def install(legacy_module) -> None:
-    """Pasang sekali pada modul root ``main`` yang diimpor READ/WRAP only."""
-    global _legacy
-    _legacy = legacy_module
-    sync_installed_declarations()
-
-    # Aturan ambiguitas — menambah section, tidak pernah menulis ulang persona.
-    original_prompt = getattr(legacy_module, "_load_system_prompt", None)
-    if original_prompt is not None and not getattr(
-            original_prompt, "_jarvis_clarify_wrapper", False):
-        def _with_rules() -> str:
-            base = original_prompt()
-            if "[SAAT RAGU" in base:
-                return base
-            return base + _AMBIGUITY_RULES
-
-        _with_rules._jarvis_clarify_wrapper = True
-        legacy_module._load_system_prompt = _with_rules
-
-    cls = legacy_module.JarvisLive
-    original_exec = cls._execute_tool
-    if not getattr(original_exec, "_jarvis_clarify_wrapper", False):
-        async def wrapped_exec(self, fc):
-            name = str(getattr(fc, "name", ""))
-            if name not in CLARIFY_TOOL_NAMES:
-                return await original_exec(self, fc)
-            args = dict(getattr(fc, "args", None) or {})
-            return legacy_module.types.FunctionResponse(
-                id=fc.id, name=name,
-                response={"result": handle(args), "ok": True, "error": ""},
-            )
-
-        wrapped_exec._jarvis_clarify_wrapper = True
-        cls._execute_tool = wrapped_exec
-
-
-__all__ = ["install", "declarations", "handle", "CLARIFY_TOOL_NAMES"]
+__all__ = ["CLARIFY_TOOL_NAMES", "apply_to_prompt", "declarations", "handle"]

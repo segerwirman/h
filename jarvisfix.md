@@ -4699,6 +4699,44 @@ Ruff pada seluruh file Python terkait hanya melaporkan debt lama
 **focused-tested** dan **runtime-wired**; belum diklaim `live-proven` karena tidak
 ada sesi Gemini Live/mikrofon baru pada perubahan ini.
 
+### Audit dan migrasi `voice_clarify` — MIGRATED 2026-08-12
+
+Knowledge graph diindeks ulang dari HEAD `67834fd` sebelum perubahan: 12.452
+node dan 74.728 edge. Source dan graph menempatkan installer
+`voice_clarify.install()` sesudah `voice_native_tools.install()` dan sebelum
+`voice_safety.install()`. Seam ini hanya memiliki satu deklarasi, satu section
+prompt, dan satu cabang dispatch sinkron, sehingga dipilih sebagai seam berikutnya
+tanpa menyentuh audio, reconnect, atau lifecycle WhatsApp.
+
+Lima tes karakterisasi dijalankan pada implementasi lama terlebih dahulu
+(**5 passed**). Kontrak yang dikunci: deklarasi stale diganti tanpa duplikasi dan
+urutannya tetap native → clarify → safety; section prompt tetap
+`MULTI-TASKING` → `KONTROL NATIVE CEPAT` → `SAAT RAGU` →
+`MENUTUP SESUATU`, masing-masing tepat sekali; `clarify` memanggil handler tepat
+sekali dan mempertahankan FunctionCall ID, nama, serta payload
+`result`/`ok=True`/`error=""`; tool lain jatuh ke fallback tepat sekali; install
+ulang idempoten; dan nama clarify tidak tumpang tindih dengan Google, native,
+task, atau safety.
+
+`voice_clarify` kini helper murni yang tetap memiliki deklarasi, komposisi aturan
+prompt, serta `handle()`/pending state. `voice_native_tools` menjadi owner tunggal
+komposisi Live: ia memasang deklarasi native lalu clarify, membangun prompt dalam
+urutan lama, dan menangani cabang clarify sebelum cabang registry Google/native.
+Kontrak Google/native tidak diubah, sedangkan `voice_safety` tetap dipasang paling
+akhir dan tetap mengintersep `close_app`/`shutdown_jarvis`. Import dan panggilan
+`voice_clarify.install(legacy)` dihapus; jumlah installer aktif turun **9 → 8**.
+Tidak ada berkas FROZEN yang diubah dan migrasi tidak melipat seam lain.
+
+Verifikasi akhir: **112 focused passed**, **242 expanded voice/Google regression
+passed**, dan suite penuh **2830 passed, 1 skipped**. Lint file Python yang
+sepenuhnya dimiliki patch serta root Ruff hijau. Pemeriksaan eksplisit yang
+menyertakan `jarvis/main.py` melaporkan debt lama `jarvis/main.py:76 S110`; tidak
+ada pelanggaran baru dari patch ini. `git diff --check` bersih; FROZEN verifier
+**OK (10 files, baseline 094b696)**. Migrasi ini **focused-tested** dan
+**runtime-wired**. Tidak ada sesi Gemini Live/mikrofon baru, jadi migrasi clarify
+ini belum dan tidak diklaim `live-proven`.
+
+
 ---
 
 ## Lampiran — Status evidence fase (dibangkitkan)

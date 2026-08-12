@@ -9,7 +9,6 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
     from jarvis import main as jmain
     from jarvis.core import llm
     from jarvis.integrations import (
-        voice_clarify,
         voice_l1,
         voice_live_transport,
         voice_native_tools,
@@ -28,7 +27,6 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
         voice_playback_level,
         whatsapp_voice,
         voice_native_tools,
-        voice_clarify,
         voice_safety,
     ]
     calls = []

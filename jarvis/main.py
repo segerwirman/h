@@ -80,8 +80,7 @@ def _publish_voice_status(ok: bool, detail: str) -> None:
 def _install_voice_seams(legacy, logger) -> None:
     """Pasang seluruh seam suara pada modul legacy (main.py tetap FROZEN)."""
     from jarvis.core import llm
-    from jarvis.integrations import (voice_clarify, voice_l1,
-                                     voice_safety, voice_tasks,
+    from jarvis.integrations import (voice_l1, voice_safety, voice_tasks,
                                      voice_live_transport,
                                      voice_native_tools,
                                      voice_playback_level,
@@ -109,9 +108,8 @@ def _install_voice_seams(legacy, logger) -> None:
     voice_live_transport.install(legacy)
     voice_playback_level.install(legacy)   # §19 — ukur level untuk echo guard
     whatsapp_voice.install(legacy)
+    # Native/Google/clarify memakai satu wrapper dispatch.
     voice_native_tools.install(legacy)
-    # DIAGNOSIS_2 MASALAH 2 — beri lane suara cara untuk bertanya.
-    voice_clarify.install(legacy)
     # DIAGNOSIS_2 MASALAH 3 — shutdown berkonfirmasi + close_app
     # bernama. Dipasang TERAKHIR supaya deklarasi shutdown_jarvis
     # bawaan benar-benar tergantikan.

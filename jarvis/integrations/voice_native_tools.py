@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from jarvis.integrations import google_voice
+from jarvis.integrations import google_voice, voice_clarify
 
 _legacy = None
 
@@ -465,18 +465,27 @@ def sync_google_declarations(legacy_module=None) -> None:
 def install(legacy_module) -> None:
     global _legacy
     _legacy = legacy_module
+    replaced_names = (
+        _TOOL_NAMES
+        | _REPLACED_LEGACY_NAMES
+        | voice_clarify.CLARIFY_TOOL_NAMES
+    )
     current = [
         item for item in legacy_module.TOOL_DECLARATIONS
-        if item.get("name") not in (_TOOL_NAMES | _REPLACED_LEGACY_NAMES)
+        if item.get("name") not in replaced_names
     ]
-    legacy_module.TOOL_DECLARATIONS[:] = [*current, *declarations()]
+    legacy_module.TOOL_DECLARATIONS[:] = [
+        *current, *declarations(), *voice_clarify.declarations()
+    ]
 
     original_prompt = getattr(legacy_module, "_load_system_prompt", None)
     if original_prompt is not None and not getattr(
             original_prompt, "_jarvis_native_tools", False):
         def _with_rules() -> str:
             base = original_prompt()
-            return base if "[KONTROL NATIVE CEPAT]" in base else base + _RULES
+            if "[KONTROL NATIVE CEPAT]" not in base:
+                base += _RULES
+            return voice_clarify.apply_to_prompt(base)
 
         _with_rules._jarvis_native_tools = True
         legacy_module._load_system_prompt = _with_rules
@@ -488,12 +497,28 @@ def install(legacy_module) -> None:
 
     async def wrapped_exec(self, fc):
         name = str(getattr(fc, "name", ""))
-        if name not in (_TOOL_NAMES | google_voice.GOOGLE_TOOL_NAMES):
+        handled_names = (
+            _TOOL_NAMES
+            | google_voice.GOOGLE_TOOL_NAMES
+            | voice_clarify.CLARIFY_TOOL_NAMES
+        )
+        if name not in handled_names:
             return await original_exec(self, fc)
+
+        args = dict(getattr(fc, "args", None) or {})
+        if name in voice_clarify.CLARIFY_TOOL_NAMES:
+            return legacy_module.types.FunctionResponse(
+                id=fc.id,
+                name=name,
+                response={
+                    "result": voice_clarify.handle(args),
+                    "ok": True,
+                    "error": "",
+                },
+            )
 
         from jarvis.agent import registry
 
-        args = dict(getattr(fc, "args", None) or {})
         if name in google_voice.GOOGLE_TOOL_NAMES:
             self.ui.set_state("THINKING")
             result = await registry.execute(name, args)

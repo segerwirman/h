@@ -263,7 +263,7 @@ def test_install_suara_tanpa_menyentuh_frozen(store) -> None:
     import hashlib
     from types import SimpleNamespace
 
-    from jarvis.integrations import voice_clarify
+    from jarvis.integrations import voice_clarify, voice_native_tools
 
     before = {
         name: hashlib.sha256((ROOT / name).read_bytes()).hexdigest()
@@ -276,7 +276,7 @@ def test_install_suara_tanpa_menyentuh_frozen(store) -> None:
         types=SimpleNamespace(FunctionResponse=dict),
         _load_system_prompt=lambda: "PERSONA USER",
     )
-    voice_clarify.install(legacy)
+    voice_native_tools.install(legacy)
 
     names = [d["name"] for d in legacy.TOOL_DECLARATIONS]
     assert "clarify" in names
