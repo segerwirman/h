@@ -4473,16 +4473,21 @@ dihentikan setelah siklus FunctionCall selesai. Untuk ucapan pertama, request
 * `voice.agent_task.outcome=success` dengan `call_ids` yang sama;
 * tidak ada `unrecognized_speech` pada rantai ini.
 
-Rantai pertama secara individual **lulus**. Namun sesi tidak memenuhi syarat
-one-shot Fase38: setelah hasil agent, provider menghasilkan FunctionCall baru
-untuk fungsi yang sama, termasuk `fc_14947902940050002472` pada request yang
-sama. Sesi berikutnya juga menghasilkan `fc_13629871997791296530` lalu
-`fc_9134746297477033026`. Call-ID baru tersebut menunjukkan FunctionCall
-berulang, bukan replay ID yang sama; eksekusi native tambahan juga terlihat
-melalui `agent.run_done`.
+Rantai pertama secara individual **lulus**. Klarifikasi sesi: request kedua
+`f6002d15` memang berasal dari ucapan kedua pengguna, bukan panggilan otomatis
+yang boleh saya atribusikan seluruhnya kepada model. Request kedua memiliki
+rantai lengkap yang sama untuk call-ID `fc_13629871997791296530`.
+
+Temuan terpisah tetap ada di dalam masing-masing request: setelah hasil agent,
+provider menghasilkan FunctionCall baru untuk fungsi yang sama—
+`fc_14947902940050002472` pada request pertama dan
+`fc_9134746297477033026` pada request kedua. Call-ID baru tersebut bukan replay
+ID yang sama. Untuk `fc_149...`, tidak ada `voice.agent_task.outcome` kedua
+dalam window bukti; untuk `fc_136...`, native task kedua memang selesai dan
+tercatat `agent.run_done` sebelum `fc_913...` muncul.
 
 Kesimpulan: korelasi call-ID dan outcome final sudah terbukti live, tetapi
-guard satu-ucapan/satu-FunctionCall belum lulus. Fase 38 tetap
+guard satu-ucapan/satu-FunctionCall per request belum lulus. Fase 38 tetap
 **SEBAGIAN/BLOCKED**, bukan `live-proven`.
 
 ---
