@@ -35,14 +35,12 @@ def _legacy_module(*, declarations=None):
 
 
 def _install_stack(monkeypatch, legacy):
-    from jarvis.integrations import voice_native_tools, voice_safety, voice_tasks
+    from jarvis.integrations import voice_native_tools, voice_tasks
 
     monkeypatch.setattr(voice_tasks, "_subscribed", False)
     monkeypatch.setattr(voice_native_tools, "_legacy", None)
-    monkeypatch.setattr(voice_safety, "_legacy", None)
 
     voice_native_tools.install(legacy)
-    voice_safety.install(legacy)
 
     return voice_tasks
 

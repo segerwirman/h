@@ -32,7 +32,6 @@ CONFIRM_WINDOW_S = 120.0
 
 _lock = threading.RLock()
 _pending_since: float | None = None
-_legacy = None
 
 _SHUTDOWN_DECLARATION = {
     "name": "shutdown_jarvis",
@@ -219,57 +218,11 @@ def declarations() -> list[dict]:
     return [dict(_SHUTDOWN_DECLARATION), dict(_CLOSE_APP_DECLARATION)]
 
 
-def sync_installed_declarations() -> None:
-    if _legacy is None:
-        return
-    current = [item for item in _legacy.TOOL_DECLARATIONS
-               if item.get("name") not in SAFETY_TOOL_NAMES]
-    _legacy.TOOL_DECLARATIONS[:] = [*current, *declarations()]
+def apply_to_prompt(base: str) -> str:
+    """Tambahkan aturan safety tepat sekali tanpa mengubah persona dasar."""
+    return base if "[MENUTUP SESUATU]" in base else base + _SAFETY_RULES
 
 
-def install(legacy_module) -> None:
-    global _legacy
-    _legacy = legacy_module
-    # Deklarasi shutdown_jarvis bawaan DIGANTI (bukan ditambah) supaya
-    # deskripsi lamanya yang mengundang salah-pilih tidak lagi terlihat model.
-    sync_installed_declarations()
-
-    original_prompt = getattr(legacy_module, "_load_system_prompt", None)
-    if original_prompt is not None and not getattr(
-            original_prompt, "_jarvis_safety_wrapper", False):
-        def _with_rules() -> str:
-            base = original_prompt()
-            if "[MENUTUP SESUATU]" in base:
-                return base
-            return base + _SAFETY_RULES
-
-        _with_rules._jarvis_safety_wrapper = True
-        legacy_module._load_system_prompt = _with_rules
-
-    cls = legacy_module.JarvisLive
-    original_exec = cls._execute_tool
-    if getattr(original_exec, "_jarvis_safety_wrapper", False):
-        return
-
-    async def wrapped_exec(self, fc):
-        name = str(getattr(fc, "name", ""))
-        if name not in SAFETY_TOOL_NAMES:
-            return await original_exec(self, fc)
-        args = dict(getattr(fc, "args", None) or {})
-        if name == "shutdown_jarvis":
-            message, ok = handle_shutdown(args, live=self)
-        else:
-            import asyncio
-            message, ok = await asyncio.to_thread(handle_close_app, args)
-        return legacy_module.types.FunctionResponse(
-            id=fc.id, name=name,
-            response={"result": message, "ok": ok, "error": ""},
-        )
-
-    wrapped_exec._jarvis_safety_wrapper = True
-    cls._execute_tool = wrapped_exec
-
-
-__all__ = ["install", "declarations", "handle_shutdown", "handle_close_app",
-           "graceful_shutdown", "reset_confirmation", "SAFETY_TOOL_NAMES",
-           "CONFIRM_WINDOW_S", "process_guard"]
+__all__ = ["apply_to_prompt", "declarations", "handle_shutdown",
+           "handle_close_app", "graceful_shutdown", "reset_confirmation",
+           "SAFETY_TOOL_NAMES", "CONFIRM_WINDOW_S", "process_guard"]

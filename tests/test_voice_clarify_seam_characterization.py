@@ -26,10 +26,9 @@ def _legacy_module(*, declarations=None):
 
 
 def _install_stack(monkeypatch, legacy):
-    from jarvis.integrations import voice_native_tools, voice_safety
+    from jarvis.integrations import voice_native_tools
 
     monkeypatch.setattr(voice_native_tools, "_legacy", None)
-    monkeypatch.setattr(voice_safety, "_legacy", None)
 
     voice_native_tools.install(legacy)
     clarify_exec = legacy.JarvisLive._execute_tool
@@ -37,7 +36,8 @@ def _install_stack(monkeypatch, legacy):
     voice_native_tools.install(legacy)
     assert legacy.JarvisLive._execute_tool is clarify_exec
     assert legacy._load_system_prompt is clarify_prompt
-    voice_safety.install(legacy)
+
+    return voice_native_tools
 
 
 def test_stack_replaces_declarations_in_runtime_order(monkeypatch):
@@ -130,6 +130,35 @@ def test_stack_delegates_unknown_tool_exactly_once(monkeypatch):
 
     assert asyncio.run(live._execute_tool(call)) is fallback
     assert live.fallback_calls == [call]
+
+
+def test_stack_dispatches_safety_once_with_legacy_response(monkeypatch):
+    from jarvis.integrations import voice_safety
+
+    legacy, _fallback = _legacy_module()
+    monkeypatch.setattr(
+        voice_safety,
+        "handle_shutdown",
+        lambda args, live=None: (f"confirmation:{args}", True),
+    )
+    _install_stack(monkeypatch, legacy)
+
+    live = legacy.JarvisLive()
+    call = SimpleNamespace(
+        id="safety-call-1", name="shutdown_jarvis", args={"confirmed": "no"}
+    )
+    response = asyncio.run(live._execute_tool(call))
+
+    assert response == {
+        "id": "safety-call-1",
+        "name": "shutdown_jarvis",
+        "response": {
+            "result": "confirmation:{'confirmed': 'no'}",
+            "ok": True,
+            "error": "",
+        },
+    }
+    assert live.fallback_calls == []
 
 
 def test_clarify_names_are_disjoint_from_neighboring_owners():

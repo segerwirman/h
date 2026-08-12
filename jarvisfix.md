@@ -4771,6 +4771,36 @@ FROZEN verifier **OK (10 files, baseline 094b696)**. Migrasi ini
 **focused-tested** dan **runtime-wired**. Tidak ada sesi Gemini Live/mikrofon baru,
 sehingga migrasi task tidak dinaikkan menjadi **live-proven**.
 
+### Audit dan migrasi `voice_safety` — MIGRATED 2026-08-12
+
+Seam safety dipilih setelah pengukuran sebelumnya karena permukaannya terbatas pada
+deklarasi, satu section prompt, konfirmasi shutdown, `close_app`, dan dispatch
+guard; ia tidak menyentuh PCM, reconnect, playback, atau thread WhatsApp. Baseline
+read-only sebelum perubahan adalah **119 passed**. Bootstrap memiliki tujuh installer
+voice aktif, dan safety adalah wrapper terluar setelah native/task/clarify.
+
+Karakterisasi stack lama dan guard proses mengunci: declaration safety stale diganti
+tepat sekali dan tetap paling akhir; prompt berakhir pada `[MENUTUP SESUATU]` tepat
+satu kali; `shutdown_jarvis` tetap two-step dan menolak `confirmed=yes` tanpa
+permintaan awal atau setelah expiry; `close_app` tetap off-loop; response
+mempertahankan call ID/nama/result/ok/error; fallback tetap tepat sekali; dan
+installer idempoten. Direct UI callers tetap memakai `voice_safety.handle_shutdown`
+dan `graceful_shutdown` sebagai API helper.
+
+`voice_safety` kini helper murni dengan `apply_to_prompt()` dan declarations/handler
+lama tetap menjadi source of truth. `voice_native_tools` menjadi owner tunggal
+komposisi Live: declarations task → native → clarify → safety, prompt task → native
+→ clarify → safety, dan dispatch safety sebelum task/Google/clarify/native. Bootstrap
+menghapus `voice_safety.install(legacy)` tanpa menyentuh seam audio/transport lain.
+Jumlah installer aktif turun **7 → 6**; tidak ada berkas FROZEN yang berubah.
+
+Verifikasi current-tree migrasi: focused safety/native/clarify/task/process/seam
+**70 passed**; suite penuh **2836 passed, 1 skipped, 5 warnings**; Ruff root
+**lulus**; `git diff --check` bersih; dan FROZEN verifier **OK (10 files,
+baseline 094b696)**. Migrasi ini dibatasi pada **focused-tested** dan
+**runtime-wired**; tidak ada sesi Gemini Live baru, sehingga tidak dinaikkan
+menjadi **live-proven**.
+
 
 ---
 

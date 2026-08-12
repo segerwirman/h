@@ -9,7 +9,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from jarvis.integrations import google_voice, voice_clarify, voice_tasks
+from jarvis.integrations import (
+    google_voice,
+    voice_clarify,
+    voice_safety,
+    voice_tasks,
+)
 
 _legacy = None
 
@@ -470,16 +475,22 @@ def install(legacy_module) -> None:
         | _REPLACED_LEGACY_NAMES
         | voice_tasks.TASK_TOOL_NAMES
         | voice_clarify.CLARIFY_TOOL_NAMES
+        | voice_safety.SAFETY_TOOL_NAMES
     )
     current = [
         item for item in legacy_module.TOOL_DECLARATIONS
         if item.get("name") not in replaced_names
     ]
+    native_declarations = [
+        item for item in declarations()
+        if item.get("name") not in voice_safety.SAFETY_TOOL_NAMES
+    ]
     legacy_module.TOOL_DECLARATIONS[:] = [
         *current,
         *voice_tasks.declarations(),
-        *declarations(),
+        *native_declarations,
         *voice_clarify.declarations(),
+        *voice_safety.declarations(),
     ]
 
     voice_tasks.ensure_subscribed()
@@ -491,7 +502,8 @@ def install(legacy_module) -> None:
             base = voice_tasks.apply_to_prompt(original_prompt())
             if "[KONTROL NATIVE CEPAT]" not in base:
                 base += _RULES
-            return voice_clarify.apply_to_prompt(base)
+            base = voice_clarify.apply_to_prompt(base)
+            return voice_safety.apply_to_prompt(base)
 
         _with_rules._jarvis_native_tools = True
         legacy_module._load_system_prompt = _with_rules
@@ -512,11 +524,25 @@ def install(legacy_module) -> None:
             | _TOOL_NAMES
             | google_voice.GOOGLE_TOOL_NAMES
             | voice_clarify.CLARIFY_TOOL_NAMES
+            | voice_safety.SAFETY_TOOL_NAMES
         )
         if name not in handled_names:
             return await original_exec(self, fc)
 
         args = dict(getattr(fc, "args", None) or {})
+        if name in voice_safety.SAFETY_TOOL_NAMES:
+            if name == "shutdown_jarvis":
+                message, ok = voice_safety.handle_shutdown(args, live=self)
+            else:
+                import asyncio
+                message, ok = await asyncio.to_thread(
+                    voice_safety.handle_close_app, args)
+            return legacy_module.types.FunctionResponse(
+                id=fc.id,
+                name=name,
+                response={"result": message, "ok": ok, "error": ""},
+            )
+
         if name in voice_tasks.TASK_TOOL_NAMES:
             from jarvis.agent import registry
 

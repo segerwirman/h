@@ -395,36 +395,47 @@ def test_deskripsi_shutdown_mencegah_salah_pilih() -> None:
     assert "close_app" in decl
 
 
-def test_install_safety_tidak_menyentuh_frozen() -> None:
+def test_native_owner_safety_tidak_menyentuh_frozen() -> None:
     import hashlib
     from pathlib import Path
 
-    from jarvis.integrations import voice_safety
+    from jarvis.integrations import voice_native_tools
 
     root = Path(__file__).resolve().parents[1]
     before = {n: hashlib.sha256((root / n).read_bytes()).hexdigest()
               for n in ("main.py", "core/prompt.txt")}
 
+    class _Live:
+        async def _execute_tool(self, _fc):
+            return None
+
     legacy = SimpleNamespace(
         TOOL_DECLARATIONS=[{"name": "shutdown_jarvis",
                             "description": "deskripsi LAMA yang berbahaya"},
                            {"name": "open_app"}],
-        JarvisLive=type("L", (), {"_execute_tool": lambda self, fc: None}),
+        JarvisLive=_Live,
         types=SimpleNamespace(FunctionResponse=dict),
         _load_system_prompt=lambda: "PERSONA USER",
     )
-    voice_safety.install(legacy)
+    voice_native_tools.install(legacy)
 
     decls = {d["name"]: d for d in legacy.TOOL_DECLARATIONS}
+    assert len([d for d in legacy.TOOL_DECLARATIONS
+                if d["name"] == "shutdown_jarvis"]) == 1
+    assert len([d for d in legacy.TOOL_DECLARATIONS
+                if d["name"] == "close_app"]) == 1
     assert "open_app" in decls
     assert "close_app" in decls
-    assert "LAMA" not in decls["shutdown_jarvis"]["description"], \
-        "deskripsi berbahaya tidak tergantikan"
+    assert "LAMA" not in decls["shutdown_jarvis"]["description"]
     assert "[MENUTUP SESUATU]" in legacy._load_system_prompt()
 
     after = {n: hashlib.sha256((root / n).read_bytes()).hexdigest()
              for n in ("main.py", "core/prompt.txt")}
     assert before == after, "berkas FROZEN berubah"
+
+    voice_native_tools.install(legacy)
+    assert legacy._load_system_prompt().count("[MENUTUP SESUATU]") == 1
+    assert legacy.JarvisLive._execute_tool.__name__ == "wrapped_exec"
 
 
 # ── computer_settings tidak lagi buta ────────────────────────────────────

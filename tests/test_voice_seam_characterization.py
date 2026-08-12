@@ -14,7 +14,6 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
         voice_native_tools,
         voice_playback_fix,
         voice_playback_level,
-        voice_safety,
         whatsapp_voice,
     )
 
@@ -25,7 +24,6 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
         voice_playback_level,
         whatsapp_voice,
         voice_native_tools,
-        voice_safety,
     ]
     calls = []
     sync_calls = []
