@@ -15,13 +15,11 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
         voice_playback_fix,
         voice_playback_level,
         voice_safety,
-        voice_tasks,
         whatsapp_voice,
     )
 
     modules = [
         voice_playback_fix,
-        voice_tasks,
         voice_l1,
         voice_live_transport,
         voice_playback_level,

@@ -148,7 +148,11 @@ def test_google_declaration_sync_replaces_without_duplicates(monkeypatch):
     ]
     assert google_items == [{"name": "gcal_events", "version": "fresh"}]
     assert {"name": "base_tool"} in legacy.TOOL_DECLARATIONS
-    assert {"name": "task_start"} in legacy.TOOL_DECLARATIONS
+    task_start = next(
+        item for item in legacy.TOOL_DECLARATIONS
+        if item["name"] == "task_start"
+    )
+    assert "version" not in task_start
 
     current[:] = [{"name": "gmail_list", "version": "next"}]
     voice_native_tools.sync_google_declarations()
@@ -158,7 +162,11 @@ def test_google_declaration_sync_replaces_without_duplicates(monkeypatch):
     ]
     assert google_items == [{"name": "gmail_list", "version": "next"}]
     assert {"name": "base_tool"} in legacy.TOOL_DECLARATIONS
-    assert {"name": "task_start"} in legacy.TOOL_DECLARATIONS
+    task_start = next(
+        item for item in legacy.TOOL_DECLARATIONS
+        if item["name"] == "task_start"
+    )
+    assert "version" not in task_start
 
 
 def test_combined_wrapper_routes_native_and_google_once(monkeypatch):

@@ -80,11 +80,12 @@ def _publish_voice_status(ok: bool, detail: str) -> None:
 def _install_voice_seams(legacy, logger) -> None:
     """Pasang seluruh seam suara pada modul legacy (main.py tetap FROZEN)."""
     from jarvis.core import llm
-    from jarvis.integrations import (voice_l1, voice_safety, voice_tasks,
+    from jarvis.integrations import (voice_l1, voice_safety,
                                      voice_live_transport,
                                      voice_native_tools,
                                      voice_playback_level,
                                      whatsapp_voice)
+
     # Adapter credential di luar file FROZEN: suara tetap identik,
     # hanya sumber API key yang berpindah dari plaintext ke store.
     legacy._get_api_key = lambda: llm.api_key() or ""
@@ -100,10 +101,6 @@ def _install_voice_seams(legacy, logger) -> None:
         voice_playback_fix.install(legacy)
     except Exception as _e:                                  # noqa: BLE001
         logger.warning("voice.playback_fix_failed", error=str(_e)[:120])
-    # AUDIT §8.4 — tool tugas latar + antrean batas-giliran + aturan
-    # multi-tasking, semuanya lewat seam yang sama. main.py dan
-    # core/prompt.txt tetap tidak tersentuh.
-    voice_tasks.install(legacy)
     voice_l1.install(legacy)
     voice_live_transport.install(legacy)
     voice_playback_level.install(legacy)   # §19 — ukur level untuk echo guard

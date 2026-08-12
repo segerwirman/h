@@ -92,13 +92,15 @@ def test_install_menyuntik_declarations_dan_idempoten() -> None:
         types=SimpleNamespace(FunctionResponse=dict),
         _load_system_prompt=lambda: "persona asli",
     )
-    voice_tasks.install(legacy)
+    from jarvis.integrations import voice_native_tools
+
+    voice_native_tools.install(legacy)
     names = [d["name"] for d in legacy.TOOL_DECLARATIONS]
     assert "open_app" in names, "deklarasi legacy hilang"
     assert set(TASK_TOOLS) <= set(names)
 
     before = len(legacy.TOOL_DECLARATIONS)
-    voice_tasks.install(legacy)
+    voice_native_tools.install(legacy)
     assert len(legacy.TOOL_DECLARATIONS) == before, "install tidak idempoten"
 
 
@@ -117,7 +119,9 @@ def test_aturan_multitasking_ditambahkan_tanpa_mengubah_prompt_txt() -> None:
         types=SimpleNamespace(FunctionResponse=dict),
         _load_system_prompt=lambda: "PERSONA MILIK USER",
     )
-    voice_tasks.install(legacy)
+    from jarvis.integrations import voice_native_tools
+
+    voice_native_tools.install(legacy)
     prompt = legacy._load_system_prompt()
 
     assert prompt.startswith("PERSONA MILIK USER"), "persona ditulis ulang"

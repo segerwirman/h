@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from jarvis.integrations import google_voice, voice_clarify
+from jarvis.integrations import google_voice, voice_clarify, voice_tasks
 
 _legacy = None
 
@@ -468,6 +468,7 @@ def install(legacy_module) -> None:
     replaced_names = (
         _TOOL_NAMES
         | _REPLACED_LEGACY_NAMES
+        | voice_tasks.TASK_TOOL_NAMES
         | voice_clarify.CLARIFY_TOOL_NAMES
     )
     current = [
@@ -475,14 +476,19 @@ def install(legacy_module) -> None:
         if item.get("name") not in replaced_names
     ]
     legacy_module.TOOL_DECLARATIONS[:] = [
-        *current, *declarations(), *voice_clarify.declarations()
+        *current,
+        *voice_tasks.declarations(),
+        *declarations(),
+        *voice_clarify.declarations(),
     ]
+
+    voice_tasks.ensure_subscribed()
 
     original_prompt = getattr(legacy_module, "_load_system_prompt", None)
     if original_prompt is not None and not getattr(
             original_prompt, "_jarvis_native_tools", False):
         def _with_rules() -> str:
-            base = original_prompt()
+            base = voice_tasks.apply_to_prompt(original_prompt())
             if "[KONTROL NATIVE CEPAT]" not in base:
                 base += _RULES
             return voice_clarify.apply_to_prompt(base)
@@ -495,10 +501,15 @@ def install(legacy_module) -> None:
     if getattr(original_exec, "_jarvis_native_tools", False):
         return
 
+    original_run = getattr(cls, "run", None)
+    if original_run is not None:
+        cls.run = voice_tasks.compose_run(original_run)
+
     async def wrapped_exec(self, fc):
         name = str(getattr(fc, "name", ""))
         handled_names = (
-            _TOOL_NAMES
+            voice_tasks.TASK_TOOL_NAMES
+            | _TOOL_NAMES
             | google_voice.GOOGLE_TOOL_NAMES
             | voice_clarify.CLARIFY_TOOL_NAMES
         )
@@ -506,6 +517,20 @@ def install(legacy_module) -> None:
             return await original_exec(self, fc)
 
         args = dict(getattr(fc, "args", None) or {})
+        if name in voice_tasks.TASK_TOOL_NAMES:
+            from jarvis.agent import registry
+
+            result = await registry.execute(name, args)
+            return legacy_module.types.FunctionResponse(
+                id=fc.id,
+                name=name,
+                response={
+                    "result": result.for_llm(),
+                    "ok": result.ok,
+                    "error": result.error or "",
+                },
+            )
+
         if name in voice_clarify.CLARIFY_TOOL_NAMES:
             return legacy_module.types.FunctionResponse(
                 id=fc.id,

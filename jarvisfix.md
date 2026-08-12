@@ -4736,6 +4736,41 @@ ada pelanggaran baru dari patch ini. `git diff --check` bersih; FROZEN verifier
 **runtime-wired**. Tidak ada sesi Gemini Live/mikrofon baru, jadi migrasi clarify
 ini belum dan tidak diklaim `live-proven`.
 
+### Audit dan migrasi `voice_tasks` — MIGRATED 2026-08-12
+
+Knowledge graph diindeks ulang sebelum seam dipilih: **12.460 nodes** dan
+**74.806 edges**. Bootstrap aktif diukur memiliki delapan installer, dengan
+`voice_tasks` berada di antara `voice_playback_fix` dan `voice_l1`. Audit
+memisahkan permukaan task menjadi deklarasi, prompt, dispatch, dan lifecycle
+notice; lifecycle tidak dicampur dengan `voice_notices` generik karena kontrak
+`[TASK_DONE]`, antrean lintas-thread, boundary turn, reconnect, dan cancellation
+berbeda.
+
+Karakterisasi stack lama dijalankan sebelum pemindahan (**5 passed**). Kontrak
+yang dikunci: deklarasi task stale diganti tepat sekali dan tetap berada sebelum
+native/clarify/safety; section prompt tetap satu kali dalam urutan
+`MULTI-TASKING` → `KONTROL NATIVE CEPAT` → `SAAT RAGU` → `MENUTUP SESUATU`;
+`task_*` memanggil registry tepat sekali dan mempertahankan `FunctionResponse`
+call ID, nama, serta `result`/`ok`/`error`; fallback tool lain tetap tepat sekali;
+flusher run idempoten dan dibatalkan saat run selesai.
+
+`voice_tasks` kini helper murni untuk deklarasi, aturan prompt, subscription
+BUS idempoten, queue/flush notice, dan composer lifecycle. `voice_native_tools`
+menjadi owner komposisi Live: deklarasi task → native → clarify, prompt task →
+native → clarify, dispatch task sebelum Google/native, serta pemasangan flusher
+`JarvisLive.run`. Bootstrap terpisah `voice_tasks.install(legacy)` dihapus dan
+jumlah installer aktif turun **8 → 7**. `voice_safety` tetap owner terluar dan
+`native_tool_names()` tetap hanya berisi native names. Jalur `[TUGAS]` generik
+milik `voice_notices` tidak diubah; kemungkinan duplikasi notice tetap menjadi
+batas audit terpisah, bukan diam-diam diselesaikan dalam seam ini.
+
+Verifikasi akhir: characterization dan task regression **26 passed**; expanded
+voice/Google/native regression **95 passed**; suite penuh **2835 passed, 1 skipped,
+5 warnings**; scoped Ruff perubahan **lulus**; `git diff --check` bersih; dan
+FROZEN verifier **OK (10 files, baseline 094b696)**. Migrasi ini
+**focused-tested** dan **runtime-wired**. Tidak ada sesi Gemini Live/mikrofon baru,
+sehingga migrasi task tidak dinaikkan menjadi **live-proven**.
+
 
 ---
 

@@ -46,7 +46,6 @@ _MULTITASKING_RULES = """
   tawarkan antre.
 """
 
-_legacy = None
 _notices: deque[str] = deque()
 _notices_lock = threading.Lock()
 _subscribed = False
@@ -74,12 +73,25 @@ def declarations() -> list[dict]:
     return out
 
 
-def sync_installed_declarations() -> None:
-    if _legacy is None:
+def apply_to_prompt(base: str) -> str:
+    """Tambahkan aturan multitasking tepat sekali tanpa mengubah persona."""
+    if "[MULTI-TASKING]" in base:
+        return base
+    try:
+        from jarvis.agent.tasks import REGISTRY
+        max_tasks = REGISTRY.max_concurrent
+    except Exception:                                # noqa: BLE001
+        max_tasks = 3
+    return base + _MULTITASKING_RULES.format(max_tasks=max_tasks)
+
+
+def ensure_subscribed() -> None:
+    """Subscribe completion notices once for the process lifetime."""
+    global _subscribed
+    if _subscribed:
         return
-    current = [item for item in _legacy.TOOL_DECLARATIONS
-               if item.get("name") not in TASK_TOOL_NAMES]
-    _legacy.TOOL_DECLARATIONS[:] = [*current, *declarations()]
+    BUS.subscribe("task.finished", _on_task_finished)
+    _subscribed = True
 
 
 # ── §8.4b — antrean batas-giliran ────────────────────────────────────────
@@ -165,68 +177,24 @@ async def _notice_loop(live, interval: float = 0.25) -> None:
             _logger.warning("voice.tasks.loop_error", error=str(exc)[:120])
 
 
-# ── pemasangan ───────────────────────────────────────────────────────────
+def compose_run(original_run):
+    """Wrap ``JarvisLive.run`` with one task notice flusher."""
+    if getattr(original_run, "_jarvis_task_flusher", False):
+        return original_run
 
-def install(legacy_module) -> None:
-    """Pasang sekali pada modul root ``main`` yang diimpor READ/WRAP only."""
-    global _legacy, _subscribed
-    _legacy = legacy_module
-    sync_installed_declarations()
+    async def wrapped_run(self):
+        flusher = asyncio.create_task(_notice_loop(self),
+                                      name="task-notice-flusher")
+        try:
+            return await original_run(self)
+        finally:
+            flusher.cancel()
 
-    if not _subscribed:
-        BUS.subscribe("task.finished", _on_task_finished)
-        _subscribed = True
+    wrapped_run._jarvis_task_flusher = True
+    return wrapped_run
 
-    # §8.4d — aturan multi-tasking tanpa menyentuh core/prompt.txt
-    original_prompt = getattr(legacy_module, "_load_system_prompt", None)
-    if original_prompt is not None and not getattr(
-            original_prompt, "_jarvis_tasks_wrapper", False):
-        def _with_rules() -> str:
-            base = original_prompt()
-            if "[MULTI-TASKING]" in base:
-                return base
-            try:
-                from jarvis.agent.tasks import REGISTRY
-                max_tasks = REGISTRY.max_concurrent
-            except Exception:                                # noqa: BLE001
-                max_tasks = 3
-            return base + _MULTITASKING_RULES.format(max_tasks=max_tasks)
 
-        _with_rules._jarvis_tasks_wrapper = True
-        legacy_module._load_system_prompt = _with_rules
-
-    cls = legacy_module.JarvisLive
-
-    # §8.4c — eksekusi tool task_* lewat registry
-    original_exec = cls._execute_tool
-    if not getattr(original_exec, "_jarvis_tasks_wrapper", False):
-        async def wrapped_exec(self, fc):
-            name = str(getattr(fc, "name", ""))
-            if name not in TASK_TOOL_NAMES:
-                return await original_exec(self, fc)
-            from jarvis.agent import registry
-
-            args = dict(getattr(fc, "args", None) or {})
-            result = await registry.execute(name, args)
-            return legacy_module.types.FunctionResponse(
-                id=fc.id, name=name,
-                response={"result": result.for_llm(), "ok": result.ok,
-                          "error": result.error or ""},
-            )
-
-        wrapped_exec._jarvis_tasks_wrapper = True
-        cls._execute_tool = wrapped_exec
-
-    # §8.4b — flusher hidup selama sesi Live hidup
-    original_run = cls.run
-    if not getattr(original_run, "_jarvis_tasks_wrapper", False):
-        async def wrapped_run(self):
-            flusher = asyncio.create_task(_notice_loop(self),
-                                          name="task-notice-flusher")
-            try:
-                return await original_run(self)
-            finally:
-                flusher.cancel()
-
-        wrapped_run._jarvis_tasks_wrapper = True
-        cls.run = wrapped_run
+__all__ = [
+    "apply_to_prompt", "compose_run", "declarations", "ensure_subscribed",
+    "pending_notices", "clear_notices", "flush_notices", "TASK_TOOL_NAMES",
+]
