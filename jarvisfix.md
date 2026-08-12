@@ -4603,9 +4603,10 @@ Ucapan nyata berikutnya terikat ke `request_id=f393b08f`: input mulai pada
 `03:19:52.912Z`, transisi ke SPEAKING pada `03:19:52.926Z`, lalu
 `turn.outcome=success` dengan `had_input=true`, `had_output=true`, dan kembali
 ke LISTENING pada `03:20:08.353Z`. Loader langsung persona aktif pada proses
-ini dan tidak menghasilkan error prompt/audio. Smoke pasca-migrasi persona
-dinilai **live-proven** untuk wiring serta audio dua arah; penilaian gaya bahasa
-secara subjektif tetap bergantung pada apa yang didengar pengguna.
+ini dan tidak menghasilkan error prompt/audio. Takeda kemudian mengonfirmasi
+bahwa suara hasil turn tersebut terdengar normal. Smoke pasca-migrasi persona
+dinilai **live-proven** untuk wiring, audio dua arah, dan kualitas playback yang
+terdengar; isi persona tetap terpasang tepat sekali sesuai tes loader.
 
 Karakterisasi `voice_text_only_observer` kemudian mengunci tiga kontrak:
 default-off adalah no-op, teks tanpa audio menghasilkan tepat satu event dan
