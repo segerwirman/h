@@ -14,7 +14,6 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
         voice_l1,
         voice_live_transport,
         voice_native_tools,
-        voice_persona,
         voice_playback_fix,
         voice_playback_level,
         voice_proposal_install,
@@ -37,7 +36,6 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
         voice_native_tools,
         voice_clarify,
         voice_safety,
-        voice_persona,
     ]
     calls = []
     for module in modules:

@@ -90,6 +90,10 @@ try:
     from jarvis.integrations import voice_notices as _voice_notices
 except Exception:
     _voice_notices = None
+try:
+    from jarvis.integrations import voice_persona as _voice_persona
+except Exception:
+    _voice_persona = None
 # Every external stage is bounded — a hung tool or a silent model can no
 # longer freeze the receive loop or leave the user without feedback.
 TOOL_TIMEOUT_S     = float(os.environ.get("JARVIS_TOOL_TIMEOUT_S", "60"))
@@ -121,13 +125,16 @@ def _get_api_key() -> str:
 
 def _load_system_prompt() -> str:
     try:
-        return PROMPT_PATH.read_text(encoding="utf-8")
+        prompt = PROMPT_PATH.read_text(encoding="utf-8")
     except Exception:
-        return (
+        prompt = (
             "You are JARVIS, Tony Stark's AI assistant. "
             "Be concise, direct, and always use the provided tools to complete tasks. "
             "Never simulate or guess results — always call the appropriate tool."
         )
+    if _voice_persona is None:
+        return prompt
+    return _voice_persona.apply_to_prompt(prompt)
 
 _CTRL_RE = re.compile(r"<ctrl\d+>", re.IGNORECASE)
 

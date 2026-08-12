@@ -130,7 +130,7 @@ Tambahan di `jarvis/main.py`:
 | `_import_legacy()` | seam impor terpisah — kegagalan bisa diuji tanpa merusak lingkungan |
 | `_voice_failure_detail(exc)` | exception → kalimat yang bisa ditindaklanjuti |
 | `_publish_voice_status(ok, detail)` | terbitkan `boot.check` untuk `core.voice`; dibungkus try/except supaya visibilitas tak pernah mematikan boot |
-| `_install_voice_seams(legacy, logger)` | 13 seam dipindah keluar dari `runner()`, isi identik |
+| `_install_voice_seams(legacy, logger)` | 12 seam legacy masih aktif setelah migrasi langsung `voice_notices` dan `voice_persona` |
 | `voice.pipeline_ready` | log + publish ONLINE tepat setelah `on_text_command` ter-bind |
 
 Klasifikasi pesan:
@@ -4564,6 +4564,35 @@ baik tidak adanya call susulan maupun call susulan yang ditekan guard.
 Kesimpulan: guard satu-ucapan/satu-FunctionCall pasca-outcome sekarang
 **live-proven**. Fase 38 tetap **SEBAGIAN** hanya karena sisa seam struktural
 FROZEN, bukan lagi **BLOCKED** oleh validasi live guard ini.
+
+### Audit ulang seam struktural dari HEAD — `voice_persona` MIGRATED 2026-08-12
+
+Audit dimulai dari HEAD `6d7d482` dan menemukan 13 pemanggilan installer aktif
+di `_install_voice_seams`. Risiko dinilai dari jumlah target yang ditambal,
+state/lifecycle yang disentuh, dan kedekatannya dengan audio atau FunctionCall:
+
+| seam pada HEAD | permukaan risiko |
+|---|---|
+| `voice_persona` | satu wrapper prompt; transformasi string murni dan idempoten — **terendah** |
+| `voice_text_only_observer` | assignment satu callback, tetapi callback hidup di receive loop async |
+| `google_voice`, `voice_clarify`, `voice_safety`, `voice_native_tools` | deklarasi dan/atau routing FunctionCall |
+| `voice_l1`, `voice_proposal_install` | rantai L1 dan metering input mikrofon |
+| `voice_playback_fix`, `voice_playback_level`, `whatsapp_voice` | playback, antrean audio, dan urutan wrapper |
+| `voice_live_transport` | send/receive transport serta reconnect |
+| `voice_tasks` | bus, prompt, routing tool, dan lifecycle `run` |
+
+`voice_persona` dipilih karena graph menunjukkan hanya bootstrap dan tes yang
+memanggil installernya. Wrapper tersebut kini dihapus; modul menyediakan
+`apply_to_prompt()` yang murni, sedangkan loader FROZEN `main.py` memanggilnya
+langsung untuk prompt file maupun fallback. `core/prompt.txt` tetap byte-identik
+dan urutan installer lain tidak berubah. Baseline FROZEN `main.py` digeser
+dengan alasan eksplisit di manifest. Jumlah seam aktif turun **13 → 12**.
+
+Verifikasi: suite komposisi/prompt dan regresi terkait **159 passed**; seluruh
+seleksi tes voice **268 passed**; `git diff --check` bersih; dan
+`FROZEN integrity: OK` untuk 10 berkas pada baseline `094b696`. Migrasi ini
+**focused-tested** dan **runtime-wired**, tetapi belum dinilai ulang melalui
+sesi suara nyata khusus perubahan persona.
 
 ---
 

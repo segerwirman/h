@@ -5,16 +5,11 @@ cara bicara** — hanya routing tool dan satu aturan panjang jawaban. Itulah
 sebabnya Jarvis terdengar seperti dokumentasi yang dibacakan.
 
 Section di bawah DITAMBAHKAN, tidak pernah menimpa. ``core/prompt.txt``
-FROZEN dan personanya milik user; modul ini menempelkan aturan di memori saat
-sesi dibangun, lewat seam ``_load_system_prompt`` yang sama seperti
-``voice_tasks`` / ``voice_clarify`` / ``voice_safety``. Berkasnya tetap
-byte-identik — ada tesnya.
+FROZEN dan personanya milik user; loader voice memanggil transformasi murni
+modul ini secara langsung saat sesi dibangun. Berkas prompt tetap byte-identik
+— ada tesnya.
 """
 from __future__ import annotations
-
-from jarvis.core import log
-
-_logger = log.get("voice.persona")
 
 PERSONA_SECTIONS = """
 
@@ -51,21 +46,11 @@ PERSONA_SECTIONS = """
 _MARKER = "[GAYA BICARA]"
 
 
-def install(legacy_module) -> None:
-    """Tempelkan section persona ke system prompt sesi Live."""
-    original = getattr(legacy_module, "_load_system_prompt", None)
-    if original is None or getattr(original, "_jarvis_persona_wrapper", False):
-        return
-
-    def _with_sections() -> str:
-        base = original()
-        if _MARKER in base:
-            return base
-        return base + PERSONA_SECTIONS
-
-    _with_sections._jarvis_persona_wrapper = True
-    legacy_module._load_system_prompt = _with_sections
-    _logger.info("voice.persona.installed", chars=len(PERSONA_SECTIONS))
+def apply_to_prompt(prompt: str) -> str:
+    """Return ``prompt`` with persona sections appended exactly once."""
+    if _MARKER in prompt:
+        return prompt
+    return prompt + PERSONA_SECTIONS
 
 
-__all__ = ["install", "PERSONA_SECTIONS"]
+__all__ = ["apply_to_prompt", "PERSONA_SECTIONS"]

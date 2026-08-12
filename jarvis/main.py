@@ -81,7 +81,7 @@ def _install_voice_seams(legacy, logger) -> None:
     """Pasang seluruh seam suara pada modul legacy (main.py tetap FROZEN)."""
     from jarvis.core import llm
     from jarvis.integrations import (google_voice, voice_clarify,
-                                     voice_l1, voice_persona,
+                                     voice_l1,
                                      voice_safety, voice_tasks,
                                      voice_text_only_observer,
                                      voice_live_transport,
@@ -122,8 +122,6 @@ def _install_voice_seams(legacy, logger) -> None:
     # bernama. Dipasang TERAKHIR supaya deklarasi shutdown_jarvis
     # bawaan benar-benar tergantikan.
     voice_safety.install(legacy)
-    # DIAGNOSIS_2 MASALAH 4c — gaya bicara, nada adaptif, inisiatif.
-    voice_persona.install(legacy)
 
 
 def _register_whatsapp_shutdown(supervisor: RuntimeSupervisor) -> None:

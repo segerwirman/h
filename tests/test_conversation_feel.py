@@ -157,17 +157,31 @@ def test_persona_ditambahkan_tanpa_mengubah_prompt_txt() -> None:
     prompt_path = ROOT / "core" / "prompt.txt"
     before = hashlib.sha256(prompt_path.read_bytes()).hexdigest()
 
-    legacy = SimpleNamespace(_load_system_prompt=lambda: "PERSONA MILIK USER")
-    voice_persona.install(legacy)
-    prompt = legacy._load_system_prompt()
+    prompt = voice_persona.apply_to_prompt("PERSONA MILIK USER")
 
     assert prompt.startswith("PERSONA MILIK USER"), "persona ditulis ulang"
     for marker in ("[GAYA BICARA]", "[NADA ADAPTIF]", "[INISIATIF]"):
         assert marker in prompt, marker
-    assert legacy._load_system_prompt().count("[GAYA BICARA]") == 1
+    assert voice_persona.apply_to_prompt(prompt).count("[GAYA BICARA]") == 1
+    assert not hasattr(voice_persona, "install")
 
     after = hashlib.sha256(prompt_path.read_bytes()).hexdigest()
     assert before == after, "core/prompt.txt (FROZEN) berubah"
+
+
+def test_frozen_voice_loader_applies_persona_directly(monkeypatch) -> None:
+    import main as legacy_main
+
+    monkeypatch.setattr(
+        type(legacy_main.PROMPT_PATH),
+        "read_text",
+        lambda _self, **_kwargs: "PERSONA MILIK USER",
+    )
+
+    prompt = legacy_main._load_system_prompt()
+
+    assert prompt.startswith("PERSONA MILIK USER")
+    assert prompt.count("[GAYA BICARA]") == 1
 
 
 def test_persona_memuat_aturan_nada_kegagalan() -> None:
