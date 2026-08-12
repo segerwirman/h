@@ -4459,6 +4459,32 @@ diulang melalui sesi voice dan log baru menunjukkan call-ID yang sama dari
 `voice.function_call.received` sampai `voice.agent_task.outcome` tanpa
 `unrecognized_speech` atau eksekusi ulang.
 
+### Validasi mikrofon FunctionCall nyata — SEBAGIAN/BLOCKED 2026-08-12
+
+Sesi foreground custom-provider berjalan pada `2026-08-12T01:44:54Z` dan
+dihentikan setelah siklus FunctionCall selesai. Untuk ucapan pertama, request
+`64a89f2a` memberikan rantai metadata yang lengkap:
+
+* call-ID `fc_2159891278759177931`, fungsi `system_status`;
+* `voice.function_call.received` → `voice.function_call.started` →
+  `voice.function_call.disposition=routed_to_native`;
+* `voice.turn.outcome=success` dengan
+  `completion=deferred_native_agent` dan `function_call_ids` yang sama;
+* `voice.agent_task.outcome=success` dengan `call_ids` yang sama;
+* tidak ada `unrecognized_speech` pada rantai ini.
+
+Rantai pertama secara individual **lulus**. Namun sesi tidak memenuhi syarat
+one-shot Fase38: setelah hasil agent, provider menghasilkan FunctionCall baru
+untuk fungsi yang sama, termasuk `fc_14947902940050002472` pada request yang
+sama. Sesi berikutnya juga menghasilkan `fc_13629871997791296530` lalu
+`fc_9134746297477033026`. Call-ID baru tersebut menunjukkan FunctionCall
+berulang, bukan replay ID yang sama; eksekusi native tambahan juga terlihat
+melalui `agent.run_done`.
+
+Kesimpulan: korelasi call-ID dan outcome final sudah terbukti live, tetapi
+guard satu-ucapan/satu-FunctionCall belum lulus. Fase 38 tetap
+**SEBAGIAN/BLOCKED**, bukan `live-proven`.
+
 ---
 
 ## Lampiran — Status evidence fase (dibangkitkan)
