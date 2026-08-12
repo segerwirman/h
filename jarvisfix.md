@@ -3993,6 +3993,11 @@ end-to-end terbukti masih jalan di sesi nyata — `live-proven`, bukan cukup
 
 ### Hasil Fase 38 — SEBAGIAN 2026-08-09
 
+**Bukti:** focused-tested + runtime-wired + live-proven untuk jalur runtime
+voice/provider dan guard terminal pasca-outcome. Status fase tetap **SEBAGIAN**
+karena utang migrasi seam FROZEN belum seluruhnya selesai; bukti live guard
+terbaru dicatat pada validasi 2026-08-12 di bawah.
+
 **Bagian yang selesai: `ui.py` keluar dari jalur runtime.**
 
 Diukur sebelum menyentuh apa pun — dan angkanya mengubah prioritas fase ini:
@@ -4538,6 +4543,28 @@ Karena tidak ada input suara yang diterima dan tidak ada `voice_request_id`,
 `call_id`, atau `voice.agent_task.outcome`, percobaan ini tidak menambah bukti
 live dan tidak boleh dipakai untuk menaikkan Fase 38.
 
+### Validasi live guard pasca-outcome — LIVE-PROVEN 2026-08-12
+
+Takeda kemudian menjalankan satu FunctionCall nyata melalui mikrofon, mengucap
+sekali, dan menunggu sedikitnya 60 detik. Telemetry mengikat seluruh jalur pada
+`voice_request_id=b8f976f0`: `voice.function_call.received` mencatat
+`youtube_search` dengan `call_id=fc_6703157174341516973` pada
+`02:34:31.069Z`; tepat satu `voice.agent_task.started` terbit pada
+`02:34:33.822Z`; dan tepat satu `voice.agent_task.outcome=success` terbit pada
+`02:35:14.257Z` dengan request ID serta call-ID yang sama.
+
+Tidak ada `unrecognized_speech`, FunctionCall susulan, atau
+`voice.agent_task.started` kedua untuk request tersebut. Log tetap mengamati
+request lebih dari lima menit setelah outcome—hingga error server pada
+`02:40:37.829Z` dan reconnect yang pulih sesudahnya—tanpa handoff native kedua.
+Cabang `suppressed_after_agent_outcome` tidak terpicu karena provider memang
+tidak mengirim FunctionCall susulan; ini memenuhi kriteria lulus yang menerima
+baik tidak adanya call susulan maupun call susulan yang ditekan guard.
+
+Kesimpulan: guard satu-ucapan/satu-FunctionCall pasca-outcome sekarang
+**live-proven**. Fase 38 tetap **SEBAGIAN** hanya karena sisa seam struktural
+FROZEN, bukan lagi **BLOCKED** oleh validasi live guard ini.
+
 ---
 
 ## Lampiran — Status evidence fase (dibangkitkan)
@@ -4584,7 +4611,7 @@ live dan tidak boleh dipakai untuk menaikkan Fase 38.
 | 35 | Jadikan diam mustahil (S-32) | SEBAGIAN | focused-tested |
 | 36 | Batas sandbox dijaga uji (S-36) | SELESAI | focused-tested |
 | 37 | Rotasi log + pisahkan kanal bukti (S-35) | SELESAI | focused-tested, runtime-wired |
-| 38 | Selesaikan migrasi FROZEN (S-33, S-34) | SEBAGIAN | focused-tested, runtime-wired, live-proven (split-provider) |
+| 38 | Selesaikan migrasi FROZEN (S-33, S-34) | SEBAGIAN | focused-tested, runtime-wired, live-proven |
 | 39 | Drift config jadi kegagalan uji (S-37) | SELESAI | — |
 | 40 | Pecah `jarvis/ui/window.py` (S-33) | SELESAI DI KODE | — |
 | 41 | Tabel status `live-proven` | SELESAI | — |
