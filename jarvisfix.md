@@ -4840,6 +4840,40 @@ baseline 094b696)**. Migrasi ini dibatasi pada **focused-tested** dan
 menjadi **live-proven**.
 
 
+### Fix lifecycle output worker `whatsapp_voice` — 2026-08-13
+
+Karakterisasi RED-first pada `whatsapp_voice` menemukan kegagalan truthfulness:
+ketika `RawOutputStream.write()` melempar, worker mencatat error lalu berhenti,
+tetapi `bridge_status()` masih melaporkan `active=true`. Kondisi ini dapat
+membuat panggilan terlihat memiliki audio Jarvis walaupun jalur output sudah
+mati. Sebelum fix, karakterisasi dedicated menghasilkan **13 passed, 1 failed**;
+RED tersebut direproduksi dengan fake output stream yang melempar
+`RuntimeError("speaker disappeared")`.
+
+Fix dibatasi pada lifecycle worker, bukan migrasi ownership. Branch exception
+pada `_output_worker()` kini memanggil `WhatsAppAudioBridge.stop()` setelah
+mempertahankan pesan error dan event warning yang sama. Owner cleanup yang sudah
+ada kemudian secara atomik menonaktifkan bridge, mematikan `_phone_active`,
+men-stop/close input dan output stream, membersihkan referensi stream/worker,
+dan mengosongkan output queue. Guard `stop()` untuk current thread mencegah
+self-join. Wrapper `_TapQueue`, weakref live instance, queue overflow policy,
+MIME/sample rate, routing Gemini Live, dan urutan bootstrap tidak diubah.
+
+Verifikasi pascafix:
+
+- Dedicated characterization WhatsApp: **14 passed**.
+- Voice/WhatsApp/external-call regression: **55 passed**.
+- Full suite: **2857 passed, 1 skipped, 5 warnings**.
+- Ruff pada file terkait: lulus.
+- `git diff --check`: bersih.
+- `scripts/verify_frozen.py`: `FROZEN integrity: OK (10 files, baseline 094b696)`.
+
+Evidence fix ini adalah **focused-tested** dan regresi penuh lulus; tidak ada
+sesi Jarvis/Gemini Live baru, sehingga status **`live-proven` tidak diklaim**.
+Fix ini tidak mengubah status struktural Fase 38: `whatsapp_voice` tetap owner
+installer mandiri dan belum dilipat ke seam lain.
+
+
 ---
 
 ## Lampiran — Status evidence fase (dibangkitkan)

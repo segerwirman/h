@@ -177,6 +177,7 @@ class WhatsAppAudioBridge:
                 _logger.warning(
                     "whatsapp.audio_output_failed", error=self._last_error
                 )
+                self.stop()
                 break
 
     def start(self) -> dict:
