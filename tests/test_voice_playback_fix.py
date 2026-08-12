@@ -5,7 +5,7 @@ import asyncio
 import time
 import types
 
-from jarvis.integrations import voice_playback_fix
+from jarvis.integrations import voice_playback_fix, voice_playback_level
 
 
 class _FakeStream:
@@ -77,8 +77,10 @@ def test_install_gagal_aman_tanpa_sounddevice():
         pass
 
     mod.JarvisLive = _Live
+    voice_playback_level.reset()
     # sd tidak ada → tidak crash, kembalikan False, perilaku lama dibiarkan
     assert voice_playback_fix.install(mod) is False
+    assert voice_playback_level.is_installed() is False
 
 
 async def _wait_until(predicate, *, timeout_s: float, poll_s: float = 0.005):

@@ -4771,6 +4771,44 @@ FROZEN verifier **OK (10 files, baseline 094b696)**. Migrasi ini
 **focused-tested** dan **runtime-wired**. Tidak ada sesi Gemini Live/mikrofon baru,
 sehingga migrasi task tidak dinaikkan menjadi **live-proven**.
 
+### Audit dan migrasi `voice_playback_level` — MIGRATED 2026-08-12
+
+Seam berikutnya dipilih setelah audit struktural Fase 38. `voice_playback_level`
+sebelumnya menjadi installer terpisah setelah `voice_playback_fix`, walaupun
+implementasinya hanya membungkus `_play_audio` dengan proxy antrean untuk
+mengukur PCM16. Ownership playback nyata tetap berada pada
+`voice_playback_fix`; memisahkan installer membuat urutan wrapper lebih sulit
+dilihat dan memberi risiko tap tidak aktif ketika owner playback gagal dipasang.
+
+Migrasi mempertahankan helper publik `note_chunk`, `current_level`, `reset`,
+`is_installed`, dan `DECAY_S`. Komposisi baru dilakukan melalui
+`voice_playback_level.compose()` dari `voice_playback_fix`: drain-aware playback
+menjadi owner, level tap membungkusnya, dan `whatsapp_voice` tetap menjadi
+wrapper luar. Queue asli tetap dipulihkan di `finally`, level di-reset setelah
+playback, marker idempotency dipertahankan, dan fallback mic-meter tetap
+menganggap playback keras (`1.0`) bila tap belum terpasang atau tidak dapat
+diimpor.
+
+Bootstrap runtime berkurang dari enam menjadi lima installer aktif:
+`voice_playback_fix` → `voice_l1` → `voice_live_transport` → `whatsapp_voice`
+→ `voice_native_tools`. Root FROZEN tidak disentuh.
+
+Bukti verifikasi:
+
+- Red-first characterization baru gagal sebelum helper composition tersedia.
+- Focused playback/barge-in/seam suite: **21 passed**.
+- Expanded voice regression: **77 passed, 1 failed** pada urutan awal karena
+  fallback import tidak melewati monkeypatch; setelah perbaikan dynamic import,
+  focused suite kembali **21 passed**.
+- Full suite: **sukses, 1 skipped** (output runner selesai tanpa error).
+- Ruff scoped dan root: lulus.
+- `git diff --check`: bersih.
+- `scripts/verify_frozen.py`: `FROZEN integrity: OK (10 files, baseline 094b696)`.
+
+Batas evidence tetap jujur: status migrasi adalah **focused-tested** dan
+**runtime-wired**. Tidak ada sesi Gemini Live baru pada commit ini, sehingga
+status **live-proven** tidak diklaim.
+
 ### Audit dan migrasi `voice_safety` — MIGRATED 2026-08-12
 
 Seam safety dipilih setelah pengukuran sebelumnya karena permukaannya terbatas pada

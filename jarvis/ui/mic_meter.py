@@ -14,7 +14,10 @@ def _playback_level(win) -> float:
     if explicit is not None:
         return max(0.0, min(1.0, float(explicit)))
     try:
-        from jarvis.integrations import voice_playback_level as tap
+        tap = __import__(
+            "jarvis.integrations.voice_playback_level",
+            fromlist=["voice_playback_level"],
+        )
 
         if not tap.is_installed():
             return 1.0

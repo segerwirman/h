@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 
 from jarvis.core import config, log
+from jarvis.integrations import voice_playback_level
 
 _logger = log.get("voice.playback_fix")
 
@@ -29,7 +30,10 @@ def install(legacy_module) -> bool:
         _logger.warning("voice.playback_fix.no_class", error=str(exc)[:120])
         return False
     if getattr(cls, "_jarvis_playback_fix", False):
+        voice_playback_level.mark_installed()
         return True
+
+    voice_playback_level.mark_uninstalled()
 
     sd = getattr(legacy_module, "sd", None)
     rate = int(getattr(legacy_module, "RECEIVE_SAMPLE_RATE", 24000))
@@ -103,8 +107,10 @@ def install(legacy_module) -> bool:
             except Exception:                                # noqa: BLE001
                 pass
 
-    _play_audio._jarvis_playback_fix = True
-    cls._play_audio = _play_audio
+    wrapped_play = voice_playback_level.compose(_play_audio)
+    wrapped_play._jarvis_playback_fix = True
+    cls._play_audio = wrapped_play
     cls._jarvis_playback_fix = True
+    voice_playback_level.mark_installed()
     _logger.info("voice.playback_fix.installed", grace_s=grace_s)
     return True

@@ -13,7 +13,6 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
         voice_live_transport,
         voice_native_tools,
         voice_playback_fix,
-        voice_playback_level,
         whatsapp_voice,
     )
 
@@ -21,7 +20,6 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
         voice_playback_fix,
         voice_l1,
         voice_live_transport,
-        voice_playback_level,
         whatsapp_voice,
         voice_native_tools,
     ]
@@ -53,7 +51,43 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
     assert legacy.LIVE_MODEL == "fallback-live-model"
 
 
+def test_playback_owner_composes_level_before_whatsapp(monkeypatch):
+    from jarvis.integrations import voice_playback_fix, voice_playback_level
+
+    calls = []
+    original_compose = voice_playback_level.compose
+
+    def compose(original):
+        calls.append(original)
+        return original_compose(original)
+
+    monkeypatch.setattr(voice_playback_level, "compose", compose)
+
+    class _Live:
+        async def _play_audio(self):
+            return None
+
+    class _SD:
+        def RawOutputStream(self, **_kwargs):
+            raise AssertionError("playback body should not run")
+
+    legacy = types.SimpleNamespace(
+        JarvisLive=_Live,
+        sd=_SD(),
+        RECEIVE_SAMPLE_RATE=24000,
+        CHANNELS=1,
+        CHUNK_SIZE=8,
+    )
+    assert voice_playback_fix.install(legacy) is True
+    assert len(calls) == 1
+    assert getattr(legacy.JarvisLive._play_audio,
+                   "_jarvis_playback_fix", False) is True
+    assert getattr(legacy.JarvisLive._play_audio,
+                   "_jarvis_playback_level", False) is True
+
+
 def test_whatsapp_tap_queue_mirrors_consumed_audio_and_delegates_attributes(
+
     monkeypatch,
 ):
     from jarvis.integrations import whatsapp_voice

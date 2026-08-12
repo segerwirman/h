@@ -84,14 +84,12 @@ def reset() -> None:
         _updated_at = 0.0
 
 
-def install(legacy_module) -> None:
-    """Pasang tap pada pipeline legacy tanpa mengubah berkas FROZEN."""
-    global _installed
-    cls = legacy_module.JarvisLive
-    original = cls._play_audio
+def compose(original):
+    """Wrap playback with a level tap without owning the playback method."""
+    if not callable(original):
+        raise TypeError("playback owner must be callable")
     if getattr(original, "_jarvis_playback_level", False):
-        _installed = True
-        return
+        return original
 
     class _LevelTap:
         """Delegasikan antrean audio sambil mengukur potongan yang lewat."""
@@ -119,9 +117,27 @@ def install(legacy_module) -> None:
             reset()
 
     wrapped._jarvis_playback_level = True
-    cls._play_audio = wrapped
+    return wrapped
+
+
+def mark_installed() -> None:
+    """Mark the level tap active after its playback owner is installed."""
+    global _installed
     _installed = True
 
 
-__all__ = ["DECAY_S", "current_level", "install", "is_installed",
-           "note_chunk", "reset"]
+def mark_uninstalled() -> None:
+    """Mark the level tap inactive when its playback owner is unavailable."""
+    global _installed
+    _installed = False
+
+
+def install(legacy_module) -> None:
+    """Compatibility shim; playback_fix owns the actual installation."""
+    from jarvis.integrations import voice_playback_fix
+
+    voice_playback_fix.install(legacy_module)
+
+
+__all__ = ["DECAY_S", "compose", "current_level", "install", "is_installed",
+           "mark_installed", "mark_uninstalled", "note_chunk", "reset"]
