@@ -4874,6 +4874,39 @@ Fix ini tidak mengubah status struktural Fase 38: `whatsapp_voice` tetap owner
 installer mandiri dan belum dilipat ke seam lain.
 
 
+### Fix ordering pending first-audio `voice_l1` — 2026-08-13
+
+Karakterisasi RED-first lifecycle `voice_l1` menemukan stale pending-lane:
+ketika pending `L2` yang lebih lama tercatat sebelum pending `L1` yang lebih
+baru, transisi first-audio memilih item pertama berdasarkan insertion order.
+Akibatnya event `voice.first_audio` melaporkan lane `L2`, walaupun audio yang
+mulai berbicara berasal dari turn `L1` terbaru. Sebelum fix, characterization
+dedicated menghasilkan **5 passed, 1 failed** dengan aktual `L2` dan ekspektasi
+`L1`.
+
+Fix dibatasi pada pemilihan pending lane di `_install_meter()`. Meter kini
+memilih pasangan lane/timestamp dengan timestamp monotonic terbesar, lalu tetap
+membersihkan seluruh pending map dan mengirim schema telemetry yang sama.
+`_mark_pending()`, timeout/fail-open resolver, local action dispatch,
+interrupt/speak/reset, proposal precedence, playback, transport, queue,
+bootstrap, dan ownership `voice_l1` tidak diubah. Tidak ada berkas FROZEN yang
+disentuh dan `voice_l1` tetap installer mandiri.
+
+Verifikasi pascafix:
+
+- Lifecycle characterization `voice_l1`: **6 passed**.
+- L1/proposal/seam regression: **22 passed**.
+- Full suite: **2863 passed, 1 skipped, 5 warnings**.
+- Ruff pada file terkait: lulus.
+- `git diff --check`: bersih.
+- `scripts/verify_frozen.py`: `FROZEN integrity: OK (10 files, baseline 094b696)`.
+
+Evidence fix ini adalah **focused-tested** dan suite regresi penuh lulus. Tidak
+ada sesi Jarvis/Gemini Live baru, sehingga status **`live-proven` tidak
+diklaim**. Temuan dan fix ini tidak memberi otorisasi migrasi ownership
+`voice_l1` atau perubahan pada pipeline voice FROZEN.
+
+
 ---
 
 ## Lampiran — Status evidence fase (dibangkitkan)

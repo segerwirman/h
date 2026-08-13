@@ -137,7 +137,10 @@ def _install_meter(legacy: Any) -> None:
         if now_speaking and not was_speaking:
             pending = getattr(self, "_voice_l1_pending_audio", None)
             if isinstance(pending, dict) and pending:
-                lane, started = next(iter(pending.items()))
+                lane, started = max(
+                    pending.items(),
+                    key=lambda item: item[1],
+                )
                 pending.clear()
                 _event("voice.first_audio", lane=lane, metric="first_audio_ms",
                        value_ms=round((time.monotonic() - float(started)) * 1000, 1))
