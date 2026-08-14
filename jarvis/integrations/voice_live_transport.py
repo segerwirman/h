@@ -105,10 +105,14 @@ def install_turn_role() -> bool:
 def install(legacy_module) -> bool:
     """Install once; preserve legacy behaviour apart from PCM MIME correction."""
     live_cls = legacy_module.JarvisLive
+
+    # The SDK can replace its session class across reconnects or reloads while
+    # this transport marker correctly remains on the legacy live class.  Give
+    # the fresh SDK class its own idempotent repair before returning early.
+    install_turn_role()
+
     if getattr(live_cls, _PATCH_MARKER, False):
         return False
-
-    install_turn_role()
 
     receive_audio = live_cls._receive_audio
 
