@@ -4,11 +4,11 @@ from __future__ import annotations
 import asyncio
 import types
 
-
 def test_install_voice_seams_preserves_runtime_order(monkeypatch):
     from jarvis import main as jmain
     from jarvis.core import llm
     from jarvis.integrations import (
+        voice_document,
         voice_l1,
         voice_live_transport,
         voice_native_tools,
@@ -22,6 +22,7 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
         voice_live_transport,
         whatsapp_voice,
         voice_native_tools,
+        voice_document,
     ]
     calls = []
     sync_calls = []
@@ -49,7 +50,6 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
     assert calls == [module.__name__ for module in modules]
     assert legacy._get_api_key() == "test-key"
     assert legacy.LIVE_MODEL == "fallback-live-model"
-
 
 def test_playback_owner_composes_level_before_whatsapp(monkeypatch):
     from jarvis.integrations import voice_playback_fix, voice_playback_level
@@ -85,7 +85,6 @@ def test_playback_owner_composes_level_before_whatsapp(monkeypatch):
     assert getattr(legacy.JarvisLive._play_audio,
                    "_jarvis_playback_level", False) is True
 
-
 def test_whatsapp_tap_queue_mirrors_consumed_audio_and_delegates_attributes(
 
     monkeypatch,
@@ -111,7 +110,6 @@ def test_whatsapp_tap_queue_mirrors_consumed_audio_and_delegates_attributes(
     assert asyncio.run(queue.get()) == chunk
     assert bridge.tapped == [chunk]
     assert queue.empty() is True
-
 
 def test_whatsapp_install_wraps_playback_and_restores_original_queue(monkeypatch):
     from jarvis.integrations import whatsapp_voice

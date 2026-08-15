@@ -80,7 +80,8 @@ def _publish_voice_status(ok: bool, detail: str) -> None:
 def _install_voice_seams(legacy, logger) -> None:
     """Pasang seluruh seam suara pada modul legacy (main.py tetap FROZEN)."""
     from jarvis.core import llm
-    from jarvis.integrations import (voice_l1,
+    from jarvis.integrations import (voice_document,
+                                     voice_l1,
                                      voice_live_transport,
                                      voice_native_tools,
                                      voice_speech,
@@ -106,6 +107,8 @@ def _install_voice_seams(legacy, logger) -> None:
     whatsapp_voice.install(legacy)
     # Native/Google/clarify/safety memakai satu wrapper dispatch.
     voice_native_tools.install(legacy)
+    # Resolusi path FunctionCall + penjelasan dokumen/video lewat coordinator.
+    voice_document.install(legacy)
 
 
 def _register_whatsapp_shutdown(supervisor: RuntimeSupervisor) -> None:

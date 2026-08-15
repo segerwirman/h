@@ -5005,6 +5005,110 @@ disposisi recovery — tanpa submit, tanpa slot, tanpa BUS event, tanpa cancel.
   menawarkan replay; tanpa verified cursor, Jarvis melaporkan interupsi jujur.
 - Komposisi WhatsApp `_TapQueue`, level meter, dan playback-level tetap diuji
   composition; tidak ada perubahan pada pipeline voice FROZEN.
+### Seam `voice_document`: path Live + penjelasan dokumen/video — 2026-08-16
+
+RED-first: dua kegagalan audit runtime diurai menjadi dua kontrak yang
+sebelumnya tidak punya test dan memang gagal pada jalur Live.
+
+- **Path basename tidak pernah diselesaikan.** `main.py::_execute_tool`
+  (FROZEN) hanya mengisi `file_path` dari `ui.current_file` ketika argumen
+  **kosong**. Gemini Live memanggil `file_processor` dengan basename
+  (`Claude-Remotion-Blueprint.pdf`), sehingga `actions.file_processor`
+  membuat `Path(basename)` relatif dan mengembalikan `File not found`
+  sebelum dispatch apa pun.
+- **Ucapan "jelaskan dokumen" tidak pernah masuk coordinator.** Alur Live
+  langsung `_execute_tool -> file_processor`, tidak pernah melewati
+  `_chat`/`DocumentAnalysis`. Trace produksi mencatat
+  `voice.function_call.received` untuk `file_processor`, bukan pemakaian
+  coordinator dokumen — perucapan menjadi analisis satu-shot tanpa cursor
+  per-segmen yang terverifikasi.
+
+Implementasi terkecil pada seam editable `jarvis/integrations/voice_document.py`
+(`install()` dipanggil terakhir dari `jarvis/main.py::_install_voice_seams`),
+tanpa menyentuh file FROZEN:
+
+- `install()` membungkus `JarvisLive._execute_tool` secara idempotent
+  (marker `_jarvis_voice_document_installed`). Untuk `file_processor`:
+  (1) request eksplisit penjelasan di-route ke coordinator dan mengembalikan
+  `FunctionResponse`, (2) selain itu basename di-rewrite ke full path hasil
+  resolusi identitas yang benar-benar dimuat.
+- `resolve_loaded_path()` hanya mencocokkan terhadap identitas yang dimuat
+  (`ui.current_file`, `ui._win._current_file`, `assistant.ctx.uploaded_file`):
+  exact path menang, lalu basename terhadap **persis satu** file yang dimuat.
+  Ambigu atau tidak cocok mengembalikan `None`; **tidak pernah** memindai
+  disk. Argumen kosong hanya resolve bila tepat satu file dimuat (identitas
+  yang sama dengan pengisian FROZEN).
+- `route_document_explanation()` memakai resolver coordinator yang sama
+  (`lifecycle_for_path`), membuka satu `begin_request()`, lalu
+  `DocumentExplanation.deliver(submitter)` mengirim satu segmen per ticket
+  yang drain-aware (`_await_lane` menunggu `lane_idle` + `turn_boundary_safe`).
+  Cursor hanya maju setelah ticket terverifikasi.
+- `route_video_explanation()` membangun `DocumentLifecycle` dari **transkrip
+  audio nyata** (ffmpeg extract + `_process_audio` transcribe). Bila ffmpeg,
+  audio track, atau transkrip tidak tersedia, respons menolak jujur — tidak
+  pernah mengklaim menjelaskan visual yang tidak ditranskripsi.
+- Telemetry terstruktur `voice.document.*`: `request`, `completed`,
+  `interrupted`, `lane_busy`, `unreadable`, `no_submitter`, dan varian
+  `video.request`/`video.no_ffmpeg`/`video.no_transcript`, masing-masing
+  membawa `generation`, `cursor_before`/`cursor_after`,
+  `segments_verified`, dan `first_unverified`.
+
+Test RED baru `tests/test_voice_document_seam.py` (13 test, semuanya merah
+saat seam belum ada): resolusi basename exact/basename, penolakan ambigu dan
+tidak-cocok (tanpa disk search), wrapper `install` menulis ulang basename,
+route penjelasan ke lifecycle coordinator, resume `lanjutkan penjelasan`
+dari verified cursor, ticket aborted mempertahankan segmen pertama belum
+terverifikasi + laporan interupsi, lane busy tidak memajukan cursor, dokumen
+tidak terbaca melapor jujur, video explain membangun lifecycle dari transkrip,
+video tanpa transkrip/ffmpeg menolak jujur, dispatch tidak membajak aksi
+non-penjelasan (`summarize` tetap jatuh ke legacy), dan dispatch men-route
+penjelasan eksplisit. `tests/test_voice_seam_characterization.py` diperbarui
+agar `voice_document` berada di urutan install yang benar (terakhir).
+
+**Bukti:** `source-present`, `focused-tested`, `runtime-wired` untuk seam
+`voice_document` dan kontrak path + penjelasan dokumen/video.
+
+### Apa yang diukur — seam `voice_document` 2026-08-16
+
+- Fokus final (voice_document + seam composition + playback + document
+  lifecycle + evidence): **49 passed** dalam 3,35 detik.
+- Ruff target: **bersih** (`voice_document.py`, test baru, seam test).
+- `git diff --check`: bersih. `scripts/verify_frozen.py`:
+  `FROZEN integrity: OK (10 files, baseline 094b696)`.
+- Suite penuh (basetemp di luar repo, `--ignore` soak): **3005 passed,
+  1 skipped, 1 failed** dalam 210,83 detik. Skip pre-existing: symlink tanpa
+  privilege Windows. Kegagalan tunggal adalah
+  `tests/test_phase3_model_routing.py::test_config_yaml_routing_section_exists`
+  yang **pre-existing/environmental**: `config.yaml` lokal mengubah
+  `routing.light.provider` menjadi `custom`, bukan diubah oleh patch ini, dan
+  tidak disentuh.
+- Catatan harness: suite pertama dijalankan dengan `--basetemp` di dalam repo
+  dan melaporkan 4 kegagalan `test_file_sandbox_boundary.py`. Itu **artefak
+  penempatan basetemp** — `tmp_path` menjadi subdirektori `workspace_root`,
+  sehingga `_inside_sandbox` benar menganggap path "di dalam". Dengan
+  `--basetemp` di luar repo, seluruh **35 test sandbox lulus**. Bukan regresi
+  kode.
+- Audit diff: perubahan lokal pengguna (`voice_audio_devices`,
+  `voice_wake_arbitration` wiring, dll.) dipertahankan utuh; diff patch ini
+  hanya menambah import + panggilan `voice_document.install(legacy)` di
+  `jarvis/main.py`, file seam baru, dan dua file test.
+
+### Batas jujur — seam `voice_document` 2026-08-16
+
+- Seam ini **focused-tested** dan **runtime-wired**, tetapi **belum
+  live-proven**. Tidak ada sesi Gemini Live baru yang dijalankan di sesi ini
+  (otorisasi audio terpisah tidak diberikan), sehingga path FunctionCall
+  nyata, drain per ticket dokumen, barge-in/interupsi, resume `lanjutkan
+  penjelasan`, dan transkripsi video nyata belum diverifikasi di Live.
+- Test video memakai transkrip yang dimonkeypatch atau menjalankan
+  `_transcribe_video` hanya pada unit level; eksekusi ffmpeg nyata dan
+  `_process_audio` nyata belum dijalankan dalam sesi Live.
+- `Path(given).exists()` di `_route_file_processor` berarti route penjelasan
+  hanya aktif bila path aktual ada; identitas `ctx.uploaded_file` yang belum
+  tertulis ke disk tidak ter-route (dokumen yang belum selesai ditanam tetap
+  menghasilkan `unreadable`/`no_submitter` jujur).
+- Status Fase 43 keseluruhan tetap **SEBAGIAN**, bukan `live-proven`.
+
 
 ---
 
@@ -5058,4 +5162,3 @@ disposisi recovery — tanpa submit, tanpa slot, tanpa BUS event, tanpa cancel.
 | 41 | Tabel status `live-proven` | SELESAI | — |
 | 42 | Ukur rentang yang masih gelap | — | — |
 | 43 | Empat keluhan runtime: satu jalur ucapan, satu owner, konteks multi-task, ledger recovery | SELESAI | focused-tested, runtime-wired |
-
