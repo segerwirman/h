@@ -49,6 +49,28 @@ def read_document(path: str) -> str:
     return text
 
 
+def lifecycle_for_path(path: str, *, source: str = "") -> "DocumentLifecycle | None":
+    """Resolve the shared coordinator lifecycle for a document path.
+
+    Reuses the same extraction cache as the upload worker so a document is
+    parsed once and every producer (upload, explain, summarize) shares ONE
+    generation owner (Fase 38). Returns None when unreadable or not seeded.
+    """
+    try:
+        from jarvis.nlp.document_lifecycle import COORDINATOR
+        # get()/open_text() apply safe_fingerprint() internally, so pass the
+        # raw identity (a path or an opaque id) — never a pre-hashed value.
+        lifecycle = COORDINATOR.get(path)
+        if lifecycle is not None:
+            return lifecycle
+        text = read_document(str(path))
+        if not text.strip():
+            return None
+        return COORDINATOR.open_text(path, text, source=source)
+    except Exception:                             # noqa: BLE001
+        return None
+
+
 def chunk_text(text: str, size: int, overlap: int) -> list[str]:
     chunks = []
     i = 0

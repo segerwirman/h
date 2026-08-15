@@ -213,17 +213,16 @@ _CHUNK_PROMPT = (
 )
 
 
-def summarize_long(text: str, generate, max_chunk: int = 8000) -> str:
-    """3–5 sentence summary; hierarchical map-reduce when text is long.
+def plan_chunks(text: str, max_chunk: int = 8000) -> list[str]:
+    """Deterministic paragraph-boundary chunk plan for long documents.
 
-    ``generate(prompt) -> str`` is injected (jarvis.core.llm.generate in prod,
-    a stub in tests). Returns "" when the LLM fails — caller decides feedback.
+    This is the single chunk planner shared by ``summarize_long`` and the
+    document lifecycle coordinator, so a checkpointed map state always matches
+    the planner that produced the segments. No time/random in the split.
     """
-    text = text.strip()
-    if len(text) <= max_chunk:
-        return (generate(_FINAL_PROMPT.format(body=text)) or "").strip()
-
-    # split on paragraph boundaries near max_chunk
+    text = str(text or "").strip()
+    if not text:
+        return []
     chunks: list[str] = []
     buf: list[str] = []
     size = 0
@@ -235,6 +234,20 @@ def summarize_long(text: str, generate, max_chunk: int = 8000) -> str:
         size += len(para) + 2
     if buf:
         chunks.append("\n\n".join(buf))
+    return chunks
+
+
+def summarize_long(text: str, generate, max_chunk: int = 8000) -> str:
+    """3–5 sentence summary; hierarchical map-reduce when text is long.
+
+    ``generate(prompt) -> str`` is injected (jarvis.core.llm.generate in prod,
+    a stub in tests). Returns "" when the LLM fails — caller decides feedback.
+    """
+    text = text.strip()
+    if len(text) <= max_chunk:
+        return (generate(_FINAL_PROMPT.format(body=text)) or "").strip()
+
+    chunks = plan_chunks(text, max_chunk)
 
     partials = []
     for i, chunk in enumerate(chunks[:12]):          # hard cap: 12 LLM calls

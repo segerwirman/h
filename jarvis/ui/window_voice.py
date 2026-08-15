@@ -368,8 +368,11 @@ class WindowVoiceMixin:
                                  daemon=True).start()
 
     def _handle_document_upload(self, path: str) -> None:
-        """Upload → Extracting → Summarizing → Complete/Failed, with explicit
-        status on the stage and a spoken outcome for every path (no silence)."""
+        """Upload → Extracting → Ready, with explicit status and a spoken
+        outcome.  The upload worker only extracts, caches into the shared
+        document coordinator, and reports readiness.  A long-form summary is
+        produced only by an explicit explain request (the single long-form
+        owner), never as an automatic upload monolog (Fase 38)."""
         self.orb.set_state(OrbState.THINKING)
         import os
         name = os.path.basename(path)
@@ -384,25 +387,14 @@ class WindowVoiceMixin:
                     self._content_sig.emit(f"Dokumen: {name} — GAGAL", err)
                     self._speak_line(f"Maaf, {err}")
                     return
-                self._content_sig.emit(f"Dokumen: {name}",
-                                       "⏳ Teks terbaca — membuat ringkasan…")
-                from jarvis.core import llm
-                from jarvis.nlp.doc_extract import summarize_long
-                summary = summarize_long(text, llm.generate)
-                if not summary:
-                    # extraction OK, LLM failed — say so, never go silent
-                    preview = text[:600] + ("…" if len(text) > 600 else "")
-                    self._content_sig.emit(
-                        f"Dokumen: {name} — ringkasan gagal",
-                        "Teks berhasil dibaca, tetapi layanan ringkasan "
-                        "sedang bermasalah.\n\nCuplikan awal:\n" + preview)
-                    self._speak_line(
-                        "Dokumen berhasil saya baca, tetapi layanan ringkasan "
-                        "sedang bermasalah. Silakan coba lagi.")
-                    return
-                self._content_sig.emit(f"Dokumen: {name}", summary)
+                self._seed_document_coordinator(path, text)
+                self._content_sig.emit(
+                    f"Dokumen: {name}",
+                    "Dokumen terbaca — siap dijelaskan. Katakan 'jelaskan "
+                    "dokumen' untuk mendengar penjelasannya.")
                 self._speak_line(
-                    f"Berikut adalah ringkasan dari dokumen {name}: {summary}")
+                    f"Dokumen {name} sudah saya baca. Katakan jelaskan "
+                    "dokumen untuk mendengar penjelasannya.")
             except Exception as e:
                 self.write_log(f"ERR: document upload — {str(e)[:80]}")
                 self._content_sig.emit(f"Dokumen: {name} — GAGAL",
@@ -413,6 +405,27 @@ class WindowVoiceMixin:
             finally:
                 self._restore_orb()
         threading.Thread(target=_run, daemon=True, name="doc-upload").start()
+
+    @staticmethod
+    def _coordinator_for_upload():
+        """Expose the shared coordinator for the Fase 38 single-owner contract."""
+        from jarvis.nlp.document_lifecycle import COORDINATOR
+        return COORDINATOR
+
+    def _seed_document_coordinator(self, path: str, text: str) -> None:
+        """Register the uploaded document in the shared coordinator so upload,
+        explain, and summarize all share ONE generation owner (Fase 38)."""
+        try:
+            from jarvis.nlp.document_lifecycle import COORDINATOR
+            import os
+            # open_text() applies safe_fingerprint() internally, so pass the
+            # RAW path identity — never a pre-hashed value, or the lifecycle
+            # key would diverge from the one lifecycle_for_path() looks up.
+            COORDINATOR.open_text(
+                path, text, source="voice",
+                title=os.path.basename(path))
+        except Exception as e:                     # noqa: BLE001
+            self.write_log(f"ERR: document coordinator seed — {str(e)[:80]}")
 
     def _handle_image_upload(self, path: str) -> None:
         self.orb.set_state(OrbState.THINKING)
