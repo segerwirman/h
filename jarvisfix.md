@@ -4909,6 +4909,105 @@ diklaim**. Temuan dan fix ini tidak memberi otorisasi migrasi ownership
 
 ---
 
+## Fase 43 — Empat keluhan runtime: satu jalur ucapan, satu owner, konteks multi-task, ledger recovery
+
+Meneruskan rencana `ethereal-seeking-yeti.md`: memperbaiki empat gejala runtime
+tanpa mengubah ownership inti Gemini Live, safety, FunctionCall, atau lifecycle
+FROZEN. Keluhan pertama (transport role self-healing) sudah ditutup di commit
+sebelumnya (`fb64997 fix(voice): repair role before transport guard`); lima
+commit di fase ini menutup keluhan 2–4 plus satu cacat EventBus yang ditemukan
+di tengah jalan.
+
+### Hasil Fase 43 — SELESAI 2026-08-15
+
+**Bukti:** focused-tested + runtime-wired untuk keempat keluhan.
+
+**Keluhan 2 — progres latar menyela penjelasan yang masih berbicara.**
+Commit `b93d845` (`feat(speech): bind task speech to registry IDs with playback
+arbitration`) dan `af6ff41` (`fix(bus): deliver UI events only to subscribers
+present at publish`).
+
+- `SpeechQueue` sekarang memakai **ticket playback** (bukan sekadar serialisasi
+  pemanggilan speaker): queue mereservasi satu slot in-flight sebelum submission
+  dan tidak mengambil item berikutnya sebelum ticket terminal
+  (`completed`/`aborted`). Speaker lama yang mengembalikan `None` tetap dianggap
+  selesai segera — kompatibel mundur.
+- Seam `voice_speech.py` (editable, di-install dari `jarvis/main.py`) menyediakan
+  callback submission khusus untuk `_speak_now()`; fallback lama tetap berfungsi
+  bila seam tidak tersedia.
+- Arbiter mengamati global Live lane: item pertama pun tidak disubmit ketika
+  Gemini masih menghasilkan output, `_is_speaking` masih benar, atau
+  `audio_in_queue` belum drain. Sinyal drain dipasang pada titik authoritative di
+  `voice_playback_fix` (server turn selesai → queue kosong → tail/grace → `set_speaking(False)`).
+  Hanya titik ini yang menyelesaikan ticket sebagai `completed`.
+- Send failure, reconnect/teardown, cancellation, interruption, playback
+  exception, atau no-session mengubah ticket menjadi `aborted` dan melepas slot —
+  tidak pernah mengklaim audio selesai terdengar.
+- Prioritas `confirm > final > ack/progress` dan supersession dipertahankan;
+  `progress_narrator.phrase_for()` mengembalikan string kosong untuk progres
+  tak dikenal, dan `should_speak()` menolak empty text — fallback
+  `Masih saya kerjakan, sir.` dihapus dari jalur suara (tetap di UI).
+- `af6ff41` memperbaiki `EventBus` agar hanya menghantar ke subscriber yang hadir
+  pada saat publish (publisher yang dihapus saat publish tidak lagi menerima).
+
+**Keluhan 4a — konteks jangka pendek hanya satu `active_task`.**
+Commit `0a2503e` (`fix(context): bind multi-task immediate context to registry
+task IDs`). `_ImmediateContext.active_task: str` diganti `OrderedDict` bounded
+per task ID dengan API `begin_task(conversation_id, task_id, task)` dan
+`active_tasks()`; resolusi referensi deterministik (ID eksplisit → judul unik →
+satu-satunya task aktif → recent completed safe → klarifikasi), dan completion
+out-of-order hanya menghapus ID yang cocok.
+
+**Keluhan 3 — beberapa producer penjelasan dokumen tanpa owner.**
+Commit `0b7cc1e` (`fix(docs): one owner per document generation and verified
+spoken cursor`). `document_lifecycle.py` menjadi satu coordinator per dokumen
+dengan generation counter, request token, checkpoint map, dan spoken cursor
+yang hanya maju setelah ticket segment `completed` pada drain authoritative.
+Upload worker hanya mengekstrak/cache (tidak lagi memproduksi monolog panjang);
+request explain/summarize eksplisit adalah satu-satunya owner long-form. Hasil
+model lama yang datang terlambat dibuang tanpa mengubah UI/cursor/memory.
+
+**Keluhan 4b — tidak ada ledger durable untuk pemulihan.**
+Commit `8e24358` (`fix(task): durable recovery ledger + Task Deck hydration`).
+`jarvis/agent/task_ledger.py` membuat tabel `task_records` di `agent.sqlite`
+dengan kolom terbatas (privacy: tidak ada raw args/secrets/path). Registry
+mencatat create/update/terminal, agent loop menulis pending-tool marker
+(baru `tool` + `read_only`, tanpa argumen) tepat sebelum `registry.execute()`,
+dan boot me-reconcile record nonterminal milik incarnation lama menjadi
+disposisi recovery — tanpa submit, tanpa slot, tanpa BUS event, tanpa cancel.
+
+### Apa yang diukur
+
+- Suite penuh setelah semua lima commit: **2979 passed, 1 skipped, 5 warnings**
+  dalam 183,69 detik (skip pre-existing: symlink tanpa privilege di Windows).
+- `scripts/verify_frozen.py`: `FROZEN integrity: OK (10 files, baseline 094b696)`.
+- Uji ledger + recovery hydration: **12 test** baru di `tests/test_task_ledger.py`
+  semuanya lulus; kontrak hydration registry divalidasi (record recovery tidak
+  memakan slot, tidak cancellable, glyph `↻`/`✂`/`⚠` per disposisi).
+- Fokus ledger/task/dispatch: **97 lulus**.
+
+### Kesalahan rancangan yang ditemukan di tengah jalan
+
+1. `TaskLedger._update` menulis `WHERE task_id = ? AND incarnation = ?` tetapi
+   parameter dibalik urutan — `mark`/`mark_pending_tool` mengembalikan baris
+   basi ber-state `queued`. Perbaiki urutan parameter; 12 uji ledger baru menjadi
+   merah dan hijau setelahnya.
+2. `_ledger_write` mengevaluasi `self._ledger.create` secara eager sebelum guard
+   `ledger is None` — menimbulkan `AttributeError` pada registry test tanpa
+   ledger. Diubah menjadi resolve nama method string `getattr` setelah guard.
+
+### Batas jujur
+
+- Seluruh pekerjaan fase ini **focused-tested** dan **runtime-wired**; **tidak
+  live-proven** — tidak ada sesi Jarvis/Gemini Live baru pada perubahan ini.
+- Recovery bersifat **visual/log-first**: record recovery dirender di Task Deck
+  tetapi tidak pernah dijalankan ulang otomatis. `outcome_uncertain` tidak
+  menawarkan replay; tanpa verified cursor, Jarvis melaporkan interupsi jujur.
+- Komposisi WhatsApp `_TapQueue`, level meter, dan playback-level tetap diuji
+  composition; tidak ada perubahan pada pipeline voice FROZEN.
+
+---
+
 ## Lampiran — Status evidence fase (dibangkitkan)
 
 <!-- Dibangkitkan dengan: python scripts/evidence_status.py -->
@@ -4958,4 +5057,5 @@ diklaim**. Temuan dan fix ini tidak memberi otorisasi migrasi ownership
 | 40 | Pecah `jarvis/ui/window.py` (S-33) | SELESAI DI KODE | — |
 | 41 | Tabel status `live-proven` | SELESAI | — |
 | 42 | Ukur rentang yang masih gelap | — | — |
+| 43 | Empat keluhan runtime: satu jalur ucapan, satu owner, konteks multi-task, ledger recovery | SELESAI | focused-tested, runtime-wired |
 
