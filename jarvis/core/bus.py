@@ -41,7 +41,10 @@ class EventBus:
     def __init__(self) -> None:
         self._subs: dict[str, list[Handler]] = defaultdict(list)
         self._ui_subs: dict[str, list[Handler]] = defaultdict(list)
-        self._ui_queue: "queue.Queue[tuple[str, dict]]" = queue.Queue()
+        # Capture the subscriber snapshot at publish time. Looking subscribers
+        # up only during drain lets a freshly-created window consume historical
+        # UI events that were queued before that window existed.
+        self._ui_queue: "queue.Queue[tuple[tuple[Handler, ...], dict]]" = queue.Queue()
         self._lock = threading.Lock()
 
     def subscribe(self, topic: str, handler: Handler, ui: bool = False) -> None:
@@ -50,25 +53,23 @@ class EventBus:
 
     def publish(self, topic: str, **data) -> None:
         with self._lock:
-            direct = list(self._subs.get(topic, ()))
-            has_ui = bool(self._ui_subs.get(topic))
+            direct = tuple(self._subs.get(topic, ()))
+            ui_handlers = tuple(self._ui_subs.get(topic, ()))
         for fn in direct:
             try:
                 fn(data)
             except Exception:
                 traceback.print_exc()
-        if has_ui:
-            self._ui_queue.put((topic, data))
+        if ui_handlers:
+            self._ui_queue.put((ui_handlers, data))
 
     def drain_ui(self, max_events: int = 64) -> None:
         """Call from the UI thread (Qt timer). Dispatches queued UI events."""
         for _ in range(max_events):
             try:
-                topic, data = self._ui_queue.get_nowait()
+                handlers, data = self._ui_queue.get_nowait()
             except queue.Empty:
                 return
-            with self._lock:
-                handlers = list(self._ui_subs.get(topic, ()))
             for fn in handlers:
                 try:
                     fn(data)
