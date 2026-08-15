@@ -718,7 +718,6 @@ class TelegramService:
         from jarvis.agent import conversation_context
         conversation_id = self._session_id(chat_id)
         text = conversation_context.STORE.augment(conversation_id, text)
-        conversation_context.STORE.begin_task(conversation_id, text)
         route = classify_execution(text, {"source": "telegram"})
         _logger.info(
             "router.decision",
@@ -751,6 +750,16 @@ class TelegramService:
         from jarvis.agent.interaction import unavailable_reason
         adapter = TelegramAdapter(self, chat_id)
         loop = asyncio.get_running_loop()
+        task_scope = {"id": ""}
+
+        def on_task(metadata) -> None:
+            # Registry binding is the only point where the real task ID exists.
+            # The safe title is remembered under that ID — never before it.
+            task_scope["id"] = str(getattr(metadata, "id", "") or "")
+            title = str(getattr(metadata, "title", "") or text)
+            conversation_context.STORE.begin_task(
+                conversation_id, task_id=task_scope["id"], task=title
+            )
 
         def on_ack(ack: str):
             # dispatch dipanggil via to_thread, sehingga ACK dapat benar-benar
@@ -760,25 +769,30 @@ class TelegramService:
                 update.message.reply_text(ack), loop)
             progress = future.result(timeout=10)
             adapter.bind_progress_message(progress.message_id)
+            return True
 
-        def on_done(result: str):
+        def on_done(result: str) -> bool:
             try:
                 delivery = delivery_lifecycle.success(
-                    result, text, source="telegram"
+                    result, text, source="telegram",
                 )
                 conversation_context.STORE.remember_success(
-                    conversation_id, task=text, delivery=delivery
+                    conversation_id, task_id=task_scope["id"], task=text,
+                    delivery=delivery,
                 )
-                adapter.complete_progress(delivery.display_text)
+                return adapter.complete_progress(delivery.display_text)
             except Exception:                                # noqa: BLE001
-                pass
+                return False
 
-        def on_error(err: str):
+        def on_error(err: str) -> bool:
             try:
                 delivery = delivery_lifecycle.failure(err, text, source="telegram")
-                adapter.complete_progress(f"⚠️ {delivery.display_text}")
+                conversation_context.STORE.fail_task(
+                    conversation_id, task_id=task_scope["id"]
+                )
+                return adapter.complete_progress(f"⚠️ {delivery.display_text}")
             except Exception:                                # noqa: BLE001
-                pass
+                return False
 
         started = await asyncio.to_thread(
             dispatch.dispatch_async,
@@ -787,7 +801,9 @@ class TelegramService:
             on_ack=on_ack,
             on_done=on_done,
             on_error=on_error,
+            on_task=on_task,
             context=execution_context,
+            source="telegram",
         )
         if not started:
             delivery = delivery_lifecycle.failure(
@@ -857,8 +873,14 @@ class TelegramAdapter(Adapter):
     def finish_progress(self) -> None:
         self._progress_msg_id = None
 
-    def complete_progress(self, content: str) -> None:
-        """Edit ACK menjadi hasil final; fallback jujur bila edit gagal."""
+    def complete_progress(self, content: str) -> bool:
+        """Edit ACK menjadi hasil final; fallback jujur bila edit gagal.
+
+        Returns an honest delivery receipt: True only when the final text was
+        accepted by the transport (edit or fallback send). False keeps the
+        registry the completion-speech owner, so a lost Telegram delivery is
+        never mistaken for an audible/visible success.
+        """
         message_id = self._progress_msg_id
         self._progress_msg_id = None
         try:
@@ -866,11 +888,13 @@ class TelegramAdapter(Adapter):
                 self._svc.send_text(self.chat_id, content)
             else:
                 self._svc.edit_result(self.chat_id, message_id, content)
+            return True
         except Exception:                                    # noqa: BLE001
             try:
                 self._svc.send_text(self.chat_id, content)
+                return True
             except Exception:                                # noqa: BLE001
-                pass
+                return False
 
     async def send(self, content: str, **kwargs) -> None:
         # jawaban akhir dikirim oleh callback on_done (hindari dobel);

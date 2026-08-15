@@ -11,9 +11,8 @@ def test_phrase_natural_untuk_tool_umum():
     assert "mencari" in phrase_for("🔧 web_search").lower()
 
 
-def test_phrase_fallback_generic_untuk_tool_asing():
-    out = phrase_for("tool_yang_tidak_dikenal")
-    assert out and "kerjakan" in out.lower()
+def test_tool_asing_tetap_visual_only():
+    assert phrase_for("tool_yang_tidak_dikenal") == ""
 
 
 def test_narrator_throttle_min_interval():

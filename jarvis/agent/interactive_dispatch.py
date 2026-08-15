@@ -12,7 +12,7 @@ from jarvis.agent.interaction import (
     unavailable_reason,
 )
 
-FeedbackCallback = Callable[[str, str], None]
+FeedbackCallback = Callable[[str, str], Any]
 
 
 def start(
@@ -21,6 +21,7 @@ def start(
     on_ack: FeedbackCallback | None = None,
     on_done: FeedbackCallback | None = None,
     on_error: FeedbackCallback | None = None,
+    on_task: Callable[[Any], None] | None = None,
     adapter: Any = None,
     timeout_s: float | None = None,
     allowed_tools: list[str] | None = None,
@@ -68,27 +69,27 @@ def start(
             report = str(raw or "")
         _safe_call(on_ack, str(raw or ""), report)
 
-    def _done(raw: str) -> None:
+    def _done(raw: str) -> bool:
         if not _take_terminal():
-            return
+            return False
         try:
             report = render_success(
                 raw, task_text, language=language, address=address
             )
         except Exception:  # noqa: BLE001
             report = str(raw or "")
-        _safe_call(on_done, str(raw or ""), report)
+        return _safe_call(on_done, str(raw or ""), report)
 
-    def _error(raw: str) -> None:
+    def _error(raw: str) -> bool:
         if not _take_terminal():
-            return
+            return False
         try:
             report = render_failure(
                 raw, task_text, language=language, address=address
             )
         except Exception:  # noqa: BLE001
             report = str(raw or "")
-        _safe_call(on_error, str(raw or ""), report)
+        return _safe_call(on_error, str(raw or ""), report)
 
     try:
         started = bool(dispatch.dispatch_async(
@@ -96,6 +97,7 @@ def start(
             on_ack=_ack,
             on_done=_done,
             on_error=_error,
+            on_task=on_task,
             adapter=adapter,
             timeout_s=timeout_s,
             allowed_tools=allowed_tools,
@@ -111,10 +113,10 @@ def start(
 
 def _safe_call(
     callback: FeedbackCallback | None, raw: str, report: str
-) -> None:
+) -> bool:
     if callback is None:
-        return
+        return False
     try:
-        callback(raw, report)
+        return callback(raw, report) is not False
     except Exception:  # noqa: BLE001 - external delivery must never kill work
-        pass
+        return False

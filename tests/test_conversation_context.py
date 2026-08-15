@@ -100,6 +100,68 @@ def test_referensi_artefak_dikenali_untuk_beragam_frasa():
         assert not ctx.is_artifact_reference(phrase), phrase
 
 
+def test_dua_tugas_aktif_tidak_saling_menghapus_dan_resolusi_deterministik():
+    """Fase 38 — multi-task immediate context: two active tasks stay
+    addressable, completion removes only the matching ID, and ambiguous
+    follow-ups ask for clarification instead of guessing."""
+    ctx = importlib.import_module("jarvis.agent.conversation_context")
+    store = ctx.ConversationContextStore()
+
+    store.begin_task("voice-live", task_id="T-a", task="riset framework AI",
+                     source="voice")
+    store.begin_task("voice-live", task_id="T-b", task="ringkas dokumen PDF",
+                     source="voice")
+
+    active = store.active_tasks("voice-live")
+    assert {a["task_id"] for a in active} == {"T-a", "T-b"}
+    # Compatibility view reports empty (ambiguous), not a guessed title.
+    assert store.active_task("voice-live") == ""
+
+    # Explicit ID resolves even while two tasks run.
+    resolved = store.augment("voice-live", "lanjutkan T-b")
+    assert "ringkas dokumen PDF" in resolved
+
+    # Ambiguous reference never guesses which task the user means.
+    blocked = store.augment("voice-live", "lanjutkan")
+    assert "beberapa tugas" in blocked
+    assert "riset framework AI" in blocked
+    assert "ringkas dokumen PDF" in blocked
+
+    # Completion removes ONLY the matching ID; the other task survives.
+    store.remember_success(
+        "voice-live", task_id="T-a", task="riset framework AI",
+        delivery=ConversationDelivery(
+            display_text="Riset selesai.",
+            speech_text="Riset sudah selesai, sir.",
+            factual_anchors=("riset",),
+        ),
+    )
+    active = store.active_tasks("voice-live")
+    assert {a["task_id"] for a in active} == {"T-b"}
+    resolved = store.augment("voice-live", "lanjutkan T-b")
+    assert "ringkas dokumen PDF" in resolved
+
+    store.fail_task("voice-live", "T-b")
+    assert store.active_tasks("voice-live") == []
+
+
+def test_legacy_title_only_begin_task_masih_terlihat_aktif():
+    """Legacy callers binding by title alone keep the compatibility view."""
+    ctx = importlib.import_module("jarvis.agent.conversation_context")
+    store = ctx.ConversationContextStore()
+    store.begin_task("voice-live", "buat laporan status proyek")
+    assert store.active_task("voice-live") == "buat laporan status proyek"
+    store.remember_success(
+        "voice-live", task="buat laporan status proyek",
+        delivery=ConversationDelivery(
+            display_text="Laporan selesai.",
+            speech_text="Laporan status proyek selesai, sir.",
+            factual_anchors=("proyek",),
+        ),
+    )
+    assert store.active_task("voice-live") == ""
+
+
 def test_artifact_tidak_bocor_ke_blok_konteks_prompt():
     ctx = importlib.import_module("jarvis.agent.conversation_context")
     store = ctx.ConversationContextStore()

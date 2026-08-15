@@ -301,35 +301,91 @@ class CommandActionsMixin:
         task = conversation_context.STORE.augment(conversation_id, task)
         self._record_task_result("TUGAS", task)
         self.orb.set_state(OrbState.EXECUTING)
+        task_scope = {"id": ""}
+
+        def _on_task(metadata) -> None:
+            task_scope["id"] = str(getattr(metadata, "id", "") or "")
+            conversation_context.STORE.begin_task(
+                conversation_id,
+                task_id=task_scope["id"],
+                task=str(getattr(metadata, "title", "") or task),
+                source="typed",
+            )
+
+        def _speak_scoped(line: str, kind: str) -> None:
+            try:
+                self._speak_line(line, kind=kind, turn=task_scope["id"])
+            except TypeError:
+                # Test/legacy window doubles may still expose the old one-arg
+                # speech surface. Production MainWindow accepts both labels.
+                self._speak_line(line)
+
+        def _typed_terminal_fallback(text: str, *, error: bool = False) -> bool:
+            """Keep terminal delivery on the desktop surface when one sink fails."""
+            delivered = False
+            prefix = "ERR: agent task — " if error else "Agent: "
+            try:
+                self.write_log(prefix + str(text or "")[:600])
+                delivered = True
+            except Exception:
+                pass
+            try:
+                emitter = getattr(self, "_content_sig", None)
+                if emitter is not None and callable(getattr(emitter, "emit", None)):
+                    emitter.emit("AGENT — hasil tugas" if not error else
+                                 "AGENT — gagal", str(text or ""))
+                    delivered = True
+            except Exception:
+                pass
+            return delivered
 
         def _on_ack(_raw: str, report: str):
             delivery_lifecycle.acknowledged("typed", report)
-            self._speak_line(report)
+            _speak_scoped(report, "ack")
 
         def _on_done(result: str, report: str):
-            delivery = delivery_lifecycle.success(
-                result, task, source="typed", naturalize=True
-            )
-            conversation_context.STORE.remember_success(
-                conversation_id, task=task, delivery=delivery
-            )
-            short = delivery.display_text[:600]
-            self._record_task_result("HASIL", delivery.display_text)
-            self.write_log(f"Agent: {short}")
-            self._content_sig.emit("AGENT — hasil tugas", delivery.display_text)
-            self._speak_line(delivery.speech_text)
-            self._restore_orb()
+            try:
+                delivery = delivery_lifecycle.success(
+                    result, task, source="typed", naturalize=True
+                )
+                conversation_context.STORE.remember_success(
+                    conversation_id, task_id=task_scope["id"], task=task,
+                    delivery=delivery,
+                )
+                short = delivery.display_text[:600]
+                self._record_task_result("HASIL", delivery.display_text)
+                self.write_log(f"Agent: {short}")
+                self._content_sig.emit("AGENT — hasil tugas",
+                                       delivery.display_text)
+                _speak_scoped(delivery.speech_text, "final")
+                self._restore_orb()
+                return True
+            except Exception:                                # noqa: BLE001
+                conversation_context.STORE.fail_task(
+                    conversation_id, task_scope["id"])
+                # Terminal delivery must remain visible on the same surface
+                # even when one sink (content panel, speech, orb) fails.
+                return _typed_terminal_fallback(report or str(result or ""))
 
         def _on_error(err: str, report: str):
-            delivery = delivery_lifecycle.failure(err, task, source="typed")
-            self._record_task_result("GAGAL", delivery.display_text)
-            self.write_log(f"ERR: agent task — {delivery.display_text[:160]}")
-            self._speak_line(delivery.speech_text)
-            self._restore_orb()
+            try:
+                delivery = delivery_lifecycle.failure(err, task, source="typed")
+                self._record_task_result("GAGAL", delivery.display_text)
+                self.write_log(f"ERR: agent task — "
+                               f"{delivery.display_text[:160]}")
+                _speak_scoped(delivery.speech_text, "final")
+                self._restore_orb()
+                return True
+            except Exception:                                # noqa: BLE001
+                conversation_context.STORE.fail_task(
+                    conversation_id, task_scope["id"])
+                return _typed_terminal_fallback(
+                    report or str(err or ""), error=True
+                )
 
         started = interactive_dispatch.start(
-            task, adapter=UIAdapter(self), on_ack=_on_ack,
-            on_done=_on_done, on_error=_on_error)
+            task, adapter=UIAdapter(self, source="typed"), on_task=_on_task,
+            on_ack=_on_ack, on_done=_on_done, on_error=_on_error)
         if started:
             self.write_log(f"SYS: Agent mengerjakan — {task[:90]} …")
         else:

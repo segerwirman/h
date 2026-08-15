@@ -14,6 +14,8 @@ _logger = log.get("voice.notices")
 _MAX_ACTIVE = 20
 _lock = threading.Lock()
 _pending: deque[tuple[str, bool]] = deque(maxlen=_MAX_ACTIVE)
+_inflight: tuple[tuple[str, bool], ...] | None = None
+_inflight_live_id: int | None = None
 _boundary_waiting: set[int] = set()
 
 
@@ -77,7 +79,19 @@ def remember_action(action: Action, result: str = "berhasil") -> bool:
 
 
 def remember_agent_result(task: str, result: str, *, ok: bool) -> bool:
-    """PROMPT 4(b): completion agent memakai antrean sama dan meminta jawaban."""
+    """Queue only legacy results that have no registry-scoped speech owner."""
+    try:
+        from jarvis.integrations.voice_speech import current_delivery_scope
+
+        scope = current_delivery_scope()
+        if scope is not None and scope.task_id:
+            # Returning False deliberately sends the frozen voice callback to
+            # ``self.speak``; its composed wrapper then uses this exact scope.
+            return False
+    except Exception as exc:  # noqa: BLE001 - fallback bridge stays fail-open
+        _logger.warning(
+            "voice.notice.scope_lookup_failed", error=type(exc).__name__
+        )
     status = "berhasil" if ok else "gagal"
     return enqueue(
         f"[TUGAS] {_clean(task, 120)} ({status}): {_clean(result, 180)}",
@@ -85,35 +99,86 @@ def remember_agent_result(task: str, result: str, *, ok: bool) -> bool:
     )
 
 
+def _settle_batch(
+    ticket,
+    batch: tuple[tuple[str, bool], ...],
+    live_id: int,
+) -> None:
+    global _inflight, _inflight_live_id
+    with _lock:
+        if _inflight != batch or _inflight_live_id != live_id:
+            return
+        _inflight = None
+        _inflight_live_id = None
+        if ticket.completed:
+            return
+        # Playback abort means the batch was submitted but never verified as
+        # audible. Restore its original order and let the next safe boundary retry.
+        _pending.extendleft(reversed(batch))
+
+
 async def flush_at_turn_boundary(live: Any) -> bool:
-    """Flush satu batch setelah turn selesai; bicara aktif selalu menang."""
+    """Submit one generic batch through the shared playback-aware Live lane."""
+    global _inflight, _inflight_live_id
     if not _enabled():
         return False
     key = id(live)
-    if bool(getattr(live, "_is_speaking", True)):
-        _boundary_waiting.add(key)
-        return False
-    _boundary_waiting.discard(key)
-    batch: list[tuple[str, bool]] = []
     try:
+        from jarvis.integrations import voice_speech
+
+        if not voice_speech.notice_lane_idle(live):
+            _boundary_waiting.add(key)
+            return False
+        _boundary_waiting.discard(key)
         with _lock:
-            if not _pending:
+            if _inflight is not None or not _pending:
                 return False
-            batch = list(_pending)
+            batch = tuple(_pending)
             _pending.clear()
-        session = getattr(live, "session", None)
-        if session is None:
-            raise RuntimeError("session_unavailable")
-        await session.send_client_content(
-            turns={"parts": [{"text": "\n".join(text for text, _ in batch)}]},
-            turn_complete=any(needs_response for _, needs_response in batch),
+            _inflight = batch
+            _inflight_live_id = key
+        boundary = int(
+            getattr(live, "_voice_turn_boundary_epoch", 0) or 0
+        )
+        if not voice_speech.claim_turn_boundary(live):
+            with _lock:
+                if _inflight == batch and _inflight_live_id == key:
+                    _inflight = None
+                    _inflight_live_id = None
+                    _pending.extendleft(reversed(batch))
+            return False
+        needs_playback = any(
+            needs_response for _, needs_response in batch
+        )
+        ticket = voice_speech.submit_exact(
+            live,
+            "\n".join(text for text, _ in batch),
+            exact=False,
+            turn_complete=needs_playback,
+            require_playback=needs_playback,
+        )
+        if ticket.aborted:
+            voice_speech.release_turn_boundary(live, boundary)
+            _settle_batch(ticket, batch, key)
+            return False
+        ticket.add_done_callback(
+            lambda done: (
+                voice_speech.release_turn_boundary(live, boundary)
+                if done.aborted else None,
+                _settle_batch(done, batch, key),
+            )
         )
         return True
-    except Exception as exc:  # noqa: BLE001 - restore exactly-once batch on failure
+    except Exception as exc:  # noqa: BLE001 - producer bridge always fail-open
         _logger.warning("voice.notice.flush_failed", error=type(exc).__name__)
         try:
             with _lock:
-                _pending.extendleft(reversed(batch))
+                if (_inflight is not None
+                        and _inflight_live_id == key):
+                    batch = _inflight
+                    _inflight = None
+                    _inflight_live_id = None
+                    _pending.extendleft(reversed(batch))
         except Exception:
             pass
         return False
@@ -121,17 +186,21 @@ async def flush_at_turn_boundary(live: Any) -> bool:
 
 def pending_count() -> int:
     with _lock:
-        return len(_pending)
+        return len(_pending) + (len(_inflight) if _inflight is not None else 0)
 
 
 def pending_snapshot() -> list[str]:
     with _lock:
-        return [text for text, _ in _pending]
+        inflight = list(_inflight or ())
+        return [text for text, _ in [*inflight, *_pending]]
 
 
 def _reset_for_tests() -> None:
+    global _inflight, _inflight_live_id
     with _lock:
         _pending.clear()
+        _inflight = None
+        _inflight_live_id = None
     _boundary_waiting.clear()
 
 

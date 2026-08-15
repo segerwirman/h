@@ -67,9 +67,11 @@ class UIAdapter(Adapter):
     interactive = True
     desktop_local = True
 
-    def __init__(self, win=None):
+    def __init__(self, win=None, *, task_id: str = "", source: str = "ui"):
         if win is not None:
             register_ui(win)
+        self.task_id = str(task_id or "")
+        self.source = str(source or "ui")
         from jarvis.agent.progress_narrator import ProgressNarrator
         from jarvis.core import config as _config
         self._narrator = ProgressNarrator(
@@ -77,6 +79,14 @@ class UIAdapter(Adapter):
                 "agent.interaction.progress_min_interval_s", 12.0)),
             max_spoken=int(_config.get(
                 "agent.interaction.progress_max_spoken", 4)),
+        )
+
+    def scoped(self, *, task_id: str, source: str | None = None):
+        """Return a per-dispatch adapter without mutating another task's scope."""
+        return UIAdapter(
+            self._win(),
+            task_id=task_id,
+            source=self.source if source is None else source,
         )
 
     def _win(self):
@@ -100,10 +110,12 @@ class UIAdapter(Adapter):
         try:
             from jarvis.agent.progress_narrator import phrase_for
             phrase = phrase_for(text)
-            if self._narrator.should_speak(phrase) and hasattr(win, "_speak_line"):
+            if (phrase and self._narrator.should_speak(phrase)
+                    and hasattr(win, "_speak_line")):
                 # §28 — narasi kerja: boleh digantikan progres yang lebih baru,
                 # dan dibuang begitu hasil akhir tiba.
-                win._speak_line(phrase, kind="progress")
+                win._speak_line(
+                    phrase, kind="progress", turn=self.task_id)
         except Exception:                                    # noqa: BLE001
             pass
 
@@ -133,7 +145,7 @@ class UIAdapter(Adapter):
                 # pernah dibuang: pertanyaan yang hilang membuat user menunggu
                 # jawaban yang tidak pernah diminta.
                 win._speak_line(" ".join(str(question or "").split())[:300],
-                                kind="confirm")
+                                kind="confirm", turn=getattr(self, "task_id", ""))
             except Exception:                                # noqa: BLE001
                 pass
 

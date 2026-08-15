@@ -193,13 +193,17 @@ class WindowVoiceMixin:
             except Exception:                                # noqa: BLE001
                 _time.sleep(0.2)
 
-    def _speak_now(self, line: str) -> None:
+    def _speak_now(self, line: str):
         """Kirim SATU kalimat ke lane suara. Dipanggil hanya oleh antrean."""
+        submit = getattr(self, "on_speech_command", None)
+        if callable(submit):
+            return submit(line)
         if self.on_text_command is None:
-            return
+            return None
         msg = ("Ucapkan kalimat berikut PERSIS seperti tertulis, tanpa "
                "tambahan: «" + line + "»")
         self.on_text_command(msg)
+        return None
 
     def _speak_line(self, line: str, *, kind: str = "info",
                     turn: str = "") -> None:

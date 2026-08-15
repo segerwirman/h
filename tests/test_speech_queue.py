@@ -85,6 +85,49 @@ def test_an_ack_is_dropped_when_the_result_already_arrived(queue, spoken):
     assert spoken == ["Sudah selesai."]
 
 
+def test_late_ack_is_rejected_when_final_is_already_pending(queue, spoken):
+    queue.say("Sudah selesai.", kind="final", turn="t1")
+
+    assert queue.say("Baik, saya kerjakan.", kind="ack", turn="t1") is False
+
+    queue.drain()
+    assert spoken == ["Sudah selesai."]
+
+
+def test_busy_includes_submitted_ticket_but_pending_keeps_queued_contract():
+    from jarvis.integrations.voice_speech import PlaybackTicket
+
+    ticket = PlaybackTicket()
+    queue = SpeechQueue(speaker=lambda _text: ticket)
+    queue.say("Sedang diputar", kind="final", turn="T-busy")
+
+    assert queue.run_once() is True
+    assert queue.pending() == 0
+    assert queue.busy() is True
+
+    ticket.complete()
+    assert queue.run_once() is False
+    assert queue.busy() is False
+
+
+def test_late_ack_is_rejected_while_matching_final_is_inflight():
+    from jarvis.integrations.voice_speech import PlaybackTicket
+
+    submitted: list[str] = []
+    final_ticket = PlaybackTicket()
+    queue = SpeechQueue(
+        speaker=lambda text: (submitted.append(text), final_ticket)[1]
+    )
+    queue.say("Sudah selesai.", kind="final", turn="t1")
+
+    assert queue.run_once() is True
+    assert queue.say("Baik, saya kerjakan.", kind="ack", turn="t1") is False
+    assert queue.pending() == 0
+    assert submitted == ["Sudah selesai."]
+
+    final_ticket.complete()
+
+
 def test_progress_of_another_turn_is_not_cancelled(queue, spoken):
     """Pembatalan mengikat SATU giliran, bukan seluruh antrean."""
     queue.say("mencari…", kind="progress", turn="t1")
@@ -115,6 +158,22 @@ def test_a_confirmation_is_never_dropped(queue, spoken):
 
 # ── kebersihan dasar ──────────────────────────────────────────────────────
 
+def test_unknown_progress_is_voice_silent_but_never_uninformative(monkeypatch):
+    """Unknown/uninformative tool progress stays visible in the log while the
+    voice lane stays silent — the old blanket 'masih saya kerjakan' must not
+    interrupt an active explanation."""
+    from jarvis.agent import progress_narrator
+
+    # The narrator refuses empty and duplicate phrases, so an unknown tool
+    # yields no speech; the caller decides to keep the log visible.
+    assert progress_narrator.phrase_for("custom_unknown_tool") == ""
+    assert progress_narrator.phrase_for("") == ""
+    assert progress_narrator.phrase_for("web_search") == "Sedang mencari datanya, sir."
+    # Empty phrase is never spoken even when the throttle allows it.
+    narrator = progress_narrator.ProgressNarrator()
+    assert narrator.should_speak("") is False
+    assert narrator.should_speak("  ") is False
+
 def test_the_same_sentence_is_not_repeated_back_to_back(queue, spoken):
     queue.say("Sedang saya kerjakan.", kind="progress", turn="t1")
     queue.drain()
@@ -137,6 +196,102 @@ def test_queue_is_bounded(queue, spoken):
         queue.say(f"baris {index}", kind="final", turn=f"t{index}")
 
     assert queue.pending() <= SpeechQueue.MAX_PENDING
+
+
+def test_overflow_never_evicts_a_confirmation():
+    spoken: list[str] = []
+    queue = SpeechQueue(speaker=spoken.append)
+    queue.say("Konfirmasi penting?", kind="confirm", turn="confirm")
+    for index in range(SpeechQueue.MAX_PENDING + 10):
+        queue.say(f"progress {index}", kind="progress", turn=f"t{index}")
+
+    queue.drain()
+
+    assert "Konfirmasi penting?" in spoken
+
+
+def test_identical_completion_text_remains_distinct_across_tasks(queue, spoken):
+    queue.say("Selesai.", kind="final", turn="T-one")
+    queue.drain()
+    queue.say("Selesai.", kind="final", turn="T-two")
+    queue.drain()
+
+    assert spoken == ["Selesai.", "Selesai."]
+
+
+def test_aborted_submission_allows_identical_retry():
+    from jarvis.integrations.voice_speech import PlaybackTicket
+
+    attempts: list[str] = []
+
+    def speaker(text):
+        attempts.append(text)
+        ticket = PlaybackTicket()
+        if len(attempts) == 1:
+            ticket.abort()
+        else:
+            ticket.complete()
+        return ticket
+
+    queue = SpeechQueue(speaker=speaker)
+    queue.say("Coba lagi.", kind="final", turn="T-retry")
+
+    assert queue.run_once() is False
+    assert queue.pending() == 1
+    assert queue.run_once() is True
+    assert queue.pending() == 0
+    assert attempts == ["Coba lagi.", "Coba lagi."]
+
+
+def test_later_playback_abort_requeues_the_accepted_item():
+    from jarvis.integrations.voice_speech import PlaybackTicket
+
+    attempts: list[str] = []
+    first = PlaybackTicket()
+
+    def speaker(text):
+        attempts.append(text)
+        if len(attempts) == 1:
+            return first
+        ticket = PlaybackTicket()
+        ticket.complete()
+        return ticket
+
+    queue = SpeechQueue(speaker=speaker)
+    queue.say("Tetap milik task ini.", kind="final", turn="T-late-abort")
+
+    assert queue.run_once() is True
+    first.abort()
+    assert queue.run_once() is True
+    assert attempts == ["Tetap milik task ini.", "Tetap milik task ini."]
+
+
+def test_readiness_race_requeues_the_item_instead_of_losing_it():
+    from jarvis.integrations.voice_speech import PlaybackTicket
+
+    attempts: list[str] = []
+
+    class Speaker:
+        def ready(self):
+            return True
+
+        def __call__(self, text):
+            attempts.append(text)
+            ticket = PlaybackTicket()
+            if len(attempts) == 1:
+                ticket.abort()
+            else:
+                ticket.complete()
+            return ticket
+
+    queue = SpeechQueue(speaker=Speaker())
+    queue.say("Jangan hilang.", kind="final", turn="T-race")
+
+    assert queue.run_once() is False
+    assert queue.pending() == 1
+    assert queue.run_once() is True
+    assert queue.pending() == 0
+    assert attempts == ["Jangan hilang.", "Jangan hilang."]
 
 
 @pytest.mark.parametrize("junk", [None, 12, object()])

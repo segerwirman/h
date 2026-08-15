@@ -59,7 +59,24 @@ class TaskStart(Tool):
         if not text:
             return ToolResult.fail("task kosong")
         from jarvis.agent import dispatch
-        started = dispatch.dispatch_task(text, title=str(label or "").strip() or None)
+
+        def _bind(metadata) -> None:
+            try:
+                from jarvis.agent import conversation_context
+                conversation_context.STORE.begin_task(
+                    "voice",
+                    task_id=str(getattr(metadata, "id", "") or ""),
+                    task=str(getattr(metadata, "title", "") or text),
+                    source="voice",
+                )
+            except Exception:                                # noqa: BLE001
+                pass
+
+        started = dispatch.dispatch_task(
+            text,
+            title=str(label or "").strip() or None,
+            on_task=_bind,
+        )
         if started is None:
             # Bedakan sebabnya — "sedang sibuk" dan "belum dikonfigurasi"
             # menuntut respons berbeda dari model.

@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import types
 
 from jarvis.core.action_registry import Action
+from jarvis.integrations import voice_speech
 
 
 def _bridge(monkeypatch, tmp_path):
@@ -31,6 +33,13 @@ class _Live:
     def __init__(self, *, speaking=False, session=None):
         self._is_speaking = speaking
         self.session = session or _Session()
+        self._loop = None
+        self.audio_in_queue = asyncio.Queue()
+        self._speaking_lock = threading.Lock()
+        self._awaiting_since = None
+        self._interrupted = False
+        self._turn_done_event = threading.Event()
+        self._turn_done_event.set()
 
 
 def test_missing_speaking_attribute_fails_safe_as_speaking(monkeypatch, tmp_path):
@@ -91,34 +100,133 @@ def test_flush_batches_notice_without_prompting_model_response(monkeypatch, tmp_
     bridge.enqueue("[AKSI] 12:04 buka aplikasi Spotify (berhasil)")
     session = _Session()
 
-    assert asyncio.run(bridge.flush_at_turn_boundary(_Live(session=session))) is True
-    assert len(session.sent) == 1
-    payload = session.sent[0]
-    assert payload["turn_complete"] is False
-    assert "[AKSI]" in payload["turns"]["parts"][0]["text"]
+    async def scenario():
+        live = _Live(session=session)
+        live._loop = asyncio.get_running_loop()
+        assert await bridge.flush_at_turn_boundary(live) is True
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert len(session.sent) == 1
+        payload = session.sent[0]
+        assert payload["turn_complete"] is False
+        assert "[AKSI]" in payload["turns"]["parts"][0]["text"]
+        assert bridge.pending_count() == 0
+        assert voice_speech.lane_idle(live) is True
+
+    asyncio.run(scenario())
     assert bridge.pending_count() == 0
+
+
+def test_notice_waits_for_completed_model_turn_boundary(monkeypatch, tmp_path):
+    bridge = _bridge(monkeypatch, tmp_path)
+    bridge.enqueue("[AKSI] 12:04 buka aplikasi Spotify (berhasil)")
+    session = _Session()
+
+    async def scenario():
+        live = _Live(session=session)
+        live._loop = asyncio.get_running_loop()
+        live._turn_done_event.clear()
+        assert await bridge.flush_at_turn_boundary(live) is False
+        assert session.sent == []
+        assert bridge.pending_count() == 1
+        live._turn_done_event.set()
+        assert await bridge.flush_at_turn_boundary(live) is True
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert len(session.sent) == 1
+
+    asyncio.run(scenario())
+
+
+def test_context_notice_flushes_authoritatively_after_pcm_drain(monkeypatch, tmp_path):
+    bridge = _bridge(monkeypatch, tmp_path)
+    bridge.enqueue("[AKSI] 12:04 buka aplikasi Spotify (berhasil)")
+    session = _Session()
+
+    async def scenario():
+        live = _Live(speaking=True, session=session)
+        live._loop = asyncio.get_running_loop()
+        await live.audio_in_queue.put(b"pcm")
+        assert await bridge.flush_at_turn_boundary(live) is False
+
+        voice_speech.mark_turn_complete(live)
+        live.audio_in_queue.get_nowait()
+        live._is_speaking = False
+        assert voice_speech.playback_drained(live) is False
+        live._turn_done_event.clear()
+
+        assert await bridge.flush_at_turn_boundary(live) is True
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert len(session.sent) == 1
+        assert bridge.pending_count() == 0
+
+    asyncio.run(scenario())
 
 
 def test_notice_while_speaking_waits_and_does_not_interrupt(monkeypatch, tmp_path):
     bridge = _bridge(monkeypatch, tmp_path)
     bridge.enqueue("[AKSI] 12:04 buka aplikasi Spotify (berhasil)")
     session = _Session()
-    live = _Live(speaking=True, session=session)
 
-    assert asyncio.run(bridge.flush_at_turn_boundary(live)) is False
-    assert session.sent == []
-    assert bridge.pending_count() == 1
-    live._is_speaking = False
-    assert asyncio.run(bridge.flush_at_turn_boundary(live)) is True
-    assert len(session.sent) == 1
+    async def scenario():
+        live = _Live(speaking=True, session=session)
+        live._loop = asyncio.get_running_loop()
+        assert await bridge.flush_at_turn_boundary(live) is False
+        assert session.sent == []
+        assert bridge.pending_count() == 1
+        live._is_speaking = False
+        assert await bridge.flush_at_turn_boundary(live) is True
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert len(session.sent) == 1
+        assert bridge.pending_count() == 0
+
+    asyncio.run(scenario())
 
 
 def test_send_failure_requeues_batch(monkeypatch, tmp_path):
     bridge = _bridge(monkeypatch, tmp_path)
     bridge.enqueue("[AKSI] 12:04 buka aplikasi Spotify (berhasil)")
 
-    assert asyncio.run(bridge.flush_at_turn_boundary(_Live(session=_Session(fail=True)))) is False
-    assert bridge.pending_count() == 1
+    async def scenario():
+        live = _Live(session=_Session(fail=True))
+        live._loop = asyncio.get_running_loop()
+        assert await bridge.flush_at_turn_boundary(live) is True
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert bridge.pending_count() == 1
+
+    asyncio.run(scenario())
+
+
+def test_playback_abort_requeues_audible_notice(monkeypatch, tmp_path):
+    bridge = _bridge(monkeypatch, tmp_path)
+    bridge.enqueue(
+        "[TUGAS] cek build (berhasil): Build hijau",
+        request_response=True,
+    )
+
+    async def scenario():
+        live = _Live()
+        live._loop = asyncio.get_running_loop()
+        assert await bridge.flush_at_turn_boundary(live) is True
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert voice_speech.abort(live) is True
+        await asyncio.sleep(0)
+        assert bridge.pending_count() == 1
+        assert await bridge.flush_at_turn_boundary(live) is True
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert len(live.session.sent) == 2
+        voice_speech.mark_audio(live)
+        assert voice_speech.playback_drained(live) is True
+        await asyncio.sleep(0)
+        assert bridge.pending_count() == 0
+
+    asyncio.run(scenario())
 
 
 def test_active_context_is_bounded_to_twenty(monkeypatch, tmp_path):

@@ -26,6 +26,10 @@ def success(
     if naturalize:
         delivery = response_composer.compose(delivery, task)
     if conversation_id:
+        # Title-level continuity for callers without a registry task ID. The
+        # adapters that own a task ID bind it AFTER this call with
+        # ``STORE.remember_success(task_id=...)``; the store is then written
+        # once per task, not twice.
         conversation_context.STORE.remember_success(
             conversation_id, task=task, delivery=delivery
         )

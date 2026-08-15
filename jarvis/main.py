@@ -83,6 +83,7 @@ def _install_voice_seams(legacy, logger) -> None:
     from jarvis.integrations import (voice_l1,
                                      voice_live_transport,
                                      voice_native_tools,
+                                     voice_speech,
                                      whatsapp_voice)
     # Adapter credential di luar file FROZEN: suara tetap identik,
     # hanya sumber API key yang berpindah dari plaintext ke store.
@@ -99,6 +100,7 @@ def _install_voice_seams(legacy, logger) -> None:
         voice_playback_fix.install(legacy)
     except Exception as _e:                                  # noqa: BLE001
         logger.warning("voice.playback_fix_failed", error=str(_e)[:120])
+    voice_speech.install(legacy)
     voice_l1.install(legacy)
     voice_live_transport.install(legacy)
     whatsapp_voice.install(legacy)
@@ -137,6 +139,12 @@ def _start_voice_pipeline(ui, *, stop_requested: threading.Event | None = None):
                     "lalu jalankan ulang JARVIS.")
             jarvis_live = JarvisLive(ui)
             live_ref["instance"] = jarvis_live
+            try:
+                from jarvis.integrations import voice_speech
+                voice_speech.bind(getattr(ui, "_win", ui), jarvis_live)
+            except Exception as exc:                           # noqa: BLE001
+                logger.warning("voice.speech_bind_failed",
+                               error=str(exc)[:120])
             # Titik ini = on_text_command sudah ter-bind dan sesi siap dibuka.
             # Persis di sinilah gejala "boot diam" berhenti, jadi di sinilah
             # status ONLINE diterbitkan.

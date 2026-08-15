@@ -8,9 +8,12 @@ Dedup guard: task identik yang masih berjalan tidak di-spawn dua kali.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import threading
 import time
-from typing import Any
+from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import Any, Iterator
 
 from jarvis.core import config, latency, log
 from jarvis.core.bus import BUS
@@ -27,6 +30,23 @@ MAX_SPOKEN_CHARS = 200
 
 _active_lock = threading.Lock()
 _active: dict[str, "TaskHandle"] = {}
+
+
+@dataclass(frozen=True)
+class TaskMetadata:
+    """Safe identity available after registry binding and before ACK."""
+
+    id: str
+    session_id: str
+    title: str
+
+
+@dataclass(frozen=True)
+class DispatchSourceScope:
+    """Context-local ingress label installed by editable composition seams."""
+
+    source: str
+    completion_owner: str = "auto"
 
 
 class _BufferedFinalAdapter:
@@ -331,13 +351,108 @@ def _learn_command(task: str, session) -> None:
         _logger.warning("agent.dispatch.learn_failed", error=str(exc)[:120])
 
 
-def _safe_callback(callback, value: str) -> None:
+def _safe_callback(
+    callback,
+    value: str,
+    *,
+    task_id: str = "",
+    kind: str = "info",
+    speech_enabled: bool = True,
+) -> bool:
+    """Invoke one callback inside its immutable task speech scope.
+
+    The callback itself still owns transport selection.  For the frozen voice
+    bridge this scope is observed by the editable ``JarvisLive.speak`` wrapper;
+    typed and remote callbacks keep their existing behavior.
+    """
     if callback is None:
-        return
+        return False
+    scope = None
+    if task_id:
+        try:
+            from jarvis.integrations.voice_speech import delivery_scope
+
+            scope = delivery_scope(
+                task_id=task_id,
+                kind=kind,
+                speech_enabled=speech_enabled,
+            )
+        except Exception as exc:                                   # noqa: BLE001
+            quiet.swallowed("agent.dispatch.speech_scope_unavailable", exc)
     try:
-        callback(value)
+        if scope is None:
+            receipt = callback(value)
+        else:
+            with scope:
+                receipt = callback(value)
+        # Legacy callbacks conventionally return None. Only an explicit False
+        # means the consumer declined delivery and registry fallback must own it.
+        return receipt is not False
     except Exception as exc:                                       # noqa: BLE001
         quiet.swallowed("agent.dispatch.safe_callback_failed", exc)
+        return False
+
+
+def _finish_with_delivery(
+    registry,
+    task_id: str,
+    *,
+    callback,
+    value: str,
+    kind: str = "final",
+    result: str = "",
+    error: str = "",
+    completion_owner: str = "auto",
+) -> bool:
+    """Expose terminal state, resolve speech owner, then publish completion."""
+    owner = str(completion_owner or "auto").casefold()
+    prepare = getattr(registry, "prepare_finish", None)
+    publish = getattr(registry, "publish_finish", None)
+    if callable(prepare) and callable(publish):
+        automatic = owner not in {"registry", "caller"}
+        provisional_owner = (
+            "caller" if automatic and callback is not None else
+            "registry" if automatic else owner
+        )
+        prepared = prepare(
+            task_id,
+            result=result,
+            error=error,
+            completion_owner=provisional_owner,
+        )
+        if prepared is None:
+            # Another terminal path already claimed this task. Do not invoke
+            # this callback or publish a duplicate completion.
+            return False
+        delivered = _safe_callback(
+            callback,
+            value,
+            task_id=task_id,
+            kind=kind,
+            speech_enabled=owner != "registry",
+        )
+        if automatic:
+            owner = "caller" if delivered else "registry"
+        publish(task_id, completion_owner=owner)
+        return delivered
+
+    # Narrow compatibility for injected registries that only implement finish().
+    delivered = _safe_callback(
+        callback,
+        value,
+        task_id=task_id,
+        kind=kind,
+        speech_enabled=owner != "registry",
+    )
+    if owner not in {"registry", "caller"}:
+        owner = "caller" if delivered else "registry"
+    registry.finish(
+        task_id,
+        result=result,
+        error=error,
+        completion_owner=owner,
+    )
+    return delivered
 
 
 def _release_browser_session(session_id: str) -> None:
@@ -383,11 +498,12 @@ def _clear_desktop_safe_session(session_id: str) -> None:
 
 
 def dispatch_task(task: str, on_ack=None, on_done=None, on_error=None,
-                  on_progress=None, adapter=None,
+                  on_progress=None, on_task=None, adapter=None,
                   timeout_s: float | None = None,
                   allowed_tools: list[str] | None = None,
                   context=None, resources=frozenset(),
-                  title: str | None = None) -> "object | None":
+                  title: str | None = None,
+                  source: str = "") -> "object | None":
     """Varian §8.3 yang mengembalikan ``Task`` (atau ``None``) alih-alih bool.
 
     Dipakai permukaan baru (Task Deck, tool suara ``task_start``) yang butuh
@@ -400,31 +516,33 @@ def dispatch_task(task: str, on_ack=None, on_done=None, on_error=None,
     §8.3 diterapkan sebagai fungsi BARU, bukan penggantian.
     """
     return _dispatch(task, on_ack=on_ack, on_done=on_done, on_error=on_error,
-                     on_progress=on_progress, adapter=adapter,
+                     on_progress=on_progress, on_task=on_task, adapter=adapter,
                      timeout_s=timeout_s, allowed_tools=allowed_tools,
-                     context=context, resources=resources, title=title)
+                     context=context, resources=resources, title=title,
+                     source=source)
 
 
 def dispatch_async(task: str, on_ack=None, on_done=None, on_error=None,
                    adapter=None, timeout_s: float | None = None,
                    allowed_tools: list[str] | None = None,
-                   context=None, on_progress=None,
-                   resources=frozenset()) -> bool:
+                   context=None, on_progress=None, on_task=None,
+                   resources=frozenset(), source: str = "") -> bool:
     """Mulai task agent di background. False bila agent tidak tersedia ATAU
     task sama masih berjalan. Callback dipanggil dari worker thread —
     marshal ke UI thread adalah tanggung jawab caller (sama dengan Hermes)."""
     return _dispatch(task, on_ack=on_ack, on_done=on_done, on_error=on_error,
-                     on_progress=on_progress, adapter=adapter,
+                     on_progress=on_progress, on_task=on_task, adapter=adapter,
                      timeout_s=timeout_s, allowed_tools=allowed_tools,
-                     context=context, resources=resources) is not None
+                     context=context, resources=resources, source=source) is not None
 
 
 def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
-              on_progress=None, adapter=None,
+              on_progress=None, on_task=None, adapter=None,
               timeout_s: float | None = None,
               allowed_tools: list[str] | None = None,
               context=None, resources=frozenset(),
-              title: str | None = None):
+              title: str | None = None,
+              source: str = ""):
     if not available():
         _logger.warning("agent.dispatch.unavailable", task=task[:80])
         return None
@@ -443,6 +561,13 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
     from jarvis.agent.tasks import REGISTRY
 
     prepared, effective_tools = _prepared_task(task, allowed_tools)
+    ingress_scope = current_source_scope()
+    forced_completion_owner = (
+        ingress_scope.completion_owner
+        if ingress_scope is not None
+        else "auto"
+    )
+    worker_context = contextvars.copy_context()
 
     k = _key(task)
     with _active_lock:
@@ -455,8 +580,24 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
         _active[k] = TaskHandle(task, session)
 
     # §8.2 — task masuk registry sebagai QUEUED; worker yang mempromosikannya
-    # ke RUNNING setelah slot konkurensi + resource eksklusif didapat.
-    bg_task = REGISTRY.submit(task, title=title, resources=resources)
+    # ke RUNNING setelah slot konkurensi + resource eksklusif didapat. Terminal
+    # ownership is resolved from the callback matching the actual outcome.
+    # Explicit ``source`` wins over the ingress scope: typed callers dispatch
+    # from the UI thread without an active scope, but still identify as "ui".
+    task_source = str(
+        (source or "")
+        or (ingress_scope.source if ingress_scope is not None else "")
+        or getattr(adapter, "source", "")
+        or getattr(adapter, "name", "")
+        or "agent"
+    )[:32]
+    bg_task = REGISTRY.submit(
+        task,
+        title=title,
+        resources=resources,
+        completion_owner="registry",
+        source=task_source,
+    )
     if bg_task is None:                                      # antrean penuh
         with _active_lock:
             _active.pop(k, None)
@@ -467,6 +608,24 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
         handle = _active.get(k)
         if handle is not None:
             handle.bg_task = bg_task
+
+    scoped = getattr(adapter, "scoped", None)
+    if callable(scoped):
+        try:
+            adapter = scoped(task_id=bg_task.id)
+        except Exception as exc:                               # noqa: BLE001
+            _logger.warning("agent.dispatch.adapter_scope_failed",
+                            error=type(exc).__name__)
+    metadata = TaskMetadata(
+        id=bg_task.id,
+        session_id=session.id,
+        title=str(bg_task.title or title or task)[:160],
+    )
+    if on_task is not None:
+        try:
+            on_task(metadata)
+        except Exception as exc:                               # noqa: BLE001
+            quiet.swallowed("agent.dispatch.task_callback_failed", exc)
 
     evidence: list[ToolEvidence] = []
     plan_steps: list[dict] = []
@@ -487,7 +646,12 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
     # §24 — pengukuran dibuka di ACK, bukan di awal fungsi: ACK adalah titik
     # user mulai menunggu, dan itulah latensi yang ia rasakan.
     latency.start(session.id, task=task)
-    _safe_callback(on_ack, acknowledgement)
+    _safe_callback(
+        on_ack,
+        acknowledgement,
+        task_id=bg_task.id,
+        kind="ack",
+    )
     BUS.publish("agent.task.started", task=task, session=session.id)
 
     hard_timeout = timeout_s or float(config.get("agent.task_timeout_s", 900))
@@ -499,7 +663,15 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
         if not REGISTRY.acquire_slot(bg_task):
             _logger.info("agent.dispatch.cancelled_while_queued",
                          task=task[:80], id=bg_task.id)
-            _safe_callback(on_error, "Tugas dibatalkan sebelum mulai.")
+            # acquire_slot already publishes cancellation. The matching callback
+            # is UI/telemetry only; cancelled tasks are intentionally voice-silent.
+            _safe_callback(
+                on_error,
+                "Tugas dibatalkan sebelum mulai.",
+                task_id=bg_task.id,
+                kind="final",
+                speech_enabled=False,
+            )
             with _active_lock:
                 _active.pop(k, None)
             return
@@ -540,10 +712,16 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
                         _logger.warning(
                             "agent.dispatch.contract_failed",
                             task=task[:80], error=validation.reason[:300])
+                        _finish_with_delivery(
+                            REGISTRY,
+                            bg_task.id,
+                            callback=on_error,
+                            value=err,
+                            error=err,
+                            completion_owner=forced_completion_owner,
+                        )
                         BUS.publish("agent.task.failed", task=task, error=err,
                                     elapsed_s=elapsed)
-                        REGISTRY.finish(bg_task.id, error=err)
-                        _safe_callback(on_error, err)
                         return
                     text = _verified_success(prepared, evidence)
                     session.finish(text, ok=True)
@@ -556,29 +734,53 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
                 _learn_plan(task, plan_steps, replayed)
                 _logger.info("agent.dispatch.done", elapsed_s=elapsed,
                              session=result.session_id)
+                _finish_with_delivery(
+                    REGISTRY,
+                    bg_task.id,
+                    callback=on_done,
+                    value=text,
+                    result=text,
+                    completion_owner=forced_completion_owner,
+                )
                 BUS.publish("agent.task.done", task=task, text=text,
                             elapsed_s=elapsed)
-                REGISTRY.finish(bg_task.id, result=text)
-                _safe_callback(on_done, text)
             else:
                 err = result.text or "agent gagal"
+                _finish_with_delivery(
+                    REGISTRY,
+                    bg_task.id,
+                    callback=on_error,
+                    value=err,
+                    error=err,
+                    completion_owner=forced_completion_owner,
+                )
                 BUS.publish("agent.task.failed", task=task, error=err,
                             elapsed_s=elapsed)
-                REGISTRY.finish(bg_task.id, error=err)
-                _safe_callback(on_error, err)
         except asyncio.TimeoutError:
             session.cancel()
             err = f"timeout {hard_timeout:.0f}s"
             _logger.error("agent.dispatch.timeout", task=task[:80])
+            _finish_with_delivery(
+                REGISTRY,
+                bg_task.id,
+                callback=on_error,
+                value=err,
+                error=err,
+                completion_owner=forced_completion_owner,
+            )
             BUS.publish("agent.task.failed", task=task, error=err)
-            REGISTRY.finish(bg_task.id, error=err)
-            _safe_callback(on_error, err)
         except Exception as e:                               # noqa: BLE001
             err = f"{type(e).__name__}: {str(e)[:200]}"
             _logger.error("agent.dispatch.crashed", error=err)
+            _finish_with_delivery(
+                REGISTRY,
+                bg_task.id,
+                callback=on_error,
+                value=err,
+                error=err,
+                completion_owner=forced_completion_owner,
+            )
             BUS.publish("agent.task.failed", task=task, error=err)
-            REGISTRY.finish(bg_task.id, error=err)
-            _safe_callback(on_error, err)
         finally:
             latency.finish(session.id)
             # Selalu lepas slot + resource, apa pun yang terjadi — kalau tidak,
@@ -591,9 +793,39 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
             with _active_lock:
                 _active.pop(k, None)
 
-    threading.Thread(target=_worker, daemon=True,
-                     name=f"agent-{bg_task.id}").start()
+    threading.Thread(
+        target=lambda: worker_context.run(_worker),
+        daemon=True,
+        name=f"agent-{bg_task.id}",
+    ).start()
     return bg_task
+
+
+_source_scope: contextvars.ContextVar[DispatchSourceScope | None] = (
+    contextvars.ContextVar("agent_dispatch_source_scope", default=None)
+)
+
+
+@contextmanager
+def source_scope(
+    source: str,
+    *,
+    completion_owner: str = "auto",
+) -> Iterator[DispatchSourceScope]:
+    label = str(source or "agent")[:32]
+    owner = str(completion_owner or "auto").casefold()
+    if owner not in {"auto", "registry", "caller"}:
+        owner = "auto"
+    scope = DispatchSourceScope(label, owner)
+    token = _source_scope.set(scope)
+    try:
+        yield scope
+    finally:
+        _source_scope.reset(token)
+
+
+def current_source_scope() -> DispatchSourceScope | None:
+    return _source_scope.get()
 
 
 def run_sync(task: str, adapter=None, timeout_s: float | None = None,

@@ -10,7 +10,7 @@ from __future__ import annotations
 import threading
 import time
 
-# Peta nama tool → frasa natural (Indonesia). Fallback generic bila tak ada.
+# Peta nama tool → frasa natural (Indonesia). Tool asing tetap visual-only.
 _TOOL_PHRASES = {
     "web_search": "Sedang mencari datanya, sir.",
     "web_extract": "Membaca sumbernya sekarang.",
@@ -28,9 +28,6 @@ _TOOL_PHRASES = {
     "gmail_send": "Menyiapkan emailnya.",
     "gcal_create": "Menambah agendanya.",
 }
-_GENERIC = "Masih saya kerjakan, sir."
-
-
 def phrase_for(tool_name: str) -> str:
     """Frasa progres natural untuk sebuah tool (tanpa side effect)."""
     key = str(tool_name or "").strip().lower()
@@ -38,7 +35,7 @@ def phrase_for(tool_name: str) -> str:
     for junk in ("🔧", "tool:", "menjalankan"):
         key = key.replace(junk, "").strip()
     key = key.split()[0] if key else ""
-    return _TOOL_PHRASES.get(key, _GENERIC)
+    return _TOOL_PHRASES.get(key, "")
 
 
 class ProgressNarrator:
@@ -60,6 +57,9 @@ class ProgressNarrator:
 
     def should_speak(self, phrase: str, *, now: float | None = None) -> bool:
         """True bila progres ini layak diucapkan (bukan sekadar dicatat)."""
+        phrase = " ".join(str(phrase or "").split())
+        if not phrase:
+            return False
         now = time.monotonic() if now is None else float(now)
         with self._lock:
             if self._spoken >= self._max_spoken:

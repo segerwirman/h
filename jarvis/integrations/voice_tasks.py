@@ -20,9 +20,11 @@ untuk tugas panjang — sehingga gate-nya tidak pernah menyala.
 from __future__ import annotations
 
 import asyncio
+import re
 import threading
 from collections import deque
 
+from jarvis.agent.interaction import sanitize_for_speech
 from jarvis.core import config, log
 from jarvis.core.bus import BUS
 
@@ -46,9 +48,33 @@ _MULTITASKING_RULES = """
   tawarkan antre.
 """
 
-_notices: deque[str] = deque()
+_notices: deque[tuple[str, str]] = deque()
 _notices_lock = threading.Lock()
+_notice_ids: set[str] = set()
+_notice_inflight: tuple[str, str] | None = None
 _subscribed = False
+
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(api[_ -]?key|authorization|bearer|password|passwd|secret|token|otp|pin|cvv)"
+    r"\s*[:=]\s*([^\s,;]+)"
+)
+_BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+_SK_SECRET_RE = re.compile(r"(?<!\w)sk-[A-Za-z0-9_-]{8,}")
+_PRIVATE_PATH_RE = re.compile(
+    r"(?i)(?:file:///|\\\\|(?<!\w)[A-Za-z]:[\\/])[^\s<>|?*\"]+"
+)
+
+
+def _safe_notice_text(value: object, limit: int) -> str:
+    """Bound task speech and remove values unsafe for the remote Live lane."""
+    text = str(value or "")
+    text = _BEARER_RE.sub("credential [REDACTED]", text)
+    text = _SECRET_ASSIGNMENT_RE.sub(
+        lambda match: f"{match.group(1)}=[REDACTED]", text
+    )
+    text = _SK_SECRET_RE.sub("[REDACTED]", text)
+    text = _PRIVATE_PATH_RE.sub("[private path]", text)
+    return sanitize_for_speech(text, limit)
 
 
 # ── §8.4c — schema tool ke sesi Live ─────────────────────────────────────
@@ -105,72 +131,116 @@ def _on_task_finished(data: dict) -> None:
     if not bool(config.get("ui.task_deck.speak_on_complete", True)):
         return
     task = dict(data.get("task") or {})
+    if str(task.get("completion_owner", "registry")) != "registry":
+        return                          # caller callback owns terminal speech
+    source = str(task.get("source", "") or "")
+    if source not in {"voice-native", "voice-task-tool"}:
+        return              # never leak typed/remote/headless task into Live
     status = str(task.get("status", ""))
     if status not in ("done", "failed"):
         return                                   # cancelled → user sudah tahu
     tid = str(task.get("id", ""))
-    title = str(task.get("title", "")) or "tugas latar"
+    title = _safe_notice_text(task.get("title", ""), 160) or "tugas latar"
     if status == "failed":
-        body = f"GAGAL: {str(task.get('error', ''))[:600]}"
+        body = f"GAGAL: {_safe_notice_text(task.get('error', ''), 600)}"
     else:
-        body = str(task.get("result", ""))[:1200]
+        body = _safe_notice_text(task.get("result", ""), 1200)
     notice = (
         f"[TASK_DONE id={tid}] {title}\n{body}\n"
         "Sampaikan hasilnya dalam SATU kalimat singkat, lalu langsung "
         "kembali ke topik yang sedang dibicarakan user."
     )
     with _notices_lock:
-        _notices.append(notice)
+        if tid and tid in _notice_ids:
+            return
+        _notices.append((tid, notice))
+        if tid:
+            _notice_ids.add(tid)
 
 
 def pending_notices() -> int:
     with _notices_lock:
-        return len(_notices)
+        return len(_notices) + int(_notice_inflight is not None)
 
 
 def clear_notices() -> None:
+    global _notice_inflight
     with _notices_lock:
         _notices.clear()
+        _notice_ids.clear()
+        _notice_inflight = None
 
 
 def _boundary_is_safe(live) -> bool:
-    """Aman = giliran model sudah selesai DAN Jarvis tidak sedang bicara."""
-    if getattr(live, "session", None) is None:
-        return False
-    event = getattr(live, "_turn_done_event", None)
-    if event is None or not event.is_set():
-        return False
-    lock = getattr(live, "_speaking_lock", None)
-    if lock is None:
-        return not getattr(live, "_is_speaking", False)
-    with lock:
-        return not live._is_speaking
+    """Require an authoritative server/text or local audible turn boundary."""
+    from jarvis.integrations import voice_speech
+
+    return voice_speech.notice_lane_idle(live)
+
+
+def _settle_notice(ticket, task_id: str, notice: str) -> None:
+    global _notice_inflight
+    with _notices_lock:
+        if _notice_inflight != (task_id, notice):
+            return
+        _notice_inflight = None
+        if ticket.completed:
+            if task_id:
+                _notice_ids.discard(task_id)
+            return
+        # Submission diterima tetapi playback dapat gagal kemudian (reconnect,
+        # interrupt, atau output device hilang). Ownership tetap milik task yang
+        # sama dan notice kembali ke depan sampai drain benar-benar terverifikasi.
+        _notices.appendleft((task_id, notice))
 
 
 async def flush_notices(live) -> int:
-    """Kirim notice yang tertunda bila batas giliran aman. Return jumlahnya."""
-    sent = 0
-    while True:
-        if not _boundary_is_safe(live):
-            return sent
+    """Submit at most one completion through the playback-aware Live lane."""
+    global _notice_inflight
+    from jarvis.integrations import voice_speech
+
+    if not _boundary_is_safe(live):
+        return 0
+    with _notices_lock:
+        if _notice_inflight is not None or not _notices:
+            return 0
+        task_id, notice = _notices.popleft()
+        _notice_inflight = (task_id, notice)
+
+    boundary = int(getattr(live, "_voice_turn_boundary_epoch", 0) or 0)
+    if not voice_speech.claim_turn_boundary(live):
         with _notices_lock:
-            if not _notices:
-                return sent
-            notice = _notices.popleft()
-        try:
-            await live.session.send_client_content(
-                turns={"parts": [{"text": notice}]}, turn_complete=True)
-            sent += 1
-        except Exception as exc:                             # noqa: BLE001
-            _logger.warning("voice.tasks.notice_failed", error=str(exc)[:120])
-            return sent
+            if _notice_inflight == (task_id, notice):
+                _notice_inflight = None
+                _notices.appendleft((task_id, notice))
+        return 0
+
+    ticket = voice_speech.submit_exact(live, notice, exact=False)
+    if ticket.aborted:
+        voice_speech.release_turn_boundary(live, boundary)
+        _settle_notice(ticket, task_id, notice)
+        return 0
+    ticket.add_done_callback(
+        lambda done: (
+            voice_speech.release_turn_boundary(live, boundary)
+            if done.aborted else None,
+            _settle_notice(done, task_id, notice),
+        )
+    )
+    return 1
 
 
 async def _notice_loop(live, interval: float = 0.25) -> None:
     while True:
         try:
             await asyncio.sleep(interval)
+            # Task completions own the first chance. Generic local-action
+            # notices then use the same lane and boundary, so a notification
+            # that arrived while PCM was playing is retried automatically after
+            # the playback owner records its local drain.
             await flush_notices(live)
+            from jarvis.integrations import voice_notices
+            await voice_notices.flush_at_turn_boundary(live)
         except asyncio.CancelledError:
             return
         except Exception as exc:                             # noqa: BLE001
@@ -183,11 +253,17 @@ def compose_run(original_run):
         return original_run
 
     async def wrapped_run(self):
+        from jarvis.integrations import voice_speech
+
         flusher = asyncio.create_task(_notice_loop(self),
                                       name="task-notice-flusher")
         try:
             return await original_run(self)
         finally:
+            # The frozen run loop owns reconnect and TaskGroup teardown. Its
+            # outer composed boundary makes any accepted speech ticket terminal
+            # before this flusher disappears.
+            voice_speech.abort(self)
             flusher.cancel()
 
     wrapped_run._jarvis_task_flusher = True

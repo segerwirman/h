@@ -509,13 +509,34 @@ def install(legacy_module) -> None:
         legacy_module._load_system_prompt = _with_rules
 
     cls = legacy_module.JarvisLive
-    original_exec = cls._execute_tool
-    if getattr(original_exec, "_jarvis_native_tools", False):
-        return
 
+    # Repair each independently-owned seam before the execute-tool marker can
+    # return early.  This lets a class marked by an older installer acquire the
+    # newer source scope without layering run or execute wrappers again.
     original_run = getattr(cls, "run", None)
     if original_run is not None:
         cls.run = voice_tasks.compose_run(original_run)
+
+    original_dispatch = getattr(cls, "_dispatch_native_agent", None)
+    if (callable(original_dispatch)
+            and not getattr(original_dispatch, "_jarvis_voice_task_source", False)):
+        def dispatch_native_agent(self, *args, **kwargs):
+            from jarvis.agent.dispatch import source_scope
+
+            # The frozen callback still owns UI/memory/telemetry, while registry
+            # alone owns completion speech for this voice-native source.
+            with source_scope(
+                "voice-native",
+                completion_owner="registry",
+            ):
+                return original_dispatch(self, *args, **kwargs)
+
+        dispatch_native_agent._jarvis_voice_task_source = True
+        cls._dispatch_native_agent = dispatch_native_agent
+
+    original_exec = cls._execute_tool
+    if getattr(original_exec, "_jarvis_native_tools", False):
+        return
 
     async def wrapped_exec(self, fc):
         name = str(getattr(fc, "name", ""))
@@ -544,9 +565,13 @@ def install(legacy_module) -> None:
             )
 
         if name in voice_tasks.TASK_TOOL_NAMES:
-            from jarvis.agent import registry
+            from jarvis.agent import dispatch, registry
 
-            result = await registry.execute(name, args)
+            with dispatch.source_scope(
+                "voice-task-tool",
+                completion_owner="registry",
+            ):
+                result = await registry.execute(name, args)
             return legacy_module.types.FunctionResponse(
                 id=fc.id,
                 name=name,

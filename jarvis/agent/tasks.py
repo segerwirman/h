@@ -82,6 +82,11 @@ class Task:
     finished_at: float | None = None
     result: str = ""
     error: str = ""
+    # Completion speech has exactly one owner. Registry-owned tasks have no
+    # terminal callback (for example Live ``task_start``); caller-owned tasks
+    # deliver through their typed/voice/remote callback instead.
+    completion_owner: str = "registry"
+    source: str = "agent"
     # Sesi agent yang mengerjakan task ini — dipakai Task Deck untuk memfilter
     # data/logs/tools.jsonl per tugas (record tool memakai kunci "session").
     session_id: str = ""
@@ -90,6 +95,8 @@ class Task:
     # dipegang registry saja
     _held: tuple[str, ...] = field(default=(), repr=False)
     _slot: bool = field(default=False, repr=False)
+    _finish_pending: bool = field(default=False, repr=False)
+    _finished_published: bool = field(default=False, repr=False)
 
     @property
     def progress(self) -> float:
@@ -124,6 +131,8 @@ class TaskView:
     finished_at: float | None
     result: str
     error: str
+    completion_owner: str
+    source: str
     session_id: str
     progress: float
     elapsed: float
@@ -139,6 +148,8 @@ class TaskView:
             "step": self.step, "iteration": self.iteration,
             "progress": self.progress, "elapsed": self.elapsed,
             "result": self.result, "error": self.error,
+            "completion_owner": self.completion_owner,
+            "source": self.source,
             "resources": sorted(self.resources),
         }
 
@@ -150,6 +161,7 @@ def _view(task: Task) -> TaskView:
         max_iterations=task.max_iterations, resources=task.resources,
         created_at=task.created_at, started_at=task.started_at,
         finished_at=task.finished_at, result=task.result, error=task.error,
+        completion_owner=task.completion_owner, source=task.source,
         session_id=task.session_id, progress=task.progress, elapsed=task.elapsed,
         cancelled=task.cancel.is_set(),
     )
@@ -192,12 +204,15 @@ class TaskRegistry:
     def queue_max(self) -> int:
         return self._queue_max
 
-    def _publish(self, topic: str, task: Task) -> None:
+    def _publish_view(self, topic: str, view: TaskView) -> None:
         """BUS tidak pernah boleh menjatuhkan worker agent."""
         try:
-            self._bus.publish(topic, task=_view(task).as_dict())
+            self._bus.publish(topic, task=view.as_dict())
         except Exception:                                    # noqa: BLE001
-            _logger.warning("tasks.publish_failed", topic=topic, id=task.id)
+            _logger.warning("tasks.publish_failed", topic=topic, id=view.id)
+
+    def _publish(self, topic: str, task: Task) -> None:
+        self._publish_view(topic, _view(task))
 
     def _resource_lock(self, name: str) -> threading.Lock:
         with self._lock:
@@ -211,7 +226,9 @@ class TaskRegistry:
 
     def submit(self, prompt: str, title: str | None = None,
                resources: frozenset | set | tuple = frozenset(),
-               max_iterations: int | None = None) -> Task | None:
+               max_iterations: int | None = None,
+               completion_owner: str = "registry",
+               source: str = "agent") -> Task | None:
         """Task baru berstatus QUEUED. ``None`` bila antrean penuh."""
         res = frozenset(str(r).strip() for r in (resources or ()) if str(r).strip())
         with self._lock:
@@ -219,10 +236,15 @@ class TaskRegistry:
                    if t.status in ACTIVE_STATES) >= self._queue_max:
                 _logger.warning("tasks.queue_full", queue_max=self._queue_max)
                 return None
+            owner = str(completion_owner or "registry").casefold()
+            if owner not in {"registry", "caller"}:
+                owner = "registry"
             task = Task(
                 title=title or _title_from(prompt),
                 prompt=str(prompt or ""),
                 resources=res,
+                completion_owner=owner,
+                source=str(source or "agent")[:32],
                 max_iterations=int(
                     max_iterations
                     if max_iterations is not None
@@ -263,8 +285,72 @@ class TaskRegistry:
         self._publish("task.updated", task)
         return view
 
+    def prepare_finish(self, task_id: str, result: str = "", error: str = "",
+                       status: TaskStatus | None = None,
+                       completion_owner: str | None = None) -> TaskView | None:
+        """Begin one unpublished terminal transition for callback resolution.
+
+        The terminal status, result, and provisional speech owner become visible
+        atomically. A caller that arrives after another terminal claim gets no
+        transition view and must not invoke a second completion callback.
+        """
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None or task.status in TERMINAL_STATES:
+                return None
+            if status is None:
+                if task.cancel.is_set():
+                    status = TaskStatus.CANCELLED
+                elif error:
+                    status = TaskStatus.FAILED
+                else:
+                    status = TaskStatus.DONE
+            owner = str(completion_owner or "").casefold()
+            if owner in {"registry", "caller"}:
+                task.completion_owner = owner
+            task.status = status
+            task.result = str(result or "")
+            task.error = str(error or "")
+            task.finished_at = time.time()
+            if task.started_at is None:
+                task.started_at = task.finished_at
+            task.step = ""
+            task._finish_pending = True
+            return _view(task)
+
+
+    def publish_finish(self, task_id: str,
+                       completion_owner: str | None = None) -> TaskView | None:
+        """Resolve terminal owner and publish ``task.finished`` exactly once."""
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if task is None or task.status not in TERMINAL_STATES:
+                return None
+            if task._finished_published:
+                return _view(task)
+            owner = str(completion_owner or "").casefold()
+            if owner in {"registry", "caller"}:
+                task.completion_owner = owner
+            task._finish_pending = False
+            task._finished_published = True
+            # Publish an immutable snapshot.  A subscriber is synchronous, may
+            # trigger another registry call, and must never observe a mutable
+            # Task after this lock has been released.
+            view = _view(task)
+        self._publish_view("task.finished", view)
+        return view
+
     def finish(self, task_id: str, result: str = "", error: str = "",
-               status: TaskStatus | None = None) -> TaskView | None:
+               status: TaskStatus | None = None,
+               completion_owner: str | None = None) -> TaskView | None:
+        """Atomically claim and publish a compatibility terminal transition.
+
+        The old pre-check followed by ``prepare_finish()`` left a window where
+        two direct finishers could both observe a live task.  The first caller
+        now establishes the terminal snapshot while holding the registry lock;
+        every later caller returns that immutable snapshot and cannot replace
+        its result or speech owner.
+        """
         with self._lock:
             task = self._tasks.get(task_id)
             if task is None:
@@ -278,6 +364,9 @@ class TaskRegistry:
                     status = TaskStatus.FAILED
                 else:
                     status = TaskStatus.DONE
+            owner = str(completion_owner or "").casefold()
+            if owner in {"registry", "caller"}:
+                task.completion_owner = owner
             task.status = status
             task.result = str(result or "")
             task.error = str(error or "")
@@ -285,8 +374,10 @@ class TaskRegistry:
             if task.started_at is None:
                 task.started_at = task.finished_at
             task.step = ""
+            task._finish_pending = False
+            task._finished_published = True
             view = _view(task)
-        self._publish("task.finished", task)
+        self._publish_view("task.finished", view)
         return view
 
     def cancel(self, task_id: str) -> bool:

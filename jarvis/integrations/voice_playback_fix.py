@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 
 from jarvis.core import config, log
-from jarvis.integrations import voice_playback_level
+from jarvis.integrations import voice_playback_level, voice_speech
 
 _logger = log.get("voice.playback_fix")
 
@@ -50,11 +50,14 @@ def install(legacy_module) -> bool:
 
     async def _play_audio(self):                             # noqa: ANN001
         print("[JARVIS] 🔊 Play started (drain-aware)")
-        stream = sd.RawOutputStream(
-            samplerate=rate, channels=channels, dtype="int16", blocksize=block)
-        stream.start()
+        stream = None
         silent_since = None
+        playback_epoch = None
         try:
+            stream = sd.RawOutputStream(
+                samplerate=rate, channels=channels,
+                dtype="int16", blocksize=block)
+            stream.start()
             while True:
                 try:
                     chunk = await asyncio.wait_for(
@@ -72,40 +75,48 @@ def install(legacy_module) -> bool:
                         if silent_since is None:
                             silent_since = now
                         elif now - silent_since >= grace_s:
-                            # Drain buffer internal stream sebelum flip state,
-                            # tulis sedikit keheningan agar blok akhir keluar
-                            # penuh (bukan terpotong).
-                            try:
-                                tail = b"\x00" * (block * channels * 2)
-                                await asyncio.to_thread(stream.write, tail)
-                            except Exception:                # noqa: BLE001
-                                pass
+                            # Drain buffer internal stream sebelum flip state.
+                            # Kegagalan tail berarti audible completion belum
+                            # terverifikasi dan harus melalui jalur abort.
+                            tail = b"\x00" * (block * channels * 2)
+                            await asyncio.to_thread(stream.write, tail)
                             self.set_speaking(False)
+                            # Record the authoritative local drain before the
+                            # frozen compatibility event is cleared.  Notice
+                            # arbiters retain this boundary durably and can flush
+                            # after playback instead of racing the transient event.
+                            voice_speech.playback_drained(
+                                self, epoch=playback_epoch)
                             self._turn_done_event.clear()
+                            playback_epoch = None
                             silent_since = None
                     continue
                 silent_since = None
+                current_epoch = voice_speech.active_playback_epoch(self)
+                if current_epoch is not None and current_epoch != playback_epoch:
+                    playback_epoch = current_epoch
+                await asyncio.to_thread(stream.write, chunk)
+                # Hanya PCM yang benar-benar berhasil ditulis yang dapat
+                # membuktikan bahwa ticket menghasilkan audio lokal.
+                voice_speech.mark_audio(self, epoch=playback_epoch)
                 self.set_speaking(True)
-                try:
-                    await asyncio.to_thread(stream.write, chunk)
-                except (RuntimeError, asyncio.CancelledError):
-                    break
+        except asyncio.CancelledError:
+            raise
         except Exception as e:                               # noqa: BLE001
             print(f"[JARVIS] ❌ Play: {e}")
             raise
         finally:
             self.set_speaking(False)
-            # Drain sisa buffer sebelum menutup agar tidak ada blok yang hilang.
-            try:
-                tail = b"\x00" * (block * channels * 2)
-                await asyncio.to_thread(stream.write, tail)
-            except Exception:                                # noqa: BLE001
-                pass
-            try:
-                stream.stop()
-                stream.close()
-            except Exception:                                # noqa: BLE001
-                pass
+            voice_speech.abort(self, epoch=playback_epoch)
+            if stream is not None:
+                try:
+                    stream.stop()
+                    stream.close()
+                except Exception as exc:                     # noqa: BLE001
+                    _logger.warning(
+                        "voice.playback_fix.close_failed",
+                        error=type(exc).__name__,
+                    )
 
     wrapped_play = voice_playback_level.compose(_play_audio)
     wrapped_play._jarvis_playback_fix = True

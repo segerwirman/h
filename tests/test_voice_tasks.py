@@ -21,7 +21,7 @@ import pytest
 
 from jarvis.agent import dispatch, registry
 from jarvis.agent.tasks import REGISTRY, TaskStatus
-from jarvis.integrations import voice_tasks
+from jarvis.integrations import voice_speech, voice_tasks
 
 ROOT = Path(__file__).resolve().parents[1]
 TASK_TOOLS = ("task_start", "task_status", "task_cancel", "task_result")
@@ -41,8 +41,12 @@ class _FakeLive:
 
     def __init__(self, *, turn_done: bool = True, speaking: bool = False):
         self.session = _FakeSession()
+        self._loop = None
+        self.audio_in_queue = asyncio.Queue()
         self._speaking_lock = threading.Lock()
         self._is_speaking = speaking
+        self._awaiting_since = None
+        self._interrupted = False
         self._turn_done_event = threading.Event()
         if turn_done:
             self._turn_done_event.set()
@@ -153,7 +157,9 @@ def test_zona_frozen_tetap_utuh() -> None:
 
 def _finish_event(status: str = "done", result: str = "lima laptop terbaik"):
     return {"task": {"id": "T-1234", "title": "riset laptop",
-                     "status": status, "result": result, "error": ""}}
+                     "status": status, "result": result, "error": "",
+                     "completion_owner": "registry",
+                     "source": "voice-task-tool"}}
 
 
 def test_notice_diantre_bukan_langsung_dikirim() -> None:
@@ -163,36 +169,187 @@ def test_notice_diantre_bukan_langsung_dikirim() -> None:
 
 def test_notice_tidak_dikirim_saat_jarvis_bicara() -> None:
     voice_tasks._on_task_finished(_finish_event())
-    live = _FakeLive(turn_done=True, speaking=True)
-    sent = asyncio.run(voice_tasks.flush_notices(live))
-    assert sent == 0, "notice memotong Jarvis yang sedang bicara"
+
+    async def scenario():
+        live = _FakeLive(turn_done=True, speaking=True)
+        live._loop = asyncio.get_running_loop()
+        assert await voice_tasks.flush_notices(live) == 0
+        assert live.session.sent == []
+
+    asyncio.run(scenario())
     assert voice_tasks.pending_notices() == 1
 
 
 def test_notice_tidak_dikirim_sebelum_giliran_selesai() -> None:
     voice_tasks._on_task_finished(_finish_event())
-    live = _FakeLive(turn_done=False, speaking=False)
-    assert asyncio.run(voice_tasks.flush_notices(live)) == 0
+
+    async def scenario():
+        live = _FakeLive(turn_done=False, speaking=False)
+        live._loop = asyncio.get_running_loop()
+        assert await voice_tasks.flush_notices(live) == 0
+
+    asyncio.run(scenario())
     assert voice_tasks.pending_notices() == 1
+
+
+def test_notice_eventually_submits_after_pcm_drain_clears_legacy_event() -> None:
+    voice_tasks._on_task_finished(_finish_event())
+
+    async def scenario():
+        live = _FakeLive(turn_done=True, speaking=True)
+        live._loop = asyncio.get_running_loop()
+        await live.audio_in_queue.put(b"pcm")
+
+        assert await voice_tasks.flush_notices(live) == 0
+        voice_speech.mark_turn_complete(live)
+        assert await voice_tasks.flush_notices(live) == 0
+
+        live.audio_in_queue.get_nowait()
+        live._is_speaking = False
+        # The real playback owner records drain and then clears this event.
+        assert voice_speech.playback_drained(live) is False
+        live._turn_done_event.clear()
+
+        assert await voice_tasks.flush_notices(live) == 1
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert len(live.session.sent) == 1
+
+    asyncio.run(scenario())
 
 
 def test_notice_dikirim_di_batas_giliran_aman() -> None:
     voice_tasks._on_task_finished(_finish_event())
-    live = _FakeLive(turn_done=True, speaking=False)
-    assert asyncio.run(voice_tasks.flush_notices(live)) == 1
+
+    async def scenario():
+        live = _FakeLive(turn_done=True, speaking=False)
+        live._loop = asyncio.get_running_loop()
+        assert await voice_tasks.flush_notices(live) == 1
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        body = live.session.sent[0]
+        assert "[TASK_DONE id=T-1234]" in body
+        assert "lima laptop terbaik" in body
+        assert "SATU kalimat" in body
+        assert voice_tasks.pending_notices() == 1
+        voice_speech.mark_audio(live)
+        assert voice_speech.playback_drained(live) is True
+        await asyncio.sleep(0)
+
+    asyncio.run(scenario())
     assert voice_tasks.pending_notices() == 0
-    body = live.session.sent[0]
-    assert "[TASK_DONE id=T-1234]" in body
-    assert "lima laptop terbaik" in body
-    assert "SATU kalimat" in body
+
+
+def test_notice_tetap_owned_sampai_playback_terverifikasi() -> None:
+    voice_tasks._on_task_finished(_finish_event())
+
+    async def scenario():
+        live = _FakeLive(turn_done=True, speaking=False)
+        live._loop = asyncio.get_running_loop()
+        assert await voice_tasks.flush_notices(live) == 1
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        ticket = live._voice_speech_ticket
+        assert ticket is not None
+        assert voice_tasks.pending_notices() == 1
+
+        voice_speech.mark_audio(live)
+        assert voice_speech.playback_drained(live) is True
+        await asyncio.sleep(0)
+        assert ticket.completed is True
+        assert voice_tasks.pending_notices() == 0
+
+    asyncio.run(scenario())
+
+
+def test_notice_diulang_setelah_playback_abort() -> None:
+    voice_tasks._on_task_finished(_finish_event())
+
+    async def scenario():
+        live = _FakeLive(turn_done=True, speaking=False)
+        live._loop = asyncio.get_running_loop()
+        assert await voice_tasks.flush_notices(live) == 1
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        first = live._voice_speech_ticket
+        assert first is not None
+        assert voice_speech.abort(live) is True
+        await asyncio.sleep(0)
+        assert first.aborted is True
+        assert voice_tasks.pending_notices() == 1
+
+        assert await voice_tasks.flush_notices(live) == 1
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        assert len(live.session.sent) == 2
+        voice_speech.mark_audio(live)
+        assert voice_speech.playback_drained(live) is True
+        await asyncio.sleep(0)
+        assert voice_tasks.pending_notices() == 0
+
+    asyncio.run(scenario())
+
+
+def test_notice_menunggu_audio_queue_drain_dan_awaiting_clear() -> None:
+    voice_tasks._on_task_finished(_finish_event())
+
+    async def scenario():
+        live = _FakeLive(turn_done=True, speaking=False)
+        live._loop = asyncio.get_running_loop()
+        await live.audio_in_queue.put(b"pcm")
+        assert await voice_tasks.flush_notices(live) == 0
+        live.audio_in_queue.get_nowait()
+        live._awaiting_since = 1.0
+        assert await voice_tasks.flush_notices(live) == 0
+        live._awaiting_since = None
+        assert await voice_tasks.flush_notices(live) == 1
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        return live
+
+    live = asyncio.run(scenario())
+    assert len(live.session.sent) == 1
+
+
+def test_run_teardown_aborts_inflight_notice() -> None:
+    voice_tasks._on_task_finished(_finish_event())
+
+    async def scenario():
+        live = _FakeLive(turn_done=True, speaking=False)
+        live._loop = asyncio.get_running_loop()
+
+        async def original_run(_live):
+            assert await voice_tasks.flush_notices(live) == 1
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            assert live._voice_speech_ticket is not None
+            return "stopped"
+
+        wrapped = voice_tasks.compose_run(original_run)
+        assert await wrapped(live) == "stopped"
+        await asyncio.sleep(0)
+        assert live._voice_speech_ticket is None
+        assert voice_tasks.pending_notices() == 1
+
+    asyncio.run(scenario())
 
 
 def test_notice_gagal_ikut_dilaporkan() -> None:
     voice_tasks._on_task_finished(
         {"task": {"id": "T-9", "title": "riset", "status": "failed",
-                  "result": "", "error": "provider mati"}})
-    live = _FakeLive()
-    assert asyncio.run(voice_tasks.flush_notices(live)) == 1
+                  "result": "", "error": "provider mati",
+                  "completion_owner": "registry",
+                  "source": "voice-task-tool"}})
+
+    async def scenario():
+        live = _FakeLive()
+        live._loop = asyncio.get_running_loop()
+        assert await voice_tasks.flush_notices(live) == 1
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        return live
+
+    live = asyncio.run(scenario())
     assert "GAGAL" in live.session.sent[0]
 
 
@@ -200,7 +357,9 @@ def test_notice_cancelled_tidak_diumumkan() -> None:
     """User yang membatalkan sudah tahu — tidak perlu diberi tahu lagi."""
     voice_tasks._on_task_finished(
         {"task": {"id": "T-8", "title": "x", "status": "cancelled",
-                  "result": "", "error": ""}})
+                  "result": "", "error": "",
+                  "completion_owner": "registry",
+                  "source": "voice-task-tool"}})
     assert voice_tasks.pending_notices() == 0
 
 
@@ -252,6 +411,32 @@ def test_task_start_kembali_seketika_dengan_id(monkeypatch) -> None:
         deadline.wait(0.02)
     assert REGISTRY.get(tid).status is TaskStatus.DONE
     assert "hasil riset" in _run(tools["task_result"].run(id=tid)).content
+
+
+def test_task_start_inherits_voice_task_source_scope(monkeypatch) -> None:
+    from jarvis.agent import loop as agent_loop
+
+    monkeypatch.setattr(dispatch, "available", lambda: True)
+
+    async def fake_run(task, adapter=None, session=None, bg_task=None, **kw):
+        return agent_loop.RunResult(
+            ok=True,
+            text="hasil",
+            session_id=getattr(session, "id", ""),
+        )
+
+    monkeypatch.setattr(agent_loop, "run", fake_run)
+
+    with dispatch.source_scope(
+        "voice-task-tool",
+        completion_owner="registry",
+    ):
+        res = _run(registry.all_tools()["task_start"].run(task="riset voice"))
+
+    assert res.ok
+    view = REGISTRY.get(res.content["id"])
+    assert view is not None
+    assert view.source == "voice-task-tool"
 
 
 def test_task_start_menolak_saat_agent_tidak_tersedia(monkeypatch) -> None:
