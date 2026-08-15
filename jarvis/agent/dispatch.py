@@ -47,6 +47,7 @@ class DispatchSourceScope:
 
     source: str
     completion_owner: str = "auto"
+    conversation_id: str = ""
 
 
 class _BufferedFinalAdapter:
@@ -626,6 +627,20 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
             on_task(metadata)
         except Exception as exc:                               # noqa: BLE001
             quiet.swallowed("agent.dispatch.task_callback_failed", exc)
+    elif ingress_scope is not None and ingress_scope.conversation_id:
+        # Editable seam for ingress paths whose caller (FROZEN main.py) cannot
+        # supply on_task: bind the real registry ID to immediate context here,
+        # before ACK, so the FROZEN voice path is addressable like typed ones.
+        try:
+            from jarvis.agent import conversation_context
+            conversation_context.STORE.begin_task(
+                ingress_scope.conversation_id,
+                task_id=str(metadata.id),
+                task=str(metadata.title or task)[:800],
+                source=ingress_scope.source,
+            )
+        except Exception as exc:                               # noqa: BLE001
+            quiet.swallowed("agent.dispatch.context_bind_failed", exc)
 
     evidence: list[ToolEvidence] = []
     plan_steps: list[dict] = []
@@ -811,12 +826,13 @@ def source_scope(
     source: str,
     *,
     completion_owner: str = "auto",
+    conversation_id: str = "",
 ) -> Iterator[DispatchSourceScope]:
     label = str(source or "agent")[:32]
     owner = str(completion_owner or "auto").casefold()
     if owner not in {"auto", "registry", "caller"}:
         owner = "auto"
-    scope = DispatchSourceScope(label, owner)
+    scope = DispatchSourceScope(label, owner, str(conversation_id or "")[:96])
     token = _source_scope.set(scope)
     try:
         yield scope

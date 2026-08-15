@@ -298,6 +298,18 @@ class CommandActionsMixin:
                     "Belum ada hasil terbaru yang bisa saya buka, sir.")
                 return
 
+        # Structured resolution: when several tasks could match, ASK the user
+        # instead of dispatching a block the agent is expected to interpret.
+        resolution = conversation_context.STORE.resolve(conversation_id, task)
+        if resolution.kind == "ambiguous":
+            candidates = " / ".join(resolution.candidates)
+            self.write_log(
+                "Jarvis: Anda sedang menjalankan beberapa tugas: "
+                f"{candidates}. Sebutkan tugas mana yang dimaksud.")
+            self._speak_line(
+                "Anda sedang menjalankan beberapa tugas, sir. "
+                "Sebutkan yang mana yang ingin dilanjutkan.")
+            return
         task = conversation_context.STORE.augment(conversation_id, task)
         self._record_task_result("TUGAS", task)
         self.orb.set_state(OrbState.EXECUTING)

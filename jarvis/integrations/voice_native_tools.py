@@ -524,10 +524,13 @@ def install(legacy_module) -> None:
             from jarvis.agent.dispatch import source_scope
 
             # The frozen callback still owns UI/memory/telemetry, while registry
-            # alone owns completion speech for this voice-native source.
+            # alone owns completion speech for this voice-native source. The
+            # conversation id lets dispatch bind the real registry task ID into
+            # immediate context (main.py is FROZEN and cannot pass on_task).
             with source_scope(
                 "voice-native",
                 completion_owner="registry",
+                conversation_id="voice-live",
             ):
                 return original_dispatch(self, *args, **kwargs)
 

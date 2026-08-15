@@ -842,3 +842,85 @@ def test_missing_voice_scope_module_still_invokes_callback(monkeypatch):
     )
 
     assert called == ["delivered"]
+
+
+def test_voice_native_installer_scopes_conversation_id_for_seam_bind(monkeypatch):
+    """Fase 38 — the editable voice seam propagates ``conversation_id="voice-live"``
+    so dispatch can bind the real registry task ID into immediate context even
+    though FROZEN main.py cannot pass ``on_task``."""
+    from jarvis.integrations import voice_native_tools
+
+    observed = []
+
+    class Live:
+        async def _execute_tool(self, _fc):
+            return None
+
+        async def run(self):
+            return None
+
+        def _dispatch_native_agent(self, task, **_kwargs):
+            scope = dispatch.current_source_scope()
+            observed.append(
+                (task, scope.source, scope.completion_owner, scope.conversation_id)
+                if scope is not None else (task, "", "", "")
+            )
+            return True, "started"
+
+    legacy = types.SimpleNamespace(
+        JarvisLive=Live,
+        TOOL_DECLARATIONS=[],
+        types=types.SimpleNamespace(FunctionResponse=dict),
+        _load_system_prompt=lambda: "persona",
+    )
+    monkeypatch.setattr(voice_tasks, "ensure_subscribed", lambda: None)
+    monkeypatch.setattr(voice_tasks, "declarations", lambda: [])
+
+    voice_native_tools.install(legacy)
+
+    assert Live()._dispatch_native_agent("cek build") == (True, "started")
+    assert observed == [("cek build", "voice-native", "registry", "voice-live")]
+    assert dispatch.current_source_scope() is None
+
+
+def test_dispatch_binds_registry_id_via_ingress_conversation_scope(monkeypatch):
+    """Fase 38 — when no ``on_task`` callback is supplied (the FROZEN voice seam),
+    dispatch still binds the real registry task ID into immediate context from
+    the ingress scope's ``conversation_id`` before ACK."""
+    _isolate_dispatch(monkeypatch)
+    from jarvis.agent import loop as agent_loop
+    from jarvis.agent import conversation_context
+
+    bound: list[tuple[str, str]] = []
+    real_bind = conversation_context.STORE.begin_task
+    monkeypatch.setattr(
+        conversation_context.STORE,
+        "begin_task",
+        lambda conversation_id, task_id, task, source: bound.append(
+            (conversation_id, task_id)
+        ) or real_bind(
+            conversation_id, task_id=task_id, task=task, source=source
+        ),
+    )
+
+    async def fake_run(_task, **_kwargs):
+        return RunResult(ok=True, text="done", session_id="seam-bind")
+
+    monkeypatch.setattr(agent_loop, "run", fake_run)
+
+    with dispatch.source_scope(
+        "voice-native",
+        completion_owner="registry",
+        conversation_id="voice-live",
+    ):
+        assert dispatch.dispatch_async("seam bind task") is True
+
+    assert len(bound) == 1
+    cid, tid = bound[0]
+    assert cid == "voice-live"
+    assert tid.startswith("T-")
+
+    active = conversation_context.STORE.active_tasks("voice-live")
+    assert any(a["task_id"] == tid for a in active)
+    assert any(a["source"] == "voice-native" for a in active)
+    assert dispatch.current_source_scope() is None

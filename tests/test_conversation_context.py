@@ -180,3 +180,97 @@ def test_artifact_tidak_bocor_ke_blok_konteks_prompt():
     # Path artefak TIDAK boleh muncul di blok konteks prompt (privacy).
     assert "img.png" not in block
     assert "secret" not in block
+
+
+def test_non_follow_up_augment_tidak_membuat_task_pra_registry():
+    """Fase 38 — a fresh command must not synthesize a legacy task before the
+    registry produces a real ID. Only dispatch on_task metadata binds."""
+    ctx = importlib.import_module("jarvis.agent.conversation_context")
+    store = ctx.ConversationContextStore()
+
+    out = store.augment("voice-live", "riset framework AI terbaru")
+    assert out == "riset framework AI terbaru"
+    # No synthetic active binding was created.
+    assert store.active_tasks("voice-live") == []
+    assert store.active_task("voice-live") == ""
+
+
+def test_hasil_sebelumnya_tidak_mengalahkan_ambiguitas_tugas_aktif():
+    """Fase 38 — with two live tasks, a previous completed result must NOT let
+    a bare follow-up avoid clarification."""
+    ctx = importlib.import_module("jarvis.agent.conversation_context")
+    store = ctx.ConversationContextStore()
+
+    # A prior safe result exists.
+    store.remember_success(
+        "voice-live", task="periksa build proyek Orion",
+        delivery=ConversationDelivery(
+            display_text="Build Orion selesai.",
+            speech_text="Build Orion telah selesai, sir.",
+            factual_anchors=("Orion",),
+        ),
+    )
+    # Two live tasks are now running.
+    store.begin_task("voice-live", task_id="T-a", task="riset framework AI",
+                     source="voice")
+    store.begin_task("voice-live", task_id="T-b", task="ringkas dokumen PDF",
+                     source="voice")
+
+    result = store.resolve("voice-live", "lanjutkan")
+    assert result.kind == "ambiguous"
+    assert {t for t in result.candidates} == {"riset framework AI",
+                                              "ringkas dokumen PDF"}
+
+    # Explicit ID still resolves, even with the previous result present.
+    resolved = store.augment("voice-live", "lanjutkan T-b")
+    assert "ringkas dokumen PDF" in resolved
+
+
+def test_ambil_tugas_tanpa_spoken_menjaga_brief_aman():
+    """Fase 38 — an in-flight task match carries no fabricated brief from a
+    different task; the recent-result path is the only one with spoken text."""
+    ctx = importlib.import_module("jarvis.agent.conversation_context")
+    store = ctx.ConversationContextStore()
+
+    store.remember_success(
+        "voice-live", task="periksa build proyek Orion",
+        delivery=ConversationDelivery(
+            display_text="Build Orion selesai.",
+            speech_text="Build Orion telah selesai, sir.",
+            factual_anchors=("Orion",),
+        ),
+    )
+    store.begin_task("voice-live", task_id="T-c", task="riset framework AI",
+                     source="voice")
+
+    result = store.resolve("voice-live", "lanjutkan T-c")
+    assert result.kind == "task"
+    assert result.title == "riset framework AI"
+    # No fabricated brief from the unrelated completed task.
+    assert result.spoken == ""
+
+
+def test_fail_tugas_terakhir_menjaga_konteks_aman():
+    """Fase 38 — failing the last active task must not erase unrelated safe
+    continuity (a completed result the user may still reference)."""
+    ctx = importlib.import_module("jarvis.agent.conversation_context")
+    store = ctx.ConversationContextStore()
+
+    store.remember_success(
+        "voice-live", task="periksa build proyek Orion",
+        delivery=ConversationDelivery(
+            display_text="Build Orion selesai.",
+            speech_text="Build Orion telah selesai, sir.",
+            factual_anchors=("Orion",),
+        ),
+    )
+    store.begin_task("voice-live", task_id="T-x", task="riset framework AI",
+                     source="voice")
+
+    store.fail_task("voice-live", "T-x")
+
+    # The session survived; the recent result is still resolvable.
+    assert store.active_tasks("voice-live") == []
+    result = store.resolve("voice-live", "lanjutkan")
+    assert result.kind == "recent"
+    assert result.title == "periksa build proyek Orion"

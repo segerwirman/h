@@ -58,6 +58,16 @@ class _ActiveTask:
     seq: int = 0                       # recency order within the conversation
 
 
+@dataclass(frozen=True)
+class FollowUpResult:
+    """Structured reference resolution so callers act, not guess."""
+
+    kind: str                          # "none" | "recent" | "task" | "ambiguous"
+    title: str = ""
+    spoken: str = ""
+    candidates: tuple[str, ...] = ()
+
+
 @dataclass
 class _ImmediateContext:
     last_intent: str = ""
@@ -105,9 +115,16 @@ class ConversationContextStore:
                 context.active_tasks.pop(str(task_id).strip(), None)
             else:
                 # Legacy title-only binding: clear only the matching legacy
-                # key so a completion never empties another active task.
+                # key so a completion never empties another active task. A
+                # seam-bound ID task whose title matches this completion is
+                # cleared too, so a caller that cannot pass task_id (FROZEN
+                # voice) still releases its one matching active task.
                 legacy_key = _LEGACY_TASK_PREFIX + intent[:48]
                 context.active_tasks.pop(legacy_key, None)
+                for entry in list(context.active_tasks.values()):
+                    if entry.title and intent \
+                            and entry.title.casefold() == intent.casefold():
+                        context.active_tasks.pop(entry.task_id, None)
             if delivery.mode:
                 context.recent_template_ids.append(str(delivery.mode)[:48])
             self._sessions[key] = context
@@ -212,7 +229,13 @@ class ConversationContextStore:
             return next(iter(titles)) if len(titles) == 1 else ""
 
     def fail_task(self, conversation_id: str, task_id: str) -> None:
-        """Remove one failed task binding by registry ID (never others)."""
+        """Remove one failed task binding by registry ID (never others).
+
+        The session itself is preserved while it still carries unrelated safe
+        continuity (a recent result, artifact, or recent intent). Only a truly
+        empty context is evicted, so failing the last active task never erases
+        a completed result the user may want to reference.
+        """
         key = _key(conversation_id)
         tid = str(task_id or "").strip()
         if not key or not tid:
@@ -222,50 +245,60 @@ class ConversationContextStore:
             if context is None:
                 return
             context.active_tasks.pop(tid, None)
-            if not context.active_tasks:
+            if not context.active_tasks and not _keeps_session(context):
                 self._sessions.pop(key, None)
 
-    def augment(self, conversation_id: str, task: str) -> str:
-        """Return a private context block only for exact, unambiguous references."""
+    def resolve(self, conversation_id: str, reference: str) -> FollowUpResult:
+        """Structured resolution so callers can ask rather than dispatch a guess.
 
-        original = str(task or "").strip()
+        Returns ``FollowUpResult`` with kind:
+          * ``"none"``      — no viable target; return the reference untouched;
+          * ``"recent"``    — a unique safe recent result (no in-flight task);
+          * ``"task"``      — one deterministic in-flight task match;
+          * ``"ambiguous"`` — two or more live tasks could match; caller must ask.
+        """
+        original = str(reference or "").strip()
         if not _is_follow_up(original):
-            self.begin_task(conversation_id, original)
-            return original
-        key = _key(conversation_id)
+            return FollowUpResult(kind="none")
         with self._lock:
-            context = self._sessions.get(key)
+            context = self._sessions.get(_key(conversation_id))
             if context is None:
-                return original
+                return FollowUpResult(kind="none")
             has_context = bool(
                 context.last_intent or context.last_spoken
                 or context.active_tasks)
             if not has_context:
-                return original
-            self._sessions.move_to_end(key)
-            resolved = _resolve(context, original)
-            recent = " | ".join(context.recent_intents)[:800]
-        if resolved is None:
-            # Two or more tasks could match this reference. Do not guess which
-            # one the user means — surface the choices honestly.
-            with self._lock:
-                context = self._sessions.get(key)
-                active = list(context.active_tasks.values()) if context else []
-                candidates = [entry.title for entry in active]
-                if not candidates and context is not None:
-                    candidates = [context.last_intent]
+                return FollowUpResult(kind="none")
+            self._sessions.move_to_end(_key(conversation_id))
+            return _resolve(context, original)
+
+    def augment(self, conversation_id: str, task: str) -> str:
+        """Return a private context block only for exact, unambiguous references.
+
+        No task is bound here: registry ID binding happens only after the
+        registry produces the real task ID (dispatch ``on_task`` metadata), so a
+        non-follow-up command never creates a synthetic pre-registry task.
+        """
+        original = str(task or "").strip()
+        resolved = self.resolve(conversation_id, original)
+        if resolved.kind == "none":
+            return original
+        key = _key(conversation_id)
+        with self._lock:
+            context = self._sessions.get(key)
+            recent = " | ".join(context.recent_intents)[:800] if context else ""
+        if resolved.kind == "ambiguous":
             return (
                 f"{original}\n\n[KONTEKS PERCAKAPAN LANGSUNG]\n"
                 "Rujukan ini cocok dengan beberapa tugas yang sedang berjalan:\n"
-                + "\n".join(f"- {title}" for title in candidates[:4])
+                + "\n".join(f"- {title}" for title in resolved.candidates)
                 + "\nMinta user menyebutkan id/nomor tugas yang dimaksud."
             )
-        previous_task, previous_spoken = resolved
         return (
             f"{original}\n\n[KONTEKS PERCAKAPAN LANGSUNG]\n"
-            f"Tugas sebelumnya: {previous_task}\n"
+            f"Tugas sebelumnya: {resolved.title}\n"
             f"Riwayat tugas ringkas: {recent}\n"
-            f"Hasil terakhir (brief aman): {previous_spoken}\n"
+            f"Hasil terakhir (brief aman): {resolved.spoken}\n"
             "Gunakan konteks ini hanya untuk menyelesaikan rujukan pengguna."
         )
 
@@ -283,44 +316,64 @@ class ConversationContextStore:
             )
 
 
+def _keeps_session(context: _ImmediateContext) -> bool:
+    """Whether a session still holds safe continuity worth preserving."""
+    return bool(context.last_intent or context.last_spoken
+                or context.last_artifact or context.recent_intents)
+
+
 def _resolve(
     context: _ImmediateContext,
     reference: str,
-) -> tuple[str, str] | None:
+) -> FollowUpResult:
     """Deterministic reference resolution; None = ambiguous or unmatched."""
     ref = _normalise_reference(reference)
     active = list(context.active_tasks.values())
+
     if not active:
+        # No in-flight task: the only viable target is a unique recent safe
+        # result. Without one there is nothing to continue.
         if context.last_intent and context.last_spoken:
-            return context.last_intent, context.last_spoken
-        return None
+            return FollowUpResult(kind="recent", title=context.last_intent,
+                                  spoken=context.last_spoken)
+        return FollowUpResult(kind="none")
 
     # 1. Explicit task ID.
     for entry in active:
         if entry.task_id and entry.task_id.casefold() in ref:
-            return entry.title, _spoken_for(context, entry.title)
+            return FollowUpResult(kind="task", title=entry.title,
+                                  candidates=(entry.title,))
 
     # 2. Unique title/topic match.
     matches = [entry for entry in active
                if entry.title.casefold() in ref]
     if len(matches) == 1:
         entry = matches[0]
-        return entry.title, _spoken_for(context, entry.title)
+        return FollowUpResult(kind="task", title=entry.title,
+                              candidates=(entry.title,))
+    if len(matches) > 1:
+        # Several live tasks share this topic — ask, never guess.
+        return FollowUpResult(
+            kind="ambiguous",
+            candidates=tuple(entry.title for entry in matches[:4]))
 
     # 3. Sole active task.
     if len(active) == 1:
         entry = active[0]
-        return entry.title, _spoken_for(context, entry.title)
+        return FollowUpResult(kind="task", title=entry.title,
+                              candidates=(entry.title,))
 
-    # 4. Unique recent result.
-    if context.last_intent and context.last_spoken:
-        return context.last_intent, context.last_spoken
-    return None
+    # Two or more live tasks exist and none matched explicitly. A previous
+    # completed result must NOT override that ambiguity: "lanjutkan" could
+    # mean any of them, so the caller must ask.
+    return FollowUpResult(
+        kind="ambiguous",
+        candidates=tuple(entry.title for entry in active[:4]))
 
 
 def _spoken_for(context: _ImmediateContext, title: str) -> str:
-    """The safe brief belongs to the matched task, else the last spoken one."""
-    return context.last_spoken or ""
+    """The safe brief for an in-flight task, which has none yet."""
+    return ""
 
 
 def _key(value: object) -> str:

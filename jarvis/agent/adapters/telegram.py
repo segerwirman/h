@@ -717,6 +717,16 @@ class TelegramService:
         chat_id = update.effective_chat.id
         from jarvis.agent import conversation_context
         conversation_id = self._session_id(chat_id)
+        # Structured resolution: when several live tasks could match, the caller
+        # asks the user directly instead of dispatching an ambiguous block.
+        resolution = conversation_context.STORE.resolve(conversation_id, text)
+        if resolution.kind == "ambiguous":
+            await update.message.reply_text(
+                "Anda sedang menjalankan beberapa tugas: "
+                + " / ".join(resolution.candidates)
+                + ". Sebutkan tugas mana yang dimaksud."
+            )
+            return
         text = conversation_context.STORE.augment(conversation_id, text)
         route = classify_execution(text, {"source": "telegram"})
         _logger.info(
