@@ -409,6 +409,31 @@ def _task_update(bg_task, **fields) -> None:
         quiet.swallowed("agent.loop.task_update_failed", exc)
 
 
+def _mark_pending_tool(bg_task, tool_name: str, tools: dict) -> None:
+    """Write the pending-tool marker (NAME only, never arguments)."""
+    if bg_task is None:
+        return
+    try:
+        from jarvis.agent.tasks import REGISTRY
+        read_only = bool(tools.get(tool_name) is not None
+                         and tools[tool_name].read_only)
+        REGISTRY.ledger_pending_tool(bg_task.id, tool_name,
+                                     read_only=read_only)
+    except Exception as exc:                                    # noqa: BLE001
+        quiet.swallowed("agent.loop.pending_tool_failed", exc)
+
+
+def _clear_pending_tool(bg_task) -> None:
+    """Clear the pending marker after a known outcome."""
+    if bg_task is None:
+        return
+    try:
+        from jarvis.agent.tasks import REGISTRY
+        REGISTRY.ledger_pending_tool(bg_task.id, "", read_only=None)
+    except Exception as exc:                                    # noqa: BLE001
+        quiet.swallowed("agent.loop.clear_pending_tool_failed", exc)
+
+
 def _short_args(arguments) -> str:
     try:
         items = list(dict(arguments or {}).values())
@@ -460,10 +485,17 @@ async def _execute_calls(tool_calls, adapter, session, context, bg_task=None):
         held = await _acquire_for(bg_task, tc.name)
         if held is None:
             return ToolResult.fail("dibatalkan sebelum tool dijalankan")
+        # Durable pending-tool marker (Fase 38 item 7): record the tool NAME
+        # (never its arguments) and read-only classification just before
+        # execution.  Cleared immediately after a known outcome below, so a
+        # process death between the two writes leaves a visible pending marker
+        # instead of a silently-replayed or falsely-safe task.
+        _mark_pending_tool(bg_task, tc.name, tools)
         try:
             result = await registry.execute(
                 tc.name, tc.arguments, adapter, session, context)
         finally:
+            _clear_pending_tool(bg_task)
             if held:
                 from jarvis.agent.tasks import REGISTRY
                 REGISTRY.release_held(held)

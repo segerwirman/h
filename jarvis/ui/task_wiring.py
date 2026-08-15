@@ -37,17 +37,56 @@ def _aggregate_progress(views) -> tuple[float | None, int]:
     return sum(v.progress for v in active) / len(active), len(active)
 
 
+def hydrate_recovery_views(win) -> list:
+    """Reconcile stale prior-incarnation tasks into non-active deck records.
+
+    Visual/log-first (Fase 38 item 8): nothing is queued, nothing runs.  The
+    returned recovery views ride the same snapshot + BUS wiring as live tasks,
+    so there is no second recovery UI.
+    """
+    try:
+        from jarvis.agent.tasks import REGISTRY
+        from jarvis.agent.task_ledger import TaskLedger
+        ledger = TaskLedger()
+        views = REGISTRY.hydrate_recovery(ledger)
+        if views:
+            _logger.info("task_wiring.recovery_hydrated", count=len(views))
+            # snapshot() already folds recovery views in; repaint the deck now
+            # so a recovery record is visible before the first BUS event.
+            deck = getattr(win, "task_deck", None)
+            if deck is not None:
+                deck.set_tasks(REGISTRY.snapshot())
+        return views
+    except Exception as exc:                                 # noqa: BLE001
+        _logger.warning("task_wiring.recovery_unavailable",
+                        error=str(exc)[:120])
+        return []
+
+
 def install(win) -> bool:
     """Pasang strip + deck + arc halo. ``False`` bila fitur dimatikan config."""
     if not bool(config.get("ui.task_deck.enabled", True)):
         return False
     try:
         from jarvis.agent.tasks import REGISTRY
+        from jarvis.agent.task_ledger import TaskLedger
         from jarvis.ui.task_deck import TaskDeckPanel
         from jarvis.ui.task_strip import TaskStrip
     except Exception as exc:                                 # noqa: BLE001
         _logger.warning("task_deck.unavailable", error=str(exc)[:120])
         return False
+
+    # Attach the durable lifecycle ledger to the GLOBAL registry exactly once.
+    # Registry tests build fresh TaskRegistry instances without a ledger, so
+    # they never write the real agent.sqlite; only the live boot path does.
+    if getattr(REGISTRY, "_ledger", None) is None:
+        try:
+            ledger = TaskLedger()
+            REGISTRY._ledger = ledger
+            _logger.info("task_wiring.ledger_attached", path=str(ledger.path))
+        except Exception as exc:                             # noqa: BLE001
+            _logger.warning("task_wiring.ledger_attach_failed",
+                            error=str(exc)[:120])
 
     central = win.centralWidget()
 
@@ -127,6 +166,10 @@ def install(win) -> bool:
         BUS.subscribe(topic, _refresh, ui=True)
 
     win._task_refresh = _refresh
+    # Reconcile stale prior-incarnation records BEFORE the first refresh so a
+    # recovery record is visible immediately and never mistaken for a live
+    # worker.  The refresh below then re-renders the same combined snapshot.
+    hydrate_recovery_views(win)
     _refresh()
     return True
 

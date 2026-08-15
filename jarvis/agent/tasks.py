@@ -137,6 +137,9 @@ class TaskView:
     progress: float
     elapsed: float
     cancelled: bool
+    # Recovery record (Fase 38): empty for a live task, one of
+    # "recoverable"/"interrupted"/"outcome_uncertain" for a hydration view.
+    disposition: str = ""
 
     @property
     def active(self) -> bool:
@@ -167,6 +170,40 @@ def _view(task: Task) -> TaskView:
     )
 
 
+def _recovery_view(ledger_view) -> TaskView:
+    """Immutable recovery view — never an active worker.
+
+    These records are surfaced for inspection and explicit continue/restart
+    only.  They are not registered as live Tasks: no slot, no resource lock,
+    no BUS events, no cancellation.  ``status`` carries the recovery
+    disposition itself, so ``active`` (membership in ACTIVE_STATES) is always
+    False and no terminal transition can target the record.
+    """
+    from jarvis.agent.task_ledger import RecoveryDisposition
+    return TaskView(
+        id=ledger_view.task_id,
+        title=ledger_view.title,
+        prompt="",
+        status=RecoveryDisposition(ledger_view.state),
+        step=ledger_view.step,
+        iteration=0,
+        max_iterations=0,
+        resources=frozenset(),
+        created_at=ledger_view.created_at,
+        started_at=None,
+        finished_at=None,
+        result="",
+        error="",
+        completion_owner="registry",
+        source=ledger_view.source,
+        session_id="",
+        progress=0.0,
+        elapsed=0.0,
+        cancelled=False,
+        disposition=ledger_view.state,
+    )
+
+
 def _title_from(prompt: str, limit: int = 60) -> str:
     text = " ".join(str(prompt or "").split())
     if len(text) <= limit:
@@ -175,15 +212,22 @@ def _title_from(prompt: str, limit: int = 60) -> str:
 
 
 class TaskRegistry:
-    """Thread-safe. Mem-publish ke BUS: task.submitted / updated / finished."""
+    """Thread-safe. Mem-publish ke BUS: task.submitted / updated / finished.
+
+    ``ledger`` (optional, default None) enables durable lifecycle recording
+    (Fase 38 item 7).  It is attached ONLY at boot wiring, so fresh registries
+    in tests never touch the real ``agent.sqlite``.  All ledger writes are
+    best-effort: a durable-recording failure must never fail the live task.
+    """
 
     def __init__(self, bus=BUS, max_concurrent: int | None = None,
                  queue_max: int | None = None,
-                 poll_s: float = 0.02) -> None:
+                 poll_s: float = 0.02, ledger=None) -> None:
         self._lock = threading.RLock()
         self._tasks: dict[str, Task] = {}
         self._bus = bus
         self._poll_s = poll_s
+        self._ledger = ledger
         self._max_concurrent = int(
             max_concurrent
             if max_concurrent is not None
@@ -193,6 +237,10 @@ class TaskRegistry:
             else config.get("agent.queue_max", 20))
         self._sem = threading.BoundedSemaphore(max(1, self._max_concurrent))
         self._resource_locks: dict[str, threading.Lock] = {}
+        # Hydrated recovery records (Fase 38): kept SEPARATE from ``_tasks`` so
+        # they never take a slot, a resource lock, or a BUS event.  ``snapshot``
+        # folds them in for the deck; ``active()``/``running_count()`` ignore them.
+        self._recovery_views: list[TaskView] = []
 
     # ── introspeksi ──────────────────────────────────────────────────────
 
@@ -213,6 +261,59 @@ class TaskRegistry:
 
     def _publish(self, topic: str, task: Task) -> None:
         self._publish_view(topic, _view(task))
+
+    # ── durable lifecycle recording (Fase 38 item 7) ─────────────────────
+
+    def _ledger_write(self, method_name: str, *args, **kwargs) -> None:
+        """Best-effort ledger write. Never raises into the live task path.
+
+        ``method_name`` is resolved AFTER the guard so a ``None`` ledger is
+        never dereferenced eagerly by the caller.
+        """
+        ledger = self._ledger
+        if ledger is None:
+            return
+        try:
+            getattr(ledger, method_name)(*args, **kwargs)
+        except Exception as exc:                            # noqa: BLE001
+            _logger.warning("tasks.ledger_write_failed", error=str(exc)[:120])
+
+    def _ledger_incarnation(self) -> str:
+        try:
+            from jarvis.agent.task_ledger import process_incarnation
+            return process_incarnation()
+        except Exception:                                   # noqa: BLE001
+            return ""
+
+    def _ledger_create(self, task: Task) -> None:
+        self._ledger_write(
+            "create", task.id, title=task.title,
+            source=task.source, conversation=task.session_id,
+            incarnation=self._ledger_incarnation())
+
+    def _ledger_mark(self, task_id: str, state: str,
+                     step: str = "", incarnation: str = "") -> None:
+        self._ledger_write(
+            "mark", task_id, state=state, step=step,
+            incarnation=incarnation or self._ledger_incarnation())
+
+    def _ledger_finish(self, task_id: str, ok: bool, incarnation: str = "") -> None:
+        self._ledger_write(
+            "finish", task_id, ok=ok, result="",
+            incarnation=incarnation or self._ledger_incarnation())
+
+    def ledger_pending_tool(self, task_id: str, tool: str, *,
+                            read_only: bool | None) -> None:
+        """Record the pending tool NAME (never arguments) before execution.
+
+        Called by the agent loop right before ``registry.execute``.  Cleared
+        immediately after a known outcome, so a process death between the two
+        writes leaves a visible pending marker rather than a silently-replayed
+        or falsely-safe task.
+        """
+        self._ledger_write(
+            "mark_pending_tool", task_id, tool=tool,
+            read_only=read_only, incarnation=self._ledger_incarnation())
 
     def _resource_lock(self, name: str) -> threading.Lock:
         with self._lock:
@@ -251,6 +352,7 @@ class TaskRegistry:
                     else config.get("agent.max_iterations", 50)),
             )
             self._tasks[task.id] = task
+        self._ledger_create(task)
         self._publish("task.submitted", task)
         return task
 
@@ -270,6 +372,9 @@ class TaskRegistry:
                     value = TaskStatus(value)
                 setattr(task, key, value)
             view = _view(task)
+        if "status" in fields or "step" in fields:
+            self._ledger_mark(task_id, state=task.status.value,
+                              step=task.step)
         self._publish("task.updated", task)
         return view
 
@@ -282,6 +387,7 @@ class TaskRegistry:
             if task.started_at is None:
                 task.started_at = time.time()
             view = _view(task)
+        self._ledger_mark(task_id, state=TaskStatus.RUNNING.value)
         self._publish("task.updated", task)
         return view
 
@@ -337,6 +443,7 @@ class TaskRegistry:
             # trigger another registry call, and must never observe a mutable
             # Task after this lock has been released.
             view = _view(task)
+        self._ledger_finish(task_id, ok=task.status == TaskStatus.DONE)
         self._publish_view("task.finished", view)
         return view
 
@@ -377,6 +484,7 @@ class TaskRegistry:
             task._finish_pending = False
             task._finished_published = True
             view = _view(task)
+        self._ledger_finish(task_id, ok=status == TaskStatus.DONE)
         self._publish_view("task.finished", view)
         return view
 
@@ -411,7 +519,8 @@ class TaskRegistry:
     def snapshot(self) -> list[TaskView]:
         """Aman dipanggil dari thread mana pun saat task berjalan."""
         with self._lock:
-            return [_view(t) for t in self._tasks.values()]
+            return [_view(t) for t in self._tasks.values()] \
+                + list(self._recovery_views)
 
     def active(self) -> list[TaskView]:
         return [v for v in self.snapshot() if v.status in ACTIVE_STATES]
@@ -420,6 +529,31 @@ class TaskRegistry:
         with self._lock:
             return sum(1 for t in self._tasks.values()
                        if t.status == TaskStatus.RUNNING)
+
+    def hydrate_recovery(self, ledger) -> list[TaskView]:
+        """Hydrate stale prior-incarnation records as NON-ACTIVE views.
+
+        Fase 38: boot reconciliation is visual/log-first.  Recovery records are
+        never submitted (no slot, no resource lock, no BUS event, no
+        cancellation).  Their ``status`` is the recovery disposition itself;
+        ``active`` is always False and no terminal transition can target them.
+        """
+        try:
+            from jarvis.agent.task_ledger import (
+                RecoveryDisposition, process_incarnation)
+        except Exception:                                   # noqa: BLE001
+            _logger.warning("tasks.ledger_unavailable")
+            return []
+        recovered = ledger.reconcile(active_incarnation=process_incarnation())
+        views = [
+            _recovery_view(record) for record in recovered
+            if record.state in RecoveryDisposition.dispositions()
+        ]
+        with self._lock:
+            self._recovery_views = list(views)
+        if views:
+            _logger.info("tasks.hydrated_recovery", count=len(views))
+        return views
 
     def prune(self, keep_terminal: int = 50) -> int:
         """Buang task terminal terlama agar registry tidak tumbuh tanpa batas."""
@@ -439,6 +573,7 @@ class TaskRegistry:
             self._tasks.clear()
             self._resource_locks.clear()
             self._sem = threading.BoundedSemaphore(max(1, self._max_concurrent))
+            self._recovery_views = []
 
     # ── slot konkurensi + kunci sumber daya ──────────────────────────────
 

@@ -42,6 +42,12 @@ _STATUS_GLYPH = {
     "done": "✓", "failed": "✕", "cancelled": "—",
 }
 
+# Recovery dispositions (Fase 38) render as distinct non-active glyphs so the
+# deck never suggests a stale record is a live worker.
+_RECOVERY_GLYPH = {
+    "recoverable": "↻", "interrupted": "✂", "outcome_uncertain": "⚠",
+}
+
 
 class JsonlTail:
     """Pembaca ekor JSONL dengan cache offset byte.
@@ -232,10 +238,14 @@ class TaskDeckPanel(QWidget):
         self._list.blockSignals(True)
         self._list.clear()
         for view in ordered:
-            glyph = _STATUS_GLYPH.get(view.status.value, "·")
-            pct = f"{int(view.progress * 100):>3d}%"
-            title = view.title or view.prompt
-            line = f"{glyph} {view.id}  {pct}  {title[:48]}"
+            glyph = _RECOVERY_GLYPH.get(view.status.value, "·") \
+                if view.status.value in _RECOVERY_GLYPH \
+                else _STATUS_GLYPH.get(view.status.value, "·")
+            if getattr(view, "disposition", ""):
+                line = f"{glyph} {view.id}  {view.disposition}  {view.title[:48]}"
+            else:
+                pct = f"{int(view.progress * 100):>3d}%"
+                line = f"{glyph} {view.id}  {pct}  {view.title[:48]}"
             item = QListWidgetItem(line, self._list)
             item.setData(Qt.ItemDataRole.UserRole, view.id)
         self._list.blockSignals(False)
