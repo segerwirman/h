@@ -54,12 +54,48 @@ def available() -> bool:
     return _get_client() is not None
 
 
+def probe() -> tuple[bool, str]:
+    """Perform a bounded-by-caller provider request, not just client creation."""
+    client = _get_client()
+    if client is None:
+        return False, "credential tidak tersedia"
+    model = config.get("llm.text_model", "gemini-3.5-flash")
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents="Reply with OK only.",
+        )
+    except Exception as exc:                                # noqa: BLE001
+        _logger.warning("llm.probe_failed", error=type(exc).__name__)
+        return False, "provider tidak merespons"
+    if not (getattr(response, "text", "") or "").strip():
+        return False, "provider memberi respons kosong"
+    return True, "provider responded"
+
+
+def _agent_provider_generate(prompt: str, system: str | None = None) -> str:
+    """Fallback ke provider aktif agent bila kunci Gemini tidak tersedia.
+
+    Menjaga jalur legacy (ringkasan dokumen, router LLM) tetap hidup saat
+    Settings memakai provider non-Gemini; mengembalikan '' bila provider
+    aktif pun tidak siap — bukan klaim sukses.
+    """
+    try:
+        from jarvis.agent import llm_client
+        client = llm_client.client(None)
+        if client is None or not client.available():
+            return ""
+        return str(client.generate(prompt, system=system) or "").strip()
+    except Exception:                                        # noqa: BLE001
+        return ""
+
+
 def generate(prompt: str, system: str | None = None,
              model: str | None = None) -> str:
     """Blocking single-shot generation. Returns '' on failure."""
     client = _get_client()
     if client is None:
-        return ""
+        return _agent_provider_generate(prompt, system=system)
     model = model or config.get("llm.text_model", "gemini-3.5-flash")
     try:
         from google.genai import types

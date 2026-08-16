@@ -353,7 +353,10 @@ class WindowVoiceMixin:
     def _check_config(self) -> bool:
         try:
             from jarvis.core import llm
-            return bool(llm.api_key())
+            if not llm.api_key():
+                return False
+            ok, _detail = llm.probe()
+            return ok
         except Exception:
             return False
 
@@ -375,14 +378,33 @@ class WindowVoiceMixin:
 
     def _on_api_key(self, key: str) -> None:
         from jarvis.core import llm, secrets_store
+        key = str(key or "").strip()
+        if not key:
+            self.write_log("ERR: API key kosong — credential lama dipertahankan.")
+            return
         if not secrets_store.set("jarvis/llm/gemini", key):
             self.write_log("ERR: API key gagal disimpan terenkripsi.")
             return
         llm.reset_client()
-        self._ready = True
-        if self._api_sheet:
-            self._api_sheet.hide()
-        self.write_log("SYS: API key tersimpan — sistem online.")
+        self._ready = False
+
+        def verify_provider() -> None:
+            ok, detail = llm.probe()
+            if not ok:
+                self.write_log(
+                    f"ERR: API key tersimpan, provider belum online ({detail}).")
+                return
+            self._ready = True
+            if self._api_sheet:
+                self._api_sheet.hide()
+            self.write_log("SYS: API key tersimpan — provider terverifikasi, sistem online.")
+
+        import threading
+        threading.Thread(
+            target=verify_provider,
+            daemon=True,
+            name="gemini-key-probe",
+        ).start()
 
     def _on_file(self, path: str) -> None:
         self._current_file = path
@@ -396,12 +418,62 @@ class WindowVoiceMixin:
             self._handle_document_upload(path)
         elif ext in {'.png', '.jpg', '.jpeg', '.webp'}:
             self._handle_image_upload(path)
+        elif ext in {'.mp4', '.mkv', '.mov', '.avi', '.webm', '.flv', '.wmv', '.m4v', '.3gp'}:
+            self._handle_video_upload(path)
         else:
             if self.on_text_command:
                 msg = (f"[FILE_UPLOADED] path={path} | Briefly tell the user you "
                        f"can see the file and ask what to do with it.")
                 threading.Thread(target=self.on_text_command, args=(msg,),
                                  daemon=True).start()
+
+    def _handle_video_upload(self, path: str) -> None:
+        """Queue bounded video analysis without blocking Qt or voice lanes."""
+        self.orb.set_state(OrbState.THINKING)
+        import os
+        name = os.path.basename(path)
+        self._content_sig.emit(
+            f"Video: {name}",
+            "⏳ Analisis video diantrikan. Clip tidak dibuat otomatis.",
+        )
+
+        def _run():
+            try:
+                from jarvis.agent.media.video_analysis import start_video_analysis
+                task = start_video_analysis(
+                    path,
+                    loaded_paths=[path],
+                    source="ui",
+                    title=f"Analisis video {name}",
+                )
+                if task is None:
+                    self._content_sig.emit(
+                        f"Video: {name} — GAGAL",
+                        "Antrean analisis video penuh.",
+                    )
+                    self._speak_line("Maaf, antrean analisis video sedang penuh.")
+                    return
+                self._content_sig.emit(
+                    f"Video: {name}",
+                    f"Analisis berjalan sebagai {task.id}. Gunakan status tugas "
+                    "untuk melihat progres; rendering clip harus diminta eksplisit.",
+                )
+                self._speak_line(
+                    f"Video {name} sudah diantrikan untuk analisis. Clip belum dibuat."
+                )
+            except Exception as exc:  # noqa: BLE001
+                self.write_log(
+                    f"ERR: video upload — {type(exc).__name__}"
+                )
+                self._content_sig.emit(
+                    f"Video: {name} — GAGAL",
+                    "Analisis video tidak dapat dimulai.",
+                )
+                self._speak_line("Maaf, analisis video tidak dapat dimulai.")
+            finally:
+                self._restore_orb()
+
+        threading.Thread(target=_run, daemon=True, name="video-upload").start()
 
     def _handle_document_upload(self, path: str) -> None:
         """Upload → Extracting → Ready, with explicit status and a spoken
@@ -473,26 +545,29 @@ class WindowVoiceMixin:
 
         def _run():
             try:
-                from jarvis.core import llm
-                from google import genai
-                from google.genai import types
-                client_key = llm.api_key()
-                if not client_key:
-                    self._speak_line("API key belum dikonfigurasi untuk melihat gambar.")
+                from jarvis.agent import llm_client
+                client = llm_client.vision_client()
+                if client is None or not client.available():
+                    self._speak_line(
+                        "Provider vision belum dikonfigurasi — buka "
+                        "Settings → provider untuk mengaturnya.")
                     return
-                client = genai.Client(api_key=client_key)
                 with open(path, "rb") as f:
                     image_bytes = f.read()
                 ext = os.path.splitext(path)[1].lower()
-                mime = f"image/{ext[1:]}" if ext != '.jpg' else "image/jpeg"
-                response = client.models.generate_content(
-                    model='gemini-3.5-flash',
-                    contents=[
-                        types.Part.from_bytes(data=image_bytes, mime_type=mime),
-                        "Deskripsikan gambar ini dengan singkat dalam Bahasa Indonesia (maksimal 2 kalimat)."
-                    ]
-                )
-                desc = response.text or "Gambar telah dimuat."
+                if ext in (".jpg", ".jpeg"):
+                    mime = "image/jpeg"
+                elif ext == ".png":
+                    mime = "image/png"
+                elif ext == ".webp":
+                    mime = "image/webp"
+                else:
+                    mime = f"image/{ext[1:]}"
+                description = client.vision(
+                    image_bytes, mime,
+                    "Deskripsikan gambar ini dengan singkat dalam Bahasa "
+                    "Indonesia (maksimal 2 kalimat).")
+                desc = str(description or "").strip() or "Gambar telah dimuat."
                 self._speak_line(desc)
             except Exception as e:
                 self.write_log(f"ERR: image upload — {str(e)[:80]}")
