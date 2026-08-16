@@ -63,7 +63,7 @@ def _phash(image) -> int:
     dependency) — sufficient to detect "meaningfully different scene"
     without pulling in a dedicated perceptual-hash library."""
     small = image.convert("L").resize((8, 8))
-    pixels = list(small.getdata())
+    pixels = list(small.get_flattened_data())
     avg = sum(pixels) / len(pixels)
     bits = 0
     for i, p in enumerate(pixels):
