@@ -536,9 +536,13 @@ def _process_audio(path: Path, action: str, params: dict, speak=None) -> str:
                 "ogg": "audio/ogg", "m4a": "audio/mp4",
                 "aac": "audio/aac", "flac": "audio/flac",
             }.get(path.suffix.lstrip(".").lower(), "audio/mpeg")
+            # genai 2.x: contents wajib Part (from_text/from_bytes), bukan
+            # list [str, dict] — bentuk lama ditolak validasi pydantic.
+            from google.genai import types
             response = model.generate_content([
-                "Transcribe all speech in this audio file accurately.",
-                {"mime_type": mime, "data": content}
+                types.Part.from_text(
+                    text="Transcribe all speech in this audio file accurately."),
+                types.Part.from_bytes(data=content, mime_type=mime),
             ])
             result = response.text.strip()
             if params.get("save", True):
