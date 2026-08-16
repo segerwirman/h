@@ -2317,7 +2317,12 @@ tab kerjanya adalah aksi yang harus diminta, bukan diambil diam-diam.
 4. Bukti hidup: satu sesi nyata dengan `voice.barge_in` tercatat dari ucapan
    Takeda, bukan dari pytest.
 
-### Hasil Fase 22 — SEBAGIAN 2026-08-05
+### Hasil Fase 22 — SELESAI 2026-08-15
+
+**Bukti:** focused-tested, runtime-wired, live-proven. Audit lintas-fase
+2026-08-15: `logs/jarvis.log` memuat **31 trigger** `barge_in.triggered`
+produksi; sesi 2026-08-11 mengikat tiga trigger ke pipeline SPEAKING, event
+UI interupsi, dan transisi LISTENING.
 
 `tests/test_log_isolation_and_barge_diag.py` (10 test) dibuktikan merah dulu.
 
@@ -4195,6 +4200,8 @@ gate.
 * **Fase 22 tetap SEBAGIAN.** Test dan diagnostik lulus; sesi live membuktikan
   mic meter/calibration serta satu blok saat SPEAKING, tetapi `triggers=0`.
   Tidak ada barge-in ucapan nyata yang dapat diklaim.
+  *(Kemudian dikoreksi menjadi **SELESAI** pada audit lintas-fase 2026-08-15:
+  31 trigger `barge_in.triggered` produksi terikat ke pipeline SPEAKING.)*
 * **Fase 35 tetap SEBAGIAN.** Test `quiet`, rotasi log, dan failure visibility
   lulus. Ruff terfokus pada komponen fase lulus, tetapi `ruff` masih menemukan
   satu debt `S110` yang terdaftar di `jarvis/main.py:76`; root belum green dan
@@ -4918,7 +4925,7 @@ sebelumnya (`fb64997 fix(voice): repair role before transport guard`); lima
 commit di fase ini menutup keluhan 2–4 plus satu cacat EventBus yang ditemukan
 di tengah jalan.
 
-### Hasil Fase 43 — SELESAI 2026-08-15
+### Hasil Fase 43 — SEBAGIAN 2026-08-15
 
 **Bukti:** focused-tested + runtime-wired untuk keempat keluhan.
 
@@ -5367,7 +5374,7 @@ perangkat. Uji audio/Gemini Live nyata tetap memerlukan otorisasi terpisah.
 | 19 | Barge-in adaptif tahan noise | SELESAI | — |
 | 20 | `close_app` menyebut apa yang benar-benar ditutup | SELESAI | — |
 | 21 | Jarvis melihat & mengendalikan Chrome milik Takeda | SELESAI | — |
-| 22 | Interupsi suara terbukti hidup | SEBAGIAN | — |
+| 22 | Interupsi suara terbukti hidup | SELESAI | focused-tested, runtime-wired, live-proven |
 | 23 | Rekomendasi membuka SUMBERNYA, bukan transkrip | SELESAI | — |
 | 24 | Ukur dulu, jangan tebak | SELESAI | — |
 | 25 | Memori perintah TERVERIFIKASI | SELESAI | focused-tested |
@@ -5388,7 +5395,7 @@ perangkat. Uji audio/Gemini Live nyata tetap memerlukan otorisasi terpisah.
 | 40 | Pecah `jarvis/ui/window.py` (S-33) | SELESAI DI KODE | — |
 | 41 | Tabel status `live-proven` | SELESAI | — |
 | 42 | Ukur rentang yang masih gelap | — | — |
-| 43 | Empat keluhan runtime: satu jalur ucapan, satu owner, konteks multi-task, ledger recovery | SELESAI | focused-tested, runtime-wired |
+| 43 | Empat keluhan runtime: satu jalur ucapan, satu owner, konteks multi-task, ledger recovery | SEBAGIAN | focused-tested, runtime-wired |
 | 44 | Analisis video bounded dan image-reference yang jujur — 2026-08-16 | SEBAGIAN | source-present, focused-tested, runtime-wired |
 | 45 | Kebenaran sumber interupsi dan guard playback — 2026-08-16 | SELESAI DI KODE | source-present, focused-tested, runtime-wired |
 | 46 | Satu pemilik input, heartbeat, dan recovery bounded | — | — |
