@@ -37,6 +37,46 @@ def _err(code: str, msg: str) -> DocumentError:
     return DocumentError(code, msg)
 
 
+# ── PDF scan (gambar) — render halaman & transkripsi via vision provider ──────
+_SCAN_TEXT_MIN_CHARS = 40        # teks ekstrak di bawah ini → anggap scan
+_SCAN_MAX_VISION_PAGES = 30      # batas halaman dirender ke vision (bounded)
+_OCR_PROMPT = (
+    "Transkripsi SEMUA teks yang terlihat pada gambar halaman dokumen ini, "
+    "verbatim dan dalam bahasa aslinya. Pertahankan angka, huruf, dan susunan "
+    "baris. Keluarkan HANYA teks hasil transkripsi, tanpa komentar, tanpa "
+    "pembuka, tanpa penomoran."
+)
+
+
+def _render_page_image(page, dpi: int = 150) -> bytes:
+    """Render satu halaman PDF menjadi PNG (untuk PDF scan tanpa text layer)."""
+    try:
+        pix = page.get_pixmap(dpi=dpi)
+        return pix.tobytes("png")
+    except Exception:  # noqa: BLE001 - gagal render = omission, bukan crash
+        return b""
+
+
+def _vision_transcribe(image_bytes: bytes, page_no: int) -> str:
+    """Transkripsi satu halaman hasil render (scan) via vision provider aktif.
+
+    Mengembalikan ``""`` bila provider vision tidak tersedia/gagal — pemanggil
+    melaporkan omission yang jujur, bukan klaim sukses.
+    """
+    try:
+        from jarvis.agent import auxiliary
+        client = auxiliary.client_for("vision")
+        if client is None or not client.available():
+            return ""
+        answer = client.vision(
+            image_bytes, "image/png",
+            _OCR_PROMPT + f"\nHalaman dokumen: {int(page_no)}.",
+        )
+        return str(answer or "").strip()
+    except Exception:  # noqa: BLE001 - kegagalan vision = omission, bukan crash
+        return ""
+
+
 def resolve_type(path: str | Path) -> str:
     """Resolve document type from extension + magic bytes. Raises DocumentError."""
     p = Path(path)
@@ -114,8 +154,19 @@ def extract_pdf(path: str | Path) -> str:
         doc.close()
         raise _err("encrypted", "PDF ini terenkripsi/berpassword.")
     pages = []
+    vision_pages = 0
     for i, page in enumerate(doc, start=1):
-        pages.append(f"[hal {i}]\n" + (page.get_text() or ""))
+        text = (page.get_text() or "").strip()
+        if len(text) < _SCAN_TEXT_MIN_CHARS \
+                and vision_pages < _SCAN_MAX_VISION_PAGES:
+            rendered = _render_page_image(page)
+            if rendered:
+                vision_pages += 1
+                ocr = _vision_transcribe(rendered, i)
+                if ocr:
+                    text = ocr
+        if text:
+            pages.append(f"[hal {i}]\n" + text)
     doc.close()
     return _normalize("\n".join(pages))
 

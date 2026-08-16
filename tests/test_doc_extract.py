@@ -204,3 +204,67 @@ def test_read_document_ex_wrapper(tmp_path):
     text, err = read_document_ex(str(bad))
     assert text == "" and err
     assert read_document(str(bad)) == ""
+
+
+# ── PDF scan (hanya gambar / tanpa text layer) ────────────────────────────────
+
+def make_scanned_pdf(path: Path, *, dpi: int = 120) -> Path:
+    """PDF berisi hanya gambar teks — simulasi hasil scan tanpa text layer."""
+    fitz = pytest.importorskip("fitz")
+    tmp = path.parent / "scan_source.png"
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((72, 120), "FAKTUR NOMOR 2026-0817", fontsize=20)
+    page.insert_text((72, 164), "TOTAL 150000 RUPIAH", fontsize=16)
+    pix = page.get_pixmap(dpi=dpi)
+    pix.save(str(tmp))
+    doc.close()
+    scanned = fitz.open()
+    sp = scanned.new_page(width=595, height=842)
+    sp.insert_image(fitz.Rect(0, 0, 595, 842), filename=str(tmp))
+    scanned.save(str(path))
+    scanned.close()
+    tmp.unlink(missing_ok=True)
+    return path
+
+
+def test_scanned_pdf_uses_vision_when_text_layer_empty(tmp_path, monkeypatch):
+    p = make_scanned_pdf(tmp_path / "scan.pdf")
+    from jarvis.nlp import doc_extract
+    calls: list[int] = []
+
+    def fake_transcribe(image_bytes: bytes, page_no: int) -> str:
+        calls.append(page_no)
+        return "FAKTUR NOMOR 2026-0817 TOTAL 150000 RUPIAH"
+
+    monkeypatch.setattr(doc_extract, "_vision_transcribe", fake_transcribe)
+    text = extract(p)
+    assert "FAKTUR NOMOR 2026-0817" in text
+    assert calls == [1]
+
+
+def test_scanned_pdf_without_vision_reports_empty_content(tmp_path, monkeypatch):
+    p = make_scanned_pdf(tmp_path / "scan2.pdf")
+    from jarvis.nlp import doc_extract
+    monkeypatch.setattr(doc_extract, "_vision_transcribe",
+                        lambda image_bytes, page_no: "")
+    with pytest.raises(DocumentError) as ei:
+        extract(p)
+    assert ei.value.code == "empty_content"
+
+
+def test_text_pdf_does_not_call_vision(tmp_path, monkeypatch):
+    import fitz
+    p = tmp_path / "text.pdf"
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 100), "KATA KUNCI PANJANG UNTUK EKSTRAKSI LANGSUNG")
+    doc.save(str(p))
+    doc.close()
+    from jarvis.nlp import doc_extract
+    calls: list[int] = []
+    monkeypatch.setattr(doc_extract, "_vision_transcribe",
+                        lambda image_bytes, page_no: calls.append(page_no) or "")
+    text = extract(p)
+    assert "KATA KUNCI" in text
+    assert calls == []
