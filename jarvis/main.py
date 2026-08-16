@@ -73,19 +73,23 @@ def _publish_voice_status(ok: bool, detail: str) -> None:
     try:
         BUS.publish("boot.check", subsystem=_VOICE_SUBSYSTEM, ok=ok,
                     degraded=False, detail=detail)
-    except Exception:                                        # noqa: BLE001
+    except Exception:                                        # noqa: BLE001, S110
         pass                                                 # visibilitas tidak boleh mematikan boot
 
 
 def _install_voice_seams(legacy, logger) -> None:
     """Pasang seluruh seam suara pada modul legacy (main.py tetap FROZEN)."""
     from jarvis.core import llm
-    from jarvis.integrations import (voice_document,
-                                     voice_l1,
-                                     voice_live_transport,
-                                     voice_native_tools,
-                                     voice_speech,
-                                     whatsapp_voice)
+    from jarvis.integrations import (
+        voice_audio_devices,
+        voice_document,
+        voice_l1,
+        voice_live_transport,
+        voice_native_tools,
+        voice_speech,
+        voice_media,
+        whatsapp_voice,
+    )
     # Adapter credential di luar file FROZEN: suara tetap identik,
     # hanya sumber API key yang berpindah dari plaintext ke store.
     legacy._get_api_key = lambda: llm.api_key() or ""
@@ -94,6 +98,7 @@ def _install_voice_seams(legacy, logger) -> None:
         or legacy.LIVE_MODEL
     )
     voice_native_tools.sync_google_declarations(legacy)
+    voice_audio_devices.install(legacy)
     # Perbaikan 'kosakata terpotong' saat suara: drain-aware playback
     # dipasang via monkeypatch (file main.py FROZEN tidak diubah).
     try:
@@ -107,6 +112,7 @@ def _install_voice_seams(legacy, logger) -> None:
     whatsapp_voice.install(legacy)
     # Native/Google/clarify/safety memakai satu wrapper dispatch.
     voice_native_tools.install(legacy)
+    voice_media.install(legacy)
     # Resolusi path FunctionCall + penjelasan dokumen/video lewat coordinator.
     voice_document.install(legacy)
 
@@ -233,6 +239,7 @@ def run(no_voice: bool = False, *, ui_factory=None) -> int:
 
     # Wake Trigger (Module 10) — idempotent: an active/speaking session is
     # never re-woken, and the acknowledgment goes through MainWindow._speak_line.
+    wake_arbiter = None
     try:
         from jarvis.core.wake import WakeTrigger
 
@@ -244,6 +251,15 @@ def run(no_voice: bool = False, *, ui_factory=None) -> int:
 
         wake = WakeTrigger(session_active_fn=None if no_voice else _session_busy)
         wake.start()
+        if not no_voice:
+            try:
+                from jarvis.integrations import voice_wake_arbitration
+                wake_arbiter = voice_wake_arbitration.install(wake)
+            except Exception as exc:                         # noqa: BLE001
+                logger.warning(
+                    "wake.audio_arbiter_unavailable",
+                    error=type(exc).__name__,
+                )
 
         def on_wake_triggered(data):
             logger.info("wake.triggered", detail="Double clap detected")
@@ -356,6 +372,8 @@ def run(no_voice: bool = False, *, ui_factory=None) -> int:
         supervisor.add_stop("vision", vision.stop)
     if social is not None:
         supervisor.add_stop("social", social.stop)
+    if wake_arbiter is not None:
+        supervisor.add_stop("wake_arbiter", wake_arbiter.close)
     if wake is not None:
         supervisor.add_stop("wake", wake.stop)
     if relay is not None:

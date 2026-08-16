@@ -33,9 +33,9 @@ class VoiceInterruptEvent:
         )
 
 
-def _number(key: str, default: float) -> float:
+def _positive_float(value: float, default: float) -> float:
     try:
-        return max(0.0, float(config.get(key, default)))
+        return max(0.0, float(value))
     except (TypeError, ValueError):
         return default
 
@@ -52,8 +52,9 @@ def build_microphone_event(
     if not voice_playback_level.is_installed():
         return None, "voice_interrupt_playback_unmeasured"
     if not playback.active:
-        if playback.drained_at and now - playback.drained_at <= _number(
-            "voice.barge_in.post_drain_grace_s", _POST_DRAIN_GRACE_S
+        if playback.drained_at and now - playback.drained_at <= _positive_float(
+            config.get("voice.barge_in.post_drain_grace_s", _POST_DRAIN_GRACE_S),
+            _POST_DRAIN_GRACE_S,
         ):
             return None, "voice_interrupt_post_drain"
         return None, "voice_interrupt_playback_inactive"
@@ -86,8 +87,9 @@ def validate_event(
     stamp = time.monotonic() if now is None else float(now)
     if event.source != "microphone":
         return "voice_interrupt_source_invalid"
-    if stamp < event.detected_at or stamp - event.detected_at > _number(
-        "voice.barge_in.event_max_age_s", _CANDIDATE_MAX_AGE_S
+    if stamp < event.detected_at or stamp - event.detected_at > _positive_float(
+        config.get("voice.barge_in.event_max_age_s", _CANDIDATE_MAX_AGE_S),
+        _CANDIDATE_MAX_AGE_S,
     ):
         return "voice_interrupt_event_stale"
     capture_generation = int(
@@ -105,8 +107,9 @@ def validate_event(
     if not playback.active:
         if not playback.drained_at or playback.drained_at < event.detected_at:
             return "voice_interrupt_playback_aborted"
-        if stamp - playback.drained_at > _number(
-            "voice.barge_in.event_max_age_s", _CANDIDATE_MAX_AGE_S
+        if stamp - playback.drained_at > _positive_float(
+            config.get("voice.barge_in.event_max_age_s", _CANDIDATE_MAX_AGE_S),
+            _CANDIDATE_MAX_AGE_S,
         ):
             return "voice_interrupt_event_stale"
     return "voice_interrupt_accepted"

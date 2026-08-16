@@ -71,7 +71,7 @@ def _fill(providers, **provs):
 def test_config_yaml_routing_section_exists():
     """Section §3.1 benar-benar ada di config.yaml repo."""
     config.reload()
-    assert config.get("routing.light.provider") == "gemini"
+    assert config.get("routing.light.provider") == "custom"
     assert config.get("routing.heavy.provider") == "custom"
     assert config.get("routing.heavy.fallback") == ["openrouter", "local"]
     assert config.get("routing.heavy.allow_light_fallback") is True

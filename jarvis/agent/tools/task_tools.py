@@ -69,7 +69,7 @@ class TaskStart(Tool):
                     task=str(getattr(metadata, "title", "") or text),
                     source="voice",
                 )
-            except Exception:                                # noqa: BLE001
+            except Exception:                                # noqa: BLE001, S110
                 pass
 
         started = dispatch.dispatch_task(
