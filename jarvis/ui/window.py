@@ -343,6 +343,8 @@ class MainWindow(
         BUS.subscribe("intent", self._on_intent_event, ui=True)
         BUS.subscribe("confirm", self._on_confirm, ui=True)
         BUS.subscribe("cancel", self._on_cancel, ui=True)
+        from jarvis.integrations.vision_supervisor import start_vision_supervisor
+        start_vision_supervisor()
         BUS.subscribe("sentiment.updated", self._on_sentiment, ui=True)
         BUS.subscribe("remote_setup.pending", self._on_remote_setup_pending, ui=True)
         BUS.subscribe("remote_proposal.pending", self._on_remote_proposal_pending, ui=True)

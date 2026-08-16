@@ -958,3 +958,20 @@ def send_from_anywhere(text: str) -> bool:
     except Exception as e:                                   # noqa: BLE001
         _logger.warning("telegram.notify_failed", error=type(e).__name__)
         return False
+
+
+def send_photo_from_anywhere(path: str, caption: str = "") -> bool:
+    """Kirim foto ke chat pertama di whitelist (mis. supervisor vision)."""
+    svc = TelegramService.get()
+    if not svc.running:
+        return False
+    ids = _allowed_ids()
+    chat = ids[0] if ids else 0
+    if not chat:
+        return False
+    try:
+        svc.send_photo(chat, path, caption)
+        return True
+    except Exception as e:                                   # noqa: BLE001
+        _logger.warning("telegram.photo_notify_failed", error=type(e).__name__)
+        return False
