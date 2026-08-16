@@ -33,6 +33,34 @@ class MicMeterController:
         self._win = win
         self._stop_event = stop_event
 
+    def _publish_interrupt(self, verdict, *, detected_at: float) -> None:
+        """Queue a typed microphone event; never execute ESC from PortAudio."""
+        from jarvis.integrations import voice_interrupt
+
+        event, reason = voice_interrupt.build_microphone_event(
+            self._win, verdict, detected_at=detected_at
+        )
+        fields = {
+            "reason": reason,
+            "rms": round(float(verdict.rms), 3),
+            "threshold": round(float(verdict.threshold), 3),
+            "noise_floor": round(float(verdict.noise_floor), 4),
+        }
+        if event is None:
+            _logger.info("voice.barge_in_suppressed", **fields)
+            return
+        _logger.info(
+            "voice.barge_in_candidate",
+            playback_generation=event.playback_generation,
+            playback_epoch=event.playback_epoch,
+            capture_generation=event.capture_generation,
+            **fields,
+        )
+        signal = getattr(self._win, "_voice_interrupt_sig", None)
+        emit = getattr(signal, "emit", None)
+        if callable(emit):
+            emit(event)
+
     def run(self) -> None:
         # §19 — keputusan interupsi pindah ke jarvis/core/barge_in.py:
         # noise floor adaptif, pembeda suara-vs-transien, dan echo guard yang
@@ -91,11 +119,7 @@ class MicMeterController:
                     pass
 
                 if verdict.interrupt:
-                    _logger.info("voice.barge_in", rms=round(verdict.rms, 3),
-                                 threshold=round(verdict.threshold, 3),
-                                 noise_floor=round(verdict.noise_floor, 4))
-                    self._win.write_log("SYS: Interupsi suara terdeteksi.")
-                    self._win._do_interrupt()
+                    self._publish_interrupt(verdict, detected_at=now)
 
             with sd.InputStream(callback=cb, channels=1, samplerate=16000,
                                 blocksize=1024):

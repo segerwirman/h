@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 import threading
 import time
+from dataclasses import dataclass
 
 from jarvis.core import log
 
@@ -27,9 +28,26 @@ _lock = threading.Lock()
 _level = 0.0
 _updated_at = 0.0
 _installed = False
+_generation = 0
+_epoch = 0
+_active = False
+_started_at = 0.0
+_drained_at = 0.0
 
 # Setelah sekian detik tanpa potongan audio baru, anggap Jarvis sudah diam.
 DECAY_S = 0.45
+
+
+@dataclass(frozen=True)
+class PlaybackSnapshot:
+    """Safe local playback identity for microphone-originated decisions."""
+
+    generation: int
+    epoch: int
+    active: bool
+    started_at: float
+    drained_at: float
+    level: float
 
 
 def note_chunk(chunk: bytes) -> None:
@@ -77,11 +95,80 @@ def current_level() -> float:
     return max(0.0, min(1.0, level * (1.0 - idle / DECAY_S)))
 
 
+def mark_started(*, epoch: int | None = None, now: float | None = None) -> int:
+    """Open one playback generation when PCM reaches the local output owner."""
+    global _generation, _epoch, _active, _started_at, _drained_at
+    stamp = time.monotonic() if now is None else float(now)
+    owner = int(epoch or 0)
+    with _lock:
+        if not _active or (owner and owner != _epoch):
+            _generation += 1
+            _started_at = stamp
+        _epoch = owner
+        _active = True
+        _drained_at = 0.0
+        return _generation
+
+
+def mark_drained(*, epoch: int | None = None, now: float | None = None) -> bool:
+    """Close only the matching authoritative playback generation."""
+    global _active, _drained_at
+    stamp = time.monotonic() if now is None else float(now)
+    owner = int(epoch or 0)
+    with _lock:
+        if not _active:
+            return False
+        if owner and _epoch and owner != _epoch:
+            return False
+        _active = False
+        _drained_at = stamp
+        return True
+
+
+def mark_aborted(*, epoch: int | None = None) -> bool:
+    """Close a generation without claiming an authoritative audible drain."""
+    global _active, _drained_at
+    owner = int(epoch or 0)
+    with _lock:
+        if not _active:
+            return False
+        if owner and _epoch and owner != _epoch:
+            return False
+        _active = False
+        _drained_at = 0.0
+        return True
+
+
+def snapshot(*, now: float | None = None) -> PlaybackSnapshot:
+    """Return one coherent playback snapshot without exposing queued PCM."""
+    _ = now
+    with _lock:
+        generation = _generation
+        epoch = _epoch
+        active = _active
+        started_at = _started_at
+        drained_at = _drained_at
+    return PlaybackSnapshot(
+        generation=generation,
+        epoch=epoch,
+        active=active,
+        started_at=started_at,
+        drained_at=drained_at,
+        level=current_level(),
+    )
+
+
 def reset() -> None:
-    global _level, _updated_at
+    global _level, _updated_at, _generation, _epoch
+    global _active, _started_at, _drained_at
     with _lock:
         _level = 0.0
         _updated_at = 0.0
+        _generation = 0
+        _epoch = 0
+        _active = False
+        _started_at = 0.0
+        _drained_at = 0.0
 
 
 def compose(original):
@@ -139,5 +226,8 @@ def install(legacy_module) -> None:
     voice_playback_fix.install(legacy_module)
 
 
-__all__ = ["DECAY_S", "compose", "current_level", "install", "is_installed",
-           "mark_installed", "mark_uninstalled", "note_chunk", "reset"]
+__all__ = [
+    "DECAY_S", "PlaybackSnapshot", "compose", "current_level", "install",
+    "is_installed", "mark_aborted", "mark_drained", "mark_installed",
+    "mark_started", "mark_uninstalled", "note_chunk", "reset", "snapshot",
+]

@@ -124,35 +124,49 @@ def test_diagnostics_never_raise():
 
 # ── 3. rantai interupsi terkunci ──────────────────────────────────────────
 
-def test_the_interrupt_chain_is_wired_end_to_end():
-    """ESC dan barge-in memakai jalur yang SAMA.
+def test_microphone_interrupt_is_separate_from_escape_panel_semantics(monkeypatch):
+    """Barge-in mikrofon tidak boleh berubah menjadi ESC saat UI sudah diam.
 
-    Kalau rantai ini putus, barge-in sepeka apa pun tidak akan menolong —
-    itulah pembeda yang menentukan lapisan mana yang harus diperbaiki.
+    Callback audio diproses secara queued. Saat event sampai, state UI dapat
+    sudah LISTENING; event suara tetap memotong turn yang cocok dan tidak
+    menutup panel biasa.
     """
+    from types import SimpleNamespace
+
+    from jarvis.integrations import voice_interrupt
     from jarvis.ui import window
 
     called: list[str] = []
+    closed: list[str] = []
+    monkeypatch.setattr(
+        voice_interrupt, "validate_event",
+        lambda _win, _event: "voice_interrupt_accepted",
+    )
 
     class _Stage:
-        current = None
+        current = "browser"
 
     class _Fake:
-        # ESC hanya memotong ucapan saat Jarvis MEMANG sedang bicara; di luar
-        # itu ia menutup panel. Fake harus mencerminkan bentuk aslinya.
-        _legacy_state = "SPEAKING"
+        _legacy_state = "LISTENING"
+        _last_voice_interrupt_token = ""
         stage = _Stage()
-        on_interrupt = None
+        on_interrupt = staticmethod(lambda: called.append("interrupt"))
+
+        def _close_stage_panels(self):
+            closed.append("panel")
 
         def write_log(self, _text):
-            pass
+            return None
 
-    fake = _Fake()
-    fake.on_interrupt = lambda: called.append("interrupt")
-
-    window.MainWindow._do_interrupt(fake)
+    event = SimpleNamespace(
+        token="microphone:1:2:3:4", playback_generation=2,
+        playback_epoch=3, capture_generation=1,
+        rms=0.2, threshold=0.1, noise_floor=0.01,
+    )
+    window.MainWindow._do_voice_interrupt(_Fake(), event)
 
     assert called == ["interrupt"]
+    assert closed == []
 
 
 def test_esc_closes_a_panel_only_when_jarvis_is_silent():

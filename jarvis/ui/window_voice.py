@@ -286,6 +286,42 @@ class WindowVoiceMixin:
     def _toggle_fullscreen(self) -> None:
         self.showNormal() if self.isFullScreen() else self.showFullScreen()
 
+    def _do_voice_interrupt(self, event) -> None:
+        """Handle microphone barge-in without inheriting ESC panel semantics."""
+        from jarvis.integrations import voice_interrupt
+
+        token = str(getattr(event, "token", "") or "")
+        if token and token == getattr(self, "_last_voice_interrupt_token", ""):
+            return
+        reason = voice_interrupt.validate_event(self, event)
+        if reason != "voice_interrupt_accepted":
+            _logger.info(
+                "voice.barge_in_rejected",
+                reason=reason,
+                playback_generation=getattr(
+                    event, "playback_generation", 0
+                ),
+                playback_epoch=getattr(event, "playback_epoch", 0),
+                capture_generation=getattr(
+                    event, "capture_generation", 0
+                ),
+            )
+            return
+        self._last_voice_interrupt_token = token
+        _logger.info(
+            "voice.barge_in_accepted",
+            reason=reason,
+            playback_generation=event.playback_generation,
+            playback_epoch=event.playback_epoch,
+            capture_generation=event.capture_generation,
+            rms=round(event.rms, 3),
+            threshold=round(event.threshold, 3),
+            noise_floor=round(event.noise_floor, 4),
+        )
+        self.write_log("SYS: Interupsi suara terdeteksi.")
+        if self.on_interrupt:
+            self.on_interrupt()
+
     def _do_interrupt(self) -> None:
         """ESC. Interupsi suara adalah do-not-regress dan SELALU menang.
 

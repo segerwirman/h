@@ -5112,9 +5112,236 @@ agar `voice_document` berada di urutan install yang benar (terakhir).
 
 ---
 
-## Lampiran — Status evidence fase (dibangkitkan)
+## Fase 44 — Analisis video bounded dan image-reference yang jujur — 2026-08-16
 
-<!-- Dibangkitkan dengan: python scripts/evidence_status.py -->
+Implementasi source untuk media upload sudah dipasang pada seam editable tanpa
+mengubah root `main.py` FROZEN:
+
+- `video_analyze` mengantrikan pipeline background melalui `TaskRegistry` dengan
+  resource `media`, batas ukuran/durasi/audio/frame/report, cancellation checks,
+  progress monoton, transcript audio bounded, sampling frame, observasi vision
+  JSON defensif, ranking kandidat bertimestamp, dan report bounded.
+- Upload video pada `window_voice.py` hanya mengantrikan analisis. Tidak ada
+  pembuatan MP4 otomatis. `video_clip` adalah aksi eksplisit dan memvalidasi
+  interval, format, durasi aktual melalui probe, serta provenance task/report
+  bila pasangan provenance dikirim.
+- Identity loaded exact/basename tunggal dipakai pada jalur voice; basename
+  ambigu atau tidak cocok ditolak tanpa disk scan. Direct agent path dibatasi
+  ke workspace/allowed paths. Audit `_loaded_paths`, source, dan report path
+  tidak memasukkan raw path ke telemetry.
+- Capability provider `image` tetap berbeda dari `image_reference`/`image_edit`.
+  Provider yang tidak mendeklarasikan input image ditolak sebelum adapter call dan
+  menawarkan text-only generation. Adapter reference nyata belum diaktifkan;
+  seam `NotImplementedError` masih fail-closed.
+
+### Hasil Fase 44 — SEBAGIAN 2026-08-16
+
+**Bukti:** `source-present`, `focused-tested`, dan `runtime-wired`.
+
+Focused pytest (82 passed dalam 6.54s pada `tests/test_agent_tasks.py`,
+`tests/test_video_analysis.py`, `tests/test_video_analysis_tool.py`,
+`tests/test_image_reference.py`, `tests/test_voice_media_seam.py`,
+`tests/test_image_gen_service.py`, `tests/test_image_gen_path.py`,
+`tests/test_voice_seam_characterization.py` dengan `--basetemp` di luar repo),
+Ruff lint (seluruh checks lolos), `git diff --check` (bersih, exit 0), dan
+`scripts/verify_frozen.py` (OK, 10 file utuh baseline 094b696) telah berhasil
+dijalankan. Uji mencakup:
+- TaskRegistry lifecycle: cancellation kooperatif (RUNNING dan QUEUED), release
+  slot pada crash/cancel, monotonic progress (clamp), dan **exactly-once
+  terminal finish** (finish kedua tidak menimpa result/error; race 2 finisher
+  menghasilkan satu pemenang dan tepat satu event `task.finished`).
+- Video analysis bounded pipeline: limit waktu/frame/kandidat, resolusi identity
+  loaded vs direct workspace path, reject basename ambigu, chunk audio dan frame
+  deterministik, deduplikasi kandidat, parsing defensif JSON observasi, laporan
+  berbatas ukuran di `data/media_reports`, integrasi tool non-blocking, serta
+  **provenance task/report** (task DONE menyimpan nama report di result dan
+  `VideoClip` memvalidasi kesesuaian report + fingerprint sebelum render).
+- Explicit-only clip rendering: validasi interval, toleransi durasi hasil probe,
+  dan reject kegagalan ffmpeg/ffprobe.
+- Image generation jujur: pemisahan capability `image` vs `image_reference`/
+  `image_edit`, penolakan provider tanpa deklarasi eksplisit dengan saran
+  text-only, validasi path referensi terunggah/workspace, dan adapter reference
+  tetap fail-closed (`NotImplementedError`).
+- Redaksi privasi: `_loaded_paths`, private path, dan task args teredaksi dari
+  telemetry dan hasil publik.
+
+Tidak ada network, audio device, camera, provider live, atau Gemini Live
+session dijalankan pada sesi ini; label `live-proven` tetap **tidak diklaim**
+dan fase berstatus **SEBAGIAN** hingga sesi runtime live yang diotorisasi
+membuktikannya.
+
+### Sisa fase 44
+
+- Jalankan sesi runtime live yang diotorisasi secara terpisah untuk membuktikan
+  alur upload UI → background task → kandidat terdeteksi → render clip eksplisit.
+- Implementasikan adapter reference provider (Gemini / OpenAI-compat / OAuth)
+  hanya setelah payload dan model yang benar-benar didukung diverifikasi.
+
+---
+
+## Audit ulang lintas-fase — 2026-08-15
+
+Audit ini tidak mempercayai status ringkasan atau nama commit sebagai bukti.
+Indeks codebase-memory `jarvis-h` dibangkitkan ulang dari current tree, lalu
+caller produksi, source function, test, lint debt, frozen boundary, dan raw log
+produksi diperiksa kembali.
+
+### Temuan yang terverifikasi
+
+1. **Fase 22 bukan lagi pekerjaan tertunda.** Raw `logs/jarvis.log` menyimpan
+   31 trigger produksi; sesi 2026-08-11 mengikat tiga trigger ke pipeline
+   `SPEAKING`, event UI interupsi, dan transisi `LISTENING`. Status lama
+   SEBAGIAN adalah stale documentation dan sudah dikoreksi menjadi SELESAI,
+   `live-proven`.
+2. **Fase 35 masih tepat 178 pelanggaran pada scope lint resmi.** Pengukuran
+   `ruff --isolated --select S110,S112` dengan daftar FROZEN yang sama seperti
+   `pyproject.toml` menghasilkan **146 S110 + 32 S112**. Daftar pengecualian
+   per berkas tetap utang terukur, bukan penyelesaian.
+3. **Fase 38 belum memenuhi kriteria strukturalnya.** Jalur suara masih
+   `_start_voice_pipeline()` → `_import_legacy()` → root `main.py` FROZEN →
+   `legacy.JarvisLive`. `_install_voice_seams()` masih menjalankan enam
+   installer: lima seam lama yang sengaja dipertahankan
+   (`voice_playback_fix`, `voice_l1`, `voice_live_transport`,
+   `whatsapp_voice`, `voice_native_tools`) dan satu seam Fase 43
+   (`voice_speech`). Trail migrasi owner aman sudah selesai; tidak ada seam
+   berikut yang dapat dilipat tanpa mengambil ownership audio/intake inti.
+4. **Fase 42 belum dimulai.** Satu-satunya `latency.start()` produksi tetap di
+   `_dispatch()` tepat saat ACK. Tidak ditemukan penanda akhir ucapan,
+   transkrip final, atau VAD yang membuka measurement sebelum ACK; rentang
+   akhir ucapan → ACK masih gelap.
+5. **Fase 43 sudah runtime-wired dan punya observasi Live parsial.** Role repair,
+   playback arbitration, konteks multi-task berbasis registry ID,
+   ledger/hydration, delivery penjelasan, dan summarization dokumen memiliki
+   pemanggil produksi. Sesi `12:25Z` mencapai koneksi dan model output, serta boot
+   meng-hydrate tiga record recovery. Namun `had_input=false`; forced reconnect,
+   drain ticket penjelasan, interupsi dokumen, dan resume cursor tidak terjadi.
+6. **Suite fokus current tree hijau setelah isolasi temp yang benar:** 159
+   passed dalam 5,72 detik. Percobaan pertama menghasilkan 150 passed + 9
+   setup error karena `PermissionError` pada direktori temp pytest milik user;
+   rerun dengan `--basetemp` unik di workspace mengeksekusi kesembilan test
+   ledger dan semuanya lulus. Error awal adalah batas environment, bukan
+   regresi kode.
+7. **Status non-standar bukan otomatis pekerjaan tertunda.** Fase 27 tetap
+   ditutup sebagai `DIUKUR, TIDAK DIBANGUN` karena premis spekulasi terbukti
+   kosong. Fase 40 `SELESAI DI KODE` memenuhi kriteria pemindahan murninya;
+   kekurangan live-proof tidak mengubah status karena live session bukan
+   syarat selesai fase itu.
+8. **Credential Gemini tidak tersedia pada instance kerja saat audit lanjutan.**
+   Probe nyata mengembalikan `credential tidak tersedia`; keyring aktif tetapi
+   `jarvis/llm/gemini` tidak terbaca dan kedua environment fallback kosong. Aplikasi
+   yang dibuka pada `20:29` juga mencatat `config.issue` API key belum ada.
+9. **Status online sudah dibuat jujur pada current tree.** `llm.probe()` harus
+   menerima respons provider non-kosong sebelum boot readiness atau callback API
+   key mengumumkan online. Field API key kosong juga kini diperlakukan sebagai
+   credential lama yang dipertahankan; delete tetap eksplisit.
+10. **Routing audio sudah eksplisit pada current tree.** Input/output tervalidasi
+    terhadap capability PortAudio dan diteruskan sebagai `device=` ke stream
+    Live/playback. Preflight runtime memasang input `4` dan output `12` serta
+    mencatat `voice.audio_devices.configured`.
+
+### Semua fase yang belum selesai setelah audit
+
+| Fase | Status jujur | Yang sudah terbukti | Sisa untuk menutup |
+|---:|---|---|---|
+| 35 | **SEBAGIAN** | helper `quiet`, rate limit, penegakan S110/S112, 32 konversi awal | Migrasikan 178 blok terdaftar (146 S110, 32 S112) tanpa mengubah control flow; ukur volume log per boot |
+| 38 | **SEBAGIAN/BLOCKED** | UI lama keluar dari runtime, owner seam 13 → 5, jalur voice/provider pernah live-proven | Putuskan apakah menerima lima owner audio/intake sebagai boundary akhir atau migrasikan root `JarvisLive`; bila migrasi dipilih, satu seam per commit + sesi voice nyata setiap langkah |
+| 42 | **BELUM DIMULAI (opsional)** | meter ACK → hasil sudah ada | Tambah measurement akhir ucapan/transkrip final → ACK dan kumpulkan angka; jangan memperbaiki performa dalam fase ukur |
+| 43 | **SEBAGIAN** | Keluhan 1, 2, 3, 4a, 4b focused-tested + runtime-wired; audio device explicit, key preservation, real provider probe; preflight seam installed | Credential belum terbaca pada instance kerja saat retry, sehingga sesi Live tidak dapat dimulai; setelah key tersedia, uji input ucapan, forced reconnect role, playback drain per ticket, interupsi dokumen, dan resume dari verified cursor |
+| 44 | **SEBAGIAN** | Source-present dan runtime-wired berdasarkan inspeksi source; focused test belum terbukti pada continuation ini | Jalankan focused media/image suite, repository checks, dan evidence generator saat classifier tersedia; jangan klaim focused-tested atau live-proven tanpa hasil nyata |
+
+Dengan demikian daftar lama **22, 35, 38, 42** tidak lagi benar: Fase 22
+sudah selesai, sedangkan Fase 43 dan 44 harus masuk daftar belum selesai.
+
+---
+
+## Fase 45 — Kebenaran sumber interupsi dan guard playback — 2026-08-16
+
+Keluhan lapangan baru menunjukkan dua gejala yang tidak boleh dicampur:
+JARVIS kadang menginterupsi dirinya sendiri, dan setelah beberapa saat tidak
+lagi menerima perintah mikrofon. Fase ini menutup race source-level yang dapat
+dibuktikan tanpa membuka perangkat: callback mic sebelumnya memanggil
+`_do_interrupt()` langsung. Handler itu juga merupakan handler ESC dan, bila UI
+sudah beralih dari `SPEAKING`, dapat menutup panel alih-alih memotong turn yang
+melahirkan verdict.
+
+Implementasi memisahkan kedua sumber:
+
+- `voice_interrupt.py` membawa event immutable bertipe `microphone` dengan waktu
+  deteksi, capture generation, playback generation/epoch, dan angka verdict
+  bounded. Tidak ada PCM atau transkrip di event maupun telemetry.
+- `MicMeterController` hanya membangun candidate lalu mengirimkannya melalui
+  `pyqtSignal(object)`. Callback PortAudio tidak lagi menjalankan aksi window,
+  menulis pesan accepted, atau memanggil handler ESC.
+- `_do_voice_interrupt()` menjadi handler Qt khusus. Event yang cocok memanggil
+  `on_interrupt` tepat sekali dan tidak pernah menjalankan `_close_stage_panels`.
+  Event source/capture/playback lama, event abort, dan event terlalu tua ditolak
+  dengan reason code.
+- `voice_playback_level` sekarang merekam generation/epoch ketika PCM berhasil
+  ditulis, authoritative drain dari `voice_playback_fix`, dan abort tanpa klaim
+  drain. Event yang terdeteksi saat playback aktif tetap valid bila matching
+  drain terjadi sebelum queued UI dispatch; candidate yang baru lahir setelah
+  drain disupresi.
+- Adaptive threshold, onset grace, echo floor, sustain, crest-factor, voice-band
+  ratio, dan cooldown tidak diubah. Mengubah sensitivitas tanpa pengukuran live
+  akan menukar satu tebakan dengan tebakan lain.
+
+### Hasil Fase 45 — SELESAI DI KODE 2026-08-16
+
+**Bukti:** `source-present`, `focused-tested`, dan `runtime-wired`.
+
+RED-first contract dijalankan sebelum source ada dan menghasilkan **7 failed
+dalam 0.75s**: modul typed event serta lifecycle playback belum ada. Setelah
+implementasi, dedicated contract yang sama menghasilkan **7 passed dalam
+1.17s**.
+
+Verifikasi current tree yang benar-benar dijalankan dengan `--basetemp` di luar
+repo:
+
+- Voice/UI focused regression: **158 passed dalam 47.96s** pada event baru,
+  adaptive barge-in, playback-level composition, voice seam/speech arbitration,
+  notices/tasks, ESC/panel/camera, dan diagnostics characterization.
+- Playback + `MainWindow` integration: **29 passed dalam 44.91s**.
+- Ruff pada delapan file source/test fase: seluruh checks lulus.
+- `git diff --check`: exit 0; hanya warning line-ending pada dirty files.
+- `scripts/verify_frozen.py`: `FROZEN integrity: OK (10 files, baseline
+  094b696)`.
+- `scripts/evidence_status.py --json`: parser berhasil dan tidak memberi label
+  live baru pada fase ini.
+
+Karakterisasi lama yang menyatakan *“ESC dan barge-in memakai jalur yang SAMA”*
+diganti dengan kontrak kebalikannya: voice event tetap memotong turn saat state
+UI sudah `LISTENING`, tetapi panel browser tidak ditutup. Semantik ESC sendiri
+tetap diuji terpisah dan tetap menutup panel hanya ketika JARVIS diam.
+
+**Kesalahan proses yang terukur:** environment tidak menyediakan executable
+`apply_patch`. Percobaan awal heredoc dan patch multi-file gagal tanpa mengubah
+source (`unexpected EOF`, `command not found`, `No valid patches`, `corrupt
+patch`, dan context mismatch). Edit berhasil dilakukan lewat fungsi shell lokal
+bernama `apply_patch` yang membungkus standard `patch -p1 --forward`/`git apply`.
+Ini dicatat apa adanya, bukan disebut kepatuhan tanpa kualifikasi terhadap binary
+project yang memang tidak tersedia.
+
+**Batas jujur:** tidak ada microphone, speaker, restart sesi audio, Gemini Live,
+provider, camera, atau network yang dibuka. Karena itu `live-proven` **tidak
+diklaim**. Fase ini juga tidak menyelesaikan mic yang mati setelah beberapa saat:
+`MicMeterController` masih membuka physical `InputStream` sendiri dan berhenti
+permanen setelah exception. Ownership satu input, callback/send heartbeat,
+stale-device re-resolution, dan recovery bounded adalah Fase 46.
+
+---
+
+## Fase 46 — Satu pemilik input, heartbeat, dan recovery bounded
+
+Ganti kepemilikan input fisik yang saling bersaing dengan satu runtime owner per
+pipeline state. Mic meter/barge-in menjadi consumer frame, bukan stream owner.
+Tambahkan callback/queued/sent heartbeat, generation guard, device re-resolution,
+dan typed bounded recovery melalui reconnect owner Gemini Live yang sudah ada.
+Semua RED tests memakai fake stream, fake clock, fake session, dan tidak membuka
+perangkat. Uji audio/Gemini Live nyata tetap memerlukan otorisasi terpisah.
+
+---
+
+## Lampiran — Status evidence fase (dibangkitkan)
 
 | Fase | Judul | Hasil | Bukti eksplisit di bagian Hasil |
 |---:|---|---|---|
@@ -5162,3 +5389,6 @@ agar `voice_document` berada di urutan install yang benar (terakhir).
 | 41 | Tabel status `live-proven` | SELESAI | — |
 | 42 | Ukur rentang yang masih gelap | — | — |
 | 43 | Empat keluhan runtime: satu jalur ucapan, satu owner, konteks multi-task, ledger recovery | SELESAI | focused-tested, runtime-wired |
+| 44 | Analisis video bounded dan image-reference yang jujur — 2026-08-16 | SEBAGIAN | source-present, focused-tested, runtime-wired |
+| 45 | Kebenaran sumber interupsi dan guard playback — 2026-08-16 | SELESAI DI KODE | source-present, focused-tested, runtime-wired |
+| 46 | Satu pemilik input, heartbeat, dan recovery bounded | — | — |

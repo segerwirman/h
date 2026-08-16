@@ -85,8 +85,11 @@ def install(legacy_module) -> bool:
                             # frozen compatibility event is cleared.  Notice
                             # arbiters retain this boundary durably and can flush
                             # after playback instead of racing the transient event.
+                            drained_epoch = playback_epoch
                             voice_speech.playback_drained(
-                                self, epoch=playback_epoch)
+                                self, epoch=drained_epoch)
+                            voice_playback_level.mark_drained(
+                                epoch=drained_epoch)
                             self._turn_done_event.clear()
                             playback_epoch = None
                             silent_since = None
@@ -96,6 +99,7 @@ def install(legacy_module) -> bool:
                 if current_epoch is not None and current_epoch != playback_epoch:
                     playback_epoch = current_epoch
                 await asyncio.to_thread(stream.write, chunk)
+                voice_playback_level.mark_started(epoch=playback_epoch)
                 # Hanya PCM yang benar-benar berhasil ditulis yang dapat
                 # membuktikan bahwa ticket menghasilkan audio lokal.
                 voice_speech.mark_audio(self, epoch=playback_epoch)
@@ -108,6 +112,7 @@ def install(legacy_module) -> bool:
         finally:
             self.set_speaking(False)
             voice_speech.abort(self, epoch=playback_epoch)
+            voice_playback_level.mark_aborted(epoch=playback_epoch)
             if stream is not None:
                 try:
                     stream.stop()
