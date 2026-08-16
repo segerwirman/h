@@ -437,6 +437,11 @@ wake:                            # Modul 10 — double-clap wake trigger
   diagnostics: false             # true → log every candidate accept/reject
 
 voice:                           # Mark L Change 4 — barge-in interrupt
+  audio:
+    # Selector host + nama stabil saat urutan indeks PortAudio berubah.
+    # Nama MME memang dipotong oleh Windows setelah 31 karakter.
+    input_device: "MME::Microphone (USB2.0 Device)"
+    output_device: "MME::SAMSUNG (NVIDIA High Definition"
   speaker_id:
     gate: false                  # observe-only sampai profil pemilik terkalibrasi
     threshold: null             # null = ambang hasil enrollment
@@ -474,6 +479,8 @@ voice:                           # Mark L Change 4 — barge-in interrupt
                                   # puncak berkala saat Jarvis bicara, agar
                                   # 'tidak memicu' bisa dibedakan dari
                                   # 'tidak jalan' pada sesi nyata
+    event_max_age_s: 1.5          # kandidat mic lebih tua dari ini = stale
+    post_drain_grace_s: 0.45      # toleransi setelah drain playback (voice_interrupt)
   playback:
     # Perbaikan 'kosakata terpotong' saat suara: beri grace lebih panjang
     # sebelum menutup giliran + drain buffer sebelum stream ditutup.
@@ -542,6 +549,14 @@ vision:
     gpu_fps_limit: null           # GPU: no artificial sleep-based cap
     render_fps_limit: 30          # UI redraw bounded independently of inference
 
+vision_supervisor:               # W3 — pengawas realtime → Telegram (opt-in)
+  enabled: false                 # master toggle; true hanya setelah pairing Telegram
+  min_interval_s: 30             # minimal jeda antar laporan (coalesce)
+  poll_s: 2.0                    # cadence thread pengirim
+  include_photo: true            # sertakan foto frame terbaru (JPEG)
+  require_armed: true            # lapor hanya saat kamera sedang di-arm
+  max_names: 12                  # jumlah nama objek unik per laporan
+
 gestures:
   pinch_px: 40                   # thumb↔index distance (px in frame) for pinch
   double_pinch_ms: 400
@@ -573,6 +588,19 @@ relay:                           # Fase 5 — Relay.app integration (read-only)
 
 docs:                            # Fase 4 — document upload limits
   max_file_mb: 25                # reject larger uploads with a friendly error
+
+media:                           # Fase 44 — batas analisis video bounded
+  video:
+    max_file_size_bytes: 536870912      # 512 MiB
+    max_duration_s: 7200                # 2 jam
+    audio_chunk_s: 120.0                # durasi chunk transkrip audio
+    frame_interval_s: 30.0              # jarak sampling frame
+    max_frames: 120                     # batas jumlah frame dianalisis
+    max_candidates: 20                  # kandidat momen maksimal
+    max_clip_duration_s: 180.0          # durasi clip eksplisit maksimal
+    max_report_bytes: 1000000           # 1 MB per laporan JSON
+    max_transcript_chars: 12000         # panjang transkrip per analisis
+    max_excerpt_chars: 1000             # potongan transkrip per kandidat
 
 nlp:
   route_threshold: 0.6
@@ -746,7 +774,7 @@ routing:
   voice_notice_bridge:
     enabled: false              # default no-op; batch notice L1/T2 hanya saat turn_complete
   light:
-    provider: gemini             # percakapan + T0/T1 + side-task murah (§3.3)
+    provider: custom             # percakapan + T0/T1 + side-task murah (§3.3)
     model: ""                    # "" = model default provider
   conversation:
     # auto = lane light; override hanya dipakai bila provider benar-benar siap.
@@ -914,6 +942,7 @@ image_generation:                # MK50 §9.3 — image hanya via API key
   model: gpt-image-2           # jalur OpenAI-compatible; gemini pakai agent.image_model
   quality: medium             # instant | thinking (API key) · low | medium | high (Codex OAuth gpt-image-2)
   size: "1024x1024"              # sampai 4096x4096
+  max_reference_bytes: 20971520   # batas total ukuran gambar referensi (image edit)
 
 dashboard:                       # Phase 14 — local-first exposure, non-secret
   lan_enabled: false             # LAN harus opt-in eksplisit; default loopback
