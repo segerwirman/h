@@ -22,7 +22,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 
-from jarvis.core import log, process_guard
+from jarvis.core import log, process_guard, quiet
 from jarvis.core.process_guard import SelfTerminationBlocked
 
 _logger = log.get("actions.close_app")
@@ -115,13 +115,15 @@ def _graceful(app) -> bool:
                 continue
             try:
                 _tid, pid = win32process.GetWindowThreadProcessId(win._hWnd)
-            except Exception:                                # noqa: BLE001
+            except Exception as exc:                         # noqa: BLE001
+                quiet.swallowed("close_app.window_probe_failed", exc,
+                                pid=app.pid)
                 continue
             if int(pid or 0) == app.pid:
                 win.close()                                  # WM_CLOSE
                 return True
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                 # noqa: BLE001
+        quiet.swallowed("close_app.wm_enum_failed", exc, pid=app.pid)
 
     try:
         import psutil
@@ -275,8 +277,9 @@ def close_app_action(parameters: dict | None = None, response=None,
     if player is not None:
         try:
             player.write_log(f"[close_app] {outcome.status}")
-        except Exception:                                    # noqa: BLE001
-            pass
+        except Exception as exc:                             # noqa: BLE001
+            quiet.swallowed("close_app.player_log_failed", exc,
+                            status=outcome.status)
     return outcome.message
 
 

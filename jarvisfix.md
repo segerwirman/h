@@ -3652,6 +3652,53 @@ berdiri adalah klaim palsu jenis yang sama dengan yang diberantas Siklus 2.
 
 ---
 
+### Fase 35 slice 6 — `close_app` berhenti diam — 2026-08-18
+
+Slice offline berikutnya dipilih dari pengukuran current tree, bukan dari urutan
+berkas. `ruff check . --isolated --select S110,S112` menemukan **164** blok di
+**54** berkas. `actions/close_app.py` adalah kandidat teraman yang bersih dari
+perubahan user: tepat tiga blok, bukan FROZEN, dan sudah punya regression test
+kejujuran hasil serta self-close guard.
+
+Test perilaku baru dibuat merah lebih dulu. Fake window/process/player tidak
+membuka proses atau jendela nyata; ketiganya membuktikan fallback/return tetap
+berjalan tetapi menuntut event kegagalan. Baseline RED: **3 failed** karena
+ketiga event memang belum ada. Implementasi kemudian hanya mengganti suara,
+bukan alur:
+
+- kegagalan probe PID per-window mencatat
+  `close_app.window_probe_failed`, lalu tetap `continue`;
+- kegagalan enumerasi WM_CLOSE mencatat `close_app.wm_enum_failed`, lalu tetap
+  jatuh ke fallback `psutil.Process(...).terminate()`;
+- kegagalan `player.write_log()` mencatat `close_app.player_log_failed`, lalu
+  tetap mengembalikan pesan outcome.
+
+Konteks log dibatasi pada `pid` atau `status`; title jendela, isi pesan, object
+player, credential, dan data user tidak dicatat. Per-file-ignore
+`actions/close_app.py` dihapus. Pengukuran sesudahnya menjadi **161** blok di
+**53** berkas (**135 S110 + 26 S112**), dan target file sendiri nol pelanggaran.
+
+**Bukti terukur:** test focused baru + honesty/self-close/quiet **40 passed**
+dalam 1,86 detik. Full suite pertama tidak sah sebagai bukti hijau: proses
+berhenti sekitar 48% dengan Windows access violation ketika background
+`ack-composer` melakukan HTTP ke provider, sehingga exit code 5 dicatat apa
+adanya. Rerun dengan external network diblok di level socket, loopback tetap
+diizinkan, dan `--basetemp` unik di luar repo menghasilkan **3091 tests, 0
+failures, 0 errors, 1 skipped** dalam **224,002 detik**. Skip adalah symlink
+Windows tanpa privilege (`WinError 1314`). Full Ruff lulus, `git diff --check`
+bersih, FROZEN integrity lulus untuk 10 berkas (baseline `094b696`), dan
+evidence-status tetap menandai Fase 35 `SEBAGIAN`.
+
+**Batas jujur:** slice ini hanya membuat tiga kegagalan terlihat; ia tidak
+memperbaiki penyebab probe/WM_CLOSE/player gagal. Event memakai throttle helper
+5 detik dan kegagalan berulang dilaporkan melalui hitungan `suppressed`.
+Isolated S110/S112 repo masih nonzero karena 161 blok lain tetap menjadi utang.
+Tidak ada proses/window, mikrofon, speaker, Gemini/provider, credential,
+keyring, browser, atau network nyata yang dijalankan; bukti slice ini
+`focused-tested` dan `runtime-wired`, bukan `live-proven`.
+
+---
+
 ## Fase 36 — Batas sandbox dijaga uji (S-36)
 
 **Menutup:** S-36. Dikerjakan lebih awal karena murah dan menjaga permukaan

@@ -193,7 +193,6 @@ ignore = [
 # jarvis/core/quiet.py TETAP di daftar ini selamanya: helper pencatat yang
 # mencatat kegagalan pencatatannya sendiri akan berulang tanpa henti.
 "actions/browser_control.py" = ["S110", "S112"]   # 11
-"actions/close_app.py" = ["S110", "S112"]   # 3
 "actions/computer_control.py" = ["S110", "S112"]   # 2
 "actions/computer_settings.py" = ["S110", "S112"]   # 3
 "actions/game_updater.py" = ["S110", "S112"]   # 17
