@@ -121,6 +121,9 @@ def install(legacy_module) -> bool:
             message = _normalise(await self.out_queue.get())
             self._voice_live_last_input = _shape(message)
             await self.session.send_realtime_input(**_input_kwargs(message))
+            from jarvis.integrations import voice_input_owner
+
+            voice_input_owner.mark_sent(self, message)
 
     async def receive_with_context(self) -> None:
         try:

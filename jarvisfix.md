@@ -5385,6 +5385,40 @@ nyata. Belum ada microphone, speaker, restart audio, network, atau Gemini Live y
 46A adalah `source-present`, `focused-tested`, `runtime-wired`, bukan `live-proven`.
 Heartbeat dan recovery stall masih milik 46B/46C.
 
+### Hasil 46B — heartbeat callback/queued/sent (fake/offline)
+
+Satu `InputHeartbeat` per instance Live kini menyimpan snapshot immutable metadata-only
+untuk generation aktif: waktu stream dibuka, timestamp/counter/ukuran frame terakhir pada
+tahap callback, queue, dan send. Snapshot tidak membawa PCM. Reopen mereset seluruh counter
+dan generation guard menolak update dari callback/closure lama.
+
+Owner mencatat `callback_at` hanya setelah callback aktif benar-benar menerima dan menyalin
+frame. `queued_at` baru berubah setelah `put_nowait()` benar-benar berhasil, bukan saat
+`call_soon_threadsafe()` baru dijadwalkan. Payload microphone bertipe lokal
+`VoiceInputMessage` membawa generation tanpa mengubah bentuk dictionary yang dikirim ke SDK.
+Transport mencatat `sent_at` hanya setelah `await send_realtime_input(...)` sukses; exception
+send tetap naik ke `TaskGroup`/reconnect owner lama dan tidak menghasilkan heartbeat palsu.
+
+- RED dedicated: **5 failed dalam 0,75 detik**. Failure membuktikan class/helper heartbeat
+  belum ada; dua test listener tambahan juga menangkap ketergantungan config perangkat dan
+  kemudian diisolasi dengan fake config, tanpa membuka device nyata.
+- GREEN focused final: **22 passed dalam 3,30 detik** pada heartbeat, input owner, normalisasi
+  transport, cancellation, receive re-raise, redaction, dan SDK role wrapping.
+- Fake clock membuktikan callback dapat bertambah saat queue masih nol; satu event-loop tick
+  kemudian queue bertambah. State muted menghasilkan callback tanpa queued. Fake session
+  membuktikan send sukses menambah counter, sedangkan send kedua yang raise tidak mengubah
+  `sent_at`/counter.
+- Suite penuh: **3082 passed, 1 skipped** dengan external `--basetemp`; satu skip tetap
+  privilege symlink Windows yang sudah dikenal. `ruff check .`, `git diff --check`, dan
+  FROZEN integrity **OK (10 files, baseline 094b696)**. Evidence JSON berhasil dirender dan
+  Fase 46 sengaja belum dinaikkan menjadi selesai.
+
+**Batas jujur:** timestamp/counter terbukti dengan fake callback, fake clock, fake queue,
+dan fake session, bukan PortAudio/Gemini Live nyata. Tidak ada PCM, credential, device,
+provider, keyring, atau network yang dibuka. Evidence maksimum tetap `source-present`,
+`focused-tested`, `runtime-wired`; bukan `live-proven`. Watchdog dan bounded recovery masih
+milik 46C.
+
 ---
 
 ## Sesi audit & eksekusi checklist — 2026-08-17 (Mes/Hermes, read-only→TDD)
