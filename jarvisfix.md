@@ -5721,6 +5721,31 @@ atau Gemini Live yang dijalankan. Karena itu hasil ini bukan `live-proven`. Jika
 owner restart otomatis; lifecycle residual ini tetap terbuka dan tidak boleh diselesaikan
 dengan membuat thread voice kedua.
 
+### Rekonsiliasi kontrak API-key lama — 2026-08-17
+
+`tests/test_llm_probe.py` kini mengikuti ownership yang sama dengan kontrak activation:
+worker verifikasi hanya emit signal, sedangkan slot `_on_api_key_verified()` disimulasikan
+secara eksplisit sebagai queued UI delivery sebelum state/log UI diperiksa. Test boot lama
+yang menuntut provider probe sinkron diganti dengan guard kebalikannya: credential tersimpan
+membuat `_check_config()` sukses dan fake `llm.probe()` akan menggagalkan test bila constructor
+mencoba network.
+
+- RED pada kontrak lama: **2 failed, 1 passed dalam 0,66 detik**. Failure pertama adalah
+  stub tanpa `_api_key_verified_sig`; failure kedua mengharapkan `_check_config() is False`
+  walau credential tersedia.
+- GREEN setelah hanya merekonsiliasi test: **3 passed dalam 0,50 detik**.
+- Tidak ada fallback production, direct worker→UI slot call, credential/keyring, atau network
+  yang ditambahkan/dijalankan.
+- Suite penuh: **3073 passed, 1 skipped dalam 210,17 detik** dengan `--basetemp`
+  di luar repo. Satu skip adalah privilege symlink Windows yang sudah terkarakterisasi.
+- `ruff check .` hijau; `git diff --check` exit 0 dengan warning line-ending pada dirty
+  files lain; FROZEN integrity **OK (10 files, baseline 094b696)**; dan
+  `evidence_status.py --json` berhasil dirender.
+
+**Batas jujur:** hasil ini membuktikan kontrak fake/offline dan menghapus drift suite, bukan
+provider nyata atau Qt event-loop live. Evidence tetap `source-present`, `focused-tested`,
+`runtime-wired`; bukan `live-proven`.
+
 ## Lampiran — Status evidence fase (dibangkitkan)
 
 | Fase | Judul | Hasil | Bukti eksplisit di bagian Hasil |
