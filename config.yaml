@@ -443,6 +443,16 @@ voice:                           # Mark L Change 4 — barge-in interrupt
     # Nama MME memang dipotong oleh Windows setelah 31 karakter.
     input_device: "MME::Microphone (USB2.0 Device)"
     output_device: "MME::SAMSUNG (NVIDIA High Definition"
+    # Callback ideal datang tiap 64 ms (1024/16000). Margin di bawah ini
+    # konservatif dan source-derived; tuning perangkat nyata belum dilakukan.
+    heartbeat_poll_s: 0.1
+    callback_startup_grace_s: 2.0
+    callback_stale_s: 1.0
+    # Budget berlaku lintas reconnect yang dimiliki JarvisLive.run FROZEN.
+    # Seam input hanya raise typed failure; tidak membuat runner kedua.
+    recovery_max_attempts: 3
+    recovery_deadline_s: 120.0
+    recovery_stable_s: 10.0
   speaker_id:
     gate: false                  # observe-only sampai profil pemilik terkalibrasi
     threshold: null             # null = ambang hasil enrollment

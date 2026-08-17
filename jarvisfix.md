@@ -5419,6 +5419,48 @@ provider, keyring, atau network yang dibuka. Evidence maksimum tetap `source-pre
 `focused-tested`, `runtime-wired`; bukan `live-proven`. Watchdog dan bounded recovery masih
 milik 46C.
 
+### Hasil 46C — stale callback dan recovery bounded (fake/offline)
+
+Coroutine owner sekarang memeriksa heartbeat callback, bukan volume audio. Stream baru diberi
+startup grace 2 detik; sesudah callback pertama, tidak ada callback baru selama 1 detik menjadi
+typed `InputCallbackStale`. Poll 100 ms berasal dari cadence blok existing 1024/16000 = 64 ms,
+dengan margin konservatif. Nilai ini source-derived dan belum dituning dengan perangkat nyata.
+
+Setiap invocation `_listen_audio` me-resolve device ulang, menaikkan generation, mereset
+heartbeat, dan menginvalidasi callback/queued closure lama. Open/stale failure di-raise ke
+`TaskGroup` FROZEN; `JarvisLive.run` tetap identik dan tetap satu-satunya reconnect owner.
+Budget per instance bertahan lintas reconnect: maksimal 3 retry atau 120 detik sejak failure
+pertama. Budget baru reset setelah callback benar-benar terus maju selama 10 detik, bukan karena
+websocket diterima atau satu callback sporadis. Saat habis, seam memanggil existing
+`request_stop()` sekali lalu raise `InputRecoveryExhausted`; loop FROZEN melihat stop flag dan
+keluar tanpa membuat thread, session, atau pipeline kedua.
+
+- RED core: **3 failed, 2 deselected dalam 0,54 detik** karena policy/budget belum ada. Run RED
+  seluruh file sempat mencapai **3 failure lalu hang** pada test reconnect yang sengaja menunggu
+  watchdog belum terpasang; proses dihentikan setelah timeout 120 detik dan dicatat, bukan
+  diklaim selesai.
+- GREEN dedicated: **5 passed dalam 0,42 detik**. Focused recovery/voice/config final:
+  **87 passed dalam 10,96 detik**.
+- Fake reconnect owner menerima dua `InputCallbackStale`, lalu terminal
+  `InputRecoveryExhausted`; fake stream mengukur 3 open/3 close, resolver dipanggil ulang,
+  generation menjadi 3, dan `request_stop()` tepat sekali. Stop flag sebelum invocation
+  menghasilkan 0 stream open dan 0 recovery.
+- Config-contract sempat RED **1 failed, 86 passed** karena helper membaca config secara
+  dinamis. Semua enam read diubah menjadi literal sehingga drift audit kembali hijau.
+- Suite penuh: **3087 passed, 1 skipped** dengan external `--basetemp`; skip tetap privilege
+  symlink Windows. `ruff check .`, `git diff --check`, FROZEN integrity **OK (10 files,
+  baseline 094b696)**, dan evidence render semuanya hijau.
+
+**Kesalahan rancangan yang ditemukan:** menganggap waktu coroutine sehat sebagai bukti callback
+sehat akan mereset budget walau timestamp callback tidak bergerak. Stable reset karena itu
+memakai kemajuan `callback_at`. Typed failure dan bounded budget tetap berada di seam listener;
+tidak ada exception device mentah atau PCM yang ditulis ke telemetry.
+
+**Batas jujur:** Fase 46 sekarang `source-present`, `focused-tested`, `runtime-wired`, tetapi
+bukan `live-proven`. Tidak ada microphone/speaker, restart audio nyata, Gemini Live, provider,
+credential, keyring, atau network yang dijalankan. Nilai threshold wajib dikalibrasi lewat sesi
+audio terotorisasi sebelum klaim runtime nyata.
+
 ---
 
 ## Sesi audit & eksekusi checklist — 2026-08-17 (Mes/Hermes, read-only→TDD)
