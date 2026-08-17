@@ -288,6 +288,8 @@ class ApiKeySheet(QWidget):
     """Minimal first-boot / reauth sheet (replaces the legacy SetupOverlay)."""
 
     done = pyqtSignal(str)
+    _STATUS_COLORS = {"info": "text_dim", "error": "alert",
+                      "success": "success"}
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
@@ -303,6 +305,7 @@ class ApiKeySheet(QWidget):
         hint = QLabel("Masukkan Gemini API key untuk mengaktifkan J.A.R.V.I.S")
         hint.setFont(theme.mono_font(9))
         hint.setStyleSheet(f"color: {theme.PAL.text_dim}; background: transparent;")
+        hint.setWordWrap(True)
         lay.addWidget(hint)
         self._key = QLineEdit()
         self._key.setEchoMode(QLineEdit.EchoMode.Password)
@@ -313,17 +316,61 @@ class ApiKeySheet(QWidget):
             f" border: none; padding: 10px; }}")
         self._key.returnPressed.connect(self._submit)
         lay.addWidget(self._key)
-        go = QPushButton("ACTIVATE")
-        go.setFont(theme.header_font(11))
-        go.setFixedHeight(38)
-        go.setCursor(Qt.CursorShape.PointingHandCursor)
-        go.setStyleSheet(
+
+        self._status = QLabel("")
+        self._status.setFont(theme.mono_font(8))
+        self._status.setWordWrap(True)
+        self._status.setMinimumHeight(18)
+        lay.addWidget(self._status)
+        self._status_kind = "info"
+        self.set_status("")
+
+        self._activate = QPushButton("ACTIVATE")
+        self._activate.setFont(theme.header_font(11))
+        self._activate.setFixedHeight(38)
+        self._activate.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._activate.setStyleSheet(
             f"QPushButton {{ background: {theme.PAL.base}; color: {theme.PAL.accent};"
             f" border: none; letter-spacing: 3px; }}")
-        go.clicked.connect(self._submit)
-        lay.addWidget(go)
+        self._activate.clicked.connect(self._submit)
+        lay.addWidget(self._activate)
+        self._busy = False
+
+    @property
+    def busy(self) -> bool:
+        return self._busy
+
+    @property
+    def status_text(self) -> str:
+        return self._status.text()
+
+    @property
+    def status_kind(self) -> str:
+        return self._status_kind
+
+    def set_busy(self, busy: bool) -> None:
+        self._busy = bool(busy)
+        self._key.setEnabled(not self._busy)
+        self._activate.setEnabled(not self._busy)
+
+    def set_status(self, text: str, kind: str = "info") -> None:
+        kind = kind if kind in self._STATUS_COLORS else "info"
+        self._status_kind = kind
+        self._status.setText(str(text or ""))
+        color = getattr(theme.PAL, self._STATUS_COLORS[kind])
+        self._status.setStyleSheet(
+            f"color: {color}; background: transparent;")
+
+    def clear_secret(self) -> None:
+        self._key.clear()
 
     def _submit(self):
+        if self._busy:
+            return
         key = self._key.text().strip()
-        if key:
-            self.done.emit(key)
+        if not key:
+            self.set_status("API key belum diisi.", "error")
+            return
+        self.set_busy(True)
+        self.set_status("Memverifikasi provider …", "info")
+        self.done.emit(key)

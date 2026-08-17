@@ -5374,6 +5374,353 @@ inkonsisten, `routing.light.provider` custom vs gemini, ruff S110
 - VisionSupervisor: kode+test hijau; live acceptance (arm kamera + Telegram paired) belum dijalankan.
 - W7 kosa kata call: infrastruktur sudah ada (persona `apply_to_prompt`, ack composer, naturalizer aktif); audio call = Gemini Live realtime (tidak lewat naturalizer teks). Gap persona per-konteks = fase lanjutan.
 
+---
+
+# AUDIT MENYELURUH — 2026-08-17 (laporan: sheet API key saat boot, tombol ACTIVATE tak bisa diklik)
+
+**Pemicu (laporan user):** saat JARVIS boot, muncul permintaan Gemini API key; tombol
+ACTIVATE "tidak bisa diklik".
+
+**Baseline:** HEAD `38d2468`. Worktree dirty 22 file (Fase 45/46 + perubahan user),
+13 untracked — tidak ada yang diubah untuk audit ini. Audit read-only: tanpa sesi
+audio, tanpa network, tanpa provider live. Tidak ada klaim `live-proven`.
+
+## Metode
+
+1. **Probe offscreen** (`$TEMP\probe_apikey*.py`, QApplication + `MainWindow(services={})`)
+   dengan urutan boot asli (construct → tunggu 260ms pre-show → `show()`):
+   - `_show_api_sheet` memanggil `_center_sheet` saat window belum visible → geometri
+     (80,120,480,240); setelah `show()` ulang di center (310,260,480,240).
+   - `childAt(center tombol)` → `QPushButton`; rantai `QPushButton → ApiKeySheet →
+     QWidget → MainWindow`. **Tombol menerima klik secara struktural.**
+2. Karena strukturnya sehat, akar masalah dicari di jalur runtime: verifikasi provider,
+   timeout, dan umpan balik error — bukan di z-order.
+3. Audit lintas subsistem paralel (voice / agent loop / media-tool-security), read-only,
+   masing-masing dengan bukti `file:line` dan label `source-confirmed` vs `needs-runtime-verification`.
+
+## Verdict bug yang dilaporkan
+
+**Tombol ACTIVATE dapat diklik; klik-nya terpancar. Gejala "tidak bisa diklik" adalah
+klik yang tidak menghasilkan efek terlihat** karena verifikasi provider gagal/tergantung
+senyap, lalu sheet tidak pernah menutup dan tidak memberi umpan balik apa pun di dalam
+sheet. Rantai penyebab (semua `source-confirmed`):
+
+## Temuan boot/credential (source-confirmed)
+
+### B1 — `_check_config` memblokir UI thread dengan probe network tanpa timeout (KRITIS)
+- `jarvis/ui/window_voice.py:362-370` → `llm.probe()` dipanggil SINKRON di
+  `MainWindow.__init__` (`jarvis/ui/window.py:323`).
+- `jarvis/core/llm.py:57-73` — `client.models.generate_content(...)` **tanpa timeout**
+  (docstring modul sendiri: "Every call is blocking and must run off the UI thread").
+- **Kontras:** `jarvis/core/boot.py:30-52` (`_check_llm`) SUDAH melakukan pola benar —
+  probe di thread sendiri + `socket.create_connection(..., timeout=3)`. `_check_config`
+  menduplikasi cek itu dengan cara yang salah (UI thread, tanpa batas).
+- **Dampak:** jika key tersimpan tapi provider lambat/tak terjangkau, konstruksi window
+  membeku puluhan detik (default timeout SDK); UI tidak responsif saat boot. Jika tidak
+  ada key, `api_key()` kosong → False cepat, sheet muncul.
+- **Status:** source-confirmed; durasi beku nyata perlu pengukuran di mesin user
+  (needs-runtime-verification untuk angka pastinya).
+
+### B2 — `_on_api_key` menutup sheet HANYA saat probe sukses; semua kegagalan senyap (TINGGI) — akar langsung bug
+- `jarvis/ui/window_voice.py:400-416`: thread `verify_provider` memanggil `llm.probe()`;
+  `self._api_sheet.hide()` hanya di cabang `ok=True`. Gagal → hanya `write_log` ke drawer
+  F2 (tak terlihat dari sheet) dan `_ready` tetap False.
+- `jarvis/ui/window_widgets.py:287-330`: `ApiKeySheet` **tidak punya label error/status**
+  apa pun — hanya title/hint/QLineEdit/tombol. Tidak ada jalur menampilkan kegagalan di
+  tempat user melihat.
+- `jarvis/ui/window_widgets.py:326-329`: klik dengan field key kosong = no-op senyap
+  (`if key:`).
+- **Dampak:** user mengetik key, klik ACTIVATE, sheet tetap tampil tanpa perubahan →
+  persepsi "tombol tidak bisa diklik". Jika network hang, thread verifikasi (daemon,
+  tanpa timeout) menggantung dan sheet tidak pernah menutup.
+- **Status:** source-confirmed.
+
+### B3 — `llm.probe()` tidak punya timeout; tidak ada config untuk itu (TINGGI)
+- `jarvis/core/llm.py:57-73`: tidak ada `timeout=`/deadline; `config.yaml` tidak punya
+  kunci probe timeout (grep `probe|timeout` → tidak ada `llm.*probe*`). `boot.py` memakai
+  socket mentah timeout=3 justru karena jalur SDK ini tidak bounded.
+- **Dampak:** B1 (UI thread) dan B2 (thread verifikasi) dapat menggantung tanpa batas
+  bila koneksi tidak merespons.
+- **Status:** source-confirmed.
+
+### B4 — `secrets_store.set` dapat gagal senyap; sheet tak menangani kegagalan (SEDANG)
+- `jarvis/core/secrets_store.py:375-395`: jika backend None → `_logger.error` + return
+  False; `_on_api_key` (`window_voice.py:394-396`) hanya `write_log`, sheet tetap tampil.
+- **Status:** source-confirmed.
+
+### B5 — `wait_for_api_key` busy-poll 100ms hingga 300s; timeout menimbulkan pesan yang menyesatkan (SEDANG)
+- `jarvis/ui/window.py:469-486`: `while not self._win._ready: time.sleep(0.1)` sampai
+  deadline `voice.api_key_wait_timeout_s` (300s) — poll ketat di thread voice.
+- `jarvis/main.py:145-148`: saat habis waktu → `TimeoutError("API key belum diisi...")`.
+  Jika user SUDAH mengisi key tapi verifikasi gagal (B2), pesan ini **bohong**; dan
+  setelah timeout, pipeline voice sudah berhenti (`main.py:163-170`) — key yang berhasil
+  dimasukkan sesudahnya **tidak pernah menyalakan ulang voice** tanpa restart aplikasi.
+- **Status:** source-confirmed.
+
+## Rekomendasi perbaikan (RED-first, fase tersendiri, belum dikerjakan)
+
+1. `_check_config` memakai hasil `boot._check_llm`/pola thread + timeout bounded, atau
+   return cepat `bool(llm.api_key())` seperti HEAD lama; probe boot tetap di `boot.py`.
+2. `ApiKeySheet` menambah label status; `_on_api_key` menampilkan kegagalan di sheet dan
+   menutupnya pada sukses — dengan timeout bounded pada probe.
+3. `llm.probe()` menerima `timeout_s` configurable (default ≤5s) dan dipanggil off-UI-thread.
+4. `_await_api_key` diberi jalur retry/restart voice setelah `_ready` menjadi True.
+
+## Temuan voice input/playback/wake (source-confirmed)
+
+> Catatan metode: audit subagent gagal dua kali karena API error infra (proxy/gateway,
+> "empty or malformed response HTTP 200"), bukan karena isi. Audit voice diselesaikan
+> inline dari source. Tanpa sesi audio → tidak ada klaim `live-proven`.
+
+### V1 — Mic meter adalah pemilik input fisik ketiga, di luar kebijakan ownership (TINGGI)
+- `jarvis/ui/mic_meter.py:124` membuka `sd.InputStream` sendiri (meter + barge-in +
+  speaker_id) DI SAMPING Live listener (`_listen_audio` legacy) dan wake capture.
+- `jarvis/integrations/voice_wake_arbitration.py:9-17,28-55` mengarbitrasi HANYA
+  wake-vs-Live berdasarkan `pipeline.state`; **stream meter tidak termasuk kedua
+  owner** dan berjalan konkuren dengan capture Live di semua state.
+- **Dampak:** dua capture perangkat yang sama secara bersamaan; sesuai rencana Fase 46
+  ("tepat satu intended physical input owner"; meter menjadi consumer frame, bukan owner).
+- **Status:** source-confirmed; konflik device nyata butuh sesi audio terotorisasi.
+
+### V2 — Monkeypatch global `sd.InputStream` selama sesi `_listen_audio` (TINGGI)
+- `jarvis/integrations/voice_audio_devices.py:117-130`: `sd.InputStream =
+  configured_input_stream` (menginjeksi `device=` via `setdefault`) dipasang untuk
+  SELURUH durasi `_listen_audio` — praktis permanen selama sesi.
+- **Dampak:** stream lain yang dibuka selama sesi (`mic_meter.py:124`, `whatsapp_voice.py`)
+  diam-diam mewarisi device input yang di-resolve Live; mutasi global tidak reentrant,
+  ditulis dari main thread sementara thread meter bisa membuka stream (race). Rencana
+  Fase 46: ganti dengan resolver/factory yang memasukkan `device=` langsung.
+- **Status:** source-confirmed.
+
+### V3 — Mic meter mati permanen setelah satu exception; tanpa recovery (SEDANG)
+- `jarvis/ui/mic_meter.py:133-134`: `except Exception → _logger.warning(...)` → thread
+  berakhir. Tidak ada retry/reopen. Satu gangguan device saat boot mematikan meter +
+  barge-in selama sesi.
+- **Status:** source-confirmed.
+
+### V4 — Tidak ada heartbeat/stall detector untuk callback mic (SEDANG)
+- `jarvis/ui/mic_meter.py:129-132`: `mic_meter.started` dicatat sekali saat open;
+  loop `while not self._stop_event.wait(0.2)` tanpa cek `last_callback_at`. Stream yang
+  membeku senyap tidak terdeteksi (sunyi di log = mati ATAU tidak pernah memicu).
+- **Status:** source-confirmed.
+
+### V5 — Callback PortAudio menyentuh state UI langsung (RENDAH)
+- `jarvis/ui/mic_meter.py:88-91,114-117`: dari thread audio memanggil
+  `self._win.orb.feed_amplitude(...)` dan membaca `_legacy_state/_muted/_speaking_since`.
+  `feed_amplitude` (`jarvis/ui/orb.py:174-176`) = tulis atribut polos (GIL-atomic, risiko
+  rendah), tapi mutasi state UI lintas thread tanpa sinkronisasi.
+- **Positif (Fase 45):** dispatch barge-in TIDAK memakai jalur ESC —
+  `mic_meter.py:36-62` membuat event via `voice_interrupt.build_microphone_event` dan
+  emit lewat `_voice_interrupt_sig` (queued); `window_voice.py:298-332`
+  (`_do_voice_interrupt`) memvalidasi generation/epoch/max_age + dedup token sebelum
+  `on_interrupt`. `window_voice.py:334` (`_do_interrupt`/ESC) jalur terpisah.
+- **Status:** source-confirmed (smell); kerusakan nyata needs-runtime-verification.
+
+### CLEAN (voice)
+- **Playback drain authoritative:** `voice_playback_fix.py:52-120` — drain lokal
+  dicatat per-epoch (`voice_speech.playback_drained` → `voice_playback_level.mark_drained`);
+  barge-in memakai `voice_playback_level.current_level()` (`mic_meter.py:11-26,105`).
+- **Grace/cooldown/quarantine barge-in:** `voice_interrupt.py:43-113` — event membawa
+  capture/playback generation + epoch, divalidasi `event_max_age_s` +
+  `post_drain_grace_s` tanpa membaca state UI sesaat.
+- **Cleanup stream meter:** `mic_meter.py:124` memakai `with sd.InputStream(...)` →
+  tertutup di jalur sukses maupun exception.
+- **Tidak ada busy-loop di jalur audio;** busy-poll `wait_for_api_key` adalah temuan boot
+  (B5).
+
+## Temuan agent loop / task lifecycle / delegation (source-confirmed)
+
+> Catatan metode: subagent gagal (API error infra); audit diselesaikan inline.
+
+### A1 — Iterasi masih otoritas penghentian tugas (KRITIS — akar laporan "berhenti di 20/50")
+- `jarvis/agent/loop.py:207` `for iterations in range(1, max_iter + 1)` — loop dibatasi
+  hitungan iterasi sebagai termination authority.
+- `jarvis/agent/loop.py:137` `max_iter = max_iterations or config.get("agent.max_iterations", 50)`;
+  `loop.py:219-220` `_iteration_escalation(...)`; `loop.py:221,301` `_limit_report(...)`;
+  `loop.py:344` `"Batas {max_iter} iterasi tercapai sebelum tugas tuntas"`.
+- **Tidak ada no-progress guard:** grep `no_progress|stall|fingerprint|identical`
+  di `loop.py` → 0 match. Satu-satunya penghenti selain cancel/timeout adalah hitungan.
+- **Status:** source-confirmed.
+
+### A2 — Iterasi dipakai sebagai denominator progress (TINGGI)
+- `jarvis/agent/tasks.py:108` `return min(0.95, self.iteration / max(1, self.max_iterations))`
+  — progress task agentic = fraksi iterasi, bukan langkah nyata. Task yang memanggil
+  tool sama berulang kali terlihat "progres" naik padahal tidak berubah.
+- **Status:** source-confirmed.
+
+### A3 — Delegate masih clamp 20/30 sebagai authority (TINGGI)
+- `jarvis/agent/tools/delegate.py:20` default `max_iterations=20`; `delegate.py:65`
+  `max_iterations=min(int(max_iterations or 20), 30)` — sub-agent dihentikan di 20–30
+  cycle. Ini yang memicu laporan "tugas masih berkembang dihentikan hanya karena
+  hitungan mencapai 20/50".
+- **Status:** source-confirmed.
+
+### A4 — Batas iterasi tambahan (SEDANG)
+- `jarvis/agent/dispatch.py:714-715` `agent.interactive_max_iterations` default 12.
+- **Status:** source-confirmed.
+
+### A5 — UI menampilkan "progres = iterasi/max" sebagai completion determinate (SEDANG)
+- `jarvis/agent/tasks.py:108` `min(0.95, iteration/max_iterations)`; UI merendernya
+  sebagai persentase, bar, dan arc:
+  `jarvis/ui/task_deck.py:247,292-293`, `jarvis/ui/task_strip.py:139-176`,
+  `jarvis/ui/task_wiring.py:33-37`, `jarvis/ui/task_halo.py:92-124`.
+- Task terminal **dipaksa 100%** untuk DONE, FAILED, DAN CANCELLED — angka yang sama
+  palsu untuk kerja indeterminate. Juga terekspos lewat `task_status`
+  (`jarvis/agent/tools/task_tools.py:23-36`).
+- **Status:** source-confirmed.
+
+### A6 — Cancellation flag-only; kerja aktif tidak di-terminate; ACK premature (TINGGI)
+- Setel `Session.cancelled` + registry `threading.Event`, tetapi loop cek flag hanya
+  antar-iterasi/sebelum tool call (`jarvis/agent/loop.py:208-209,464-479`); provider
+  via `asyncio.to_thread` (`loop.py:235-256`), subprocess (`tools/terminal.py:49-63`),
+  process terlepas (`terminal.py:151-170`), dan browser worker (`tools/browser.py`)
+  **tidak menerima handle cancellation** → kerja yang sudah berjalan tidak dijamin
+  berhenti sebelum timeout sendiri (needs-runtime-verification untuk durasi nyata).
+- `task_cancel` (`jarvis/agent/tools/task_tools.py:134-150`) mengembalikan "Tugas [id]
+  dibatalkan" segera setelah meminta cancellation, tanpa menunggu worker mencapai
+  checkpoint/CANCELLED → user bisa diberi tahu selesai padahal masih jalan.
+- Hasil cancelled dirutekan lewat jalur failure: dispatch membranching `result.ok`
+  bukan `result.cancelled` (`dispatch.py:722-776`; `loop.py:392-397`) → registry bisa
+  memublikasikan CANCELLED sementara callback/event legacy memublikasikan failed —
+  klasifikasi terminal kontradiktif untuk task yang sama.
+- **Status:** source-confirmed (mekanisme hilang); durasi nyata needs-runtime-verification.
+
+### A7 — `Session.finish` tidak exactly-once; persistensi bisa ditimpa dua kali (SEDANG)
+- `jarvis/agent/session.py:141-151` tanpa guard exactly-once; loop memanggil `finish`
+  (`loop.py:267-271,308`) lalu jalur dispatch pasca-kontrak memanggil lagi
+  (`dispatch.py:722-745`) → sesi berkontrak dapat diarsipkan sebagai sukses model lalu
+  ditimpa hasil validasi. Publikasi terminal registry sendiri aman (prepare_finish
+  menolak task terminal; publish_finish cek `_finished_published`).
+- **Status:** source-confirmed.
+
+### A8 — ID task namespace 16-bit tanpa deteksi tabrakan (TINGGI)
+- `jarvis/agent/tasks.py:68-72` — ID hanya 4 digit hex UUID (65.536 ruang);
+  `tasks.py:328-357` menetapkan langsung `self._tasks[task.id]` tanpa cek/retry;
+  `jarvis/agent/task_ledger.py:121-150` memakai `INSERT OR REPLACE` → tabrakan dapat
+  menimpa identitas task lain (status/cancel/result mem-bind task yang salah).
+- **Status:** source-confirmed.
+
+### A9 — Task terminal dan result penuh tanpa retention cap otomatis (SEDANG)
+- `jarvis/agent/tasks.py:223-243,328-357` — setiap task tetap di `_tasks` dengan result
+  penuh; `prune` opsional (`tasks.py:558-568`) tidak dipanggil di jalur produksi mana
+  pun yang ditemukan. `task_result` hanya memotong OUTPUT (4000 char) di
+  `task_tools.py:153-177`, bukan memori tersimpan.
+- **Status:** source-confirmed.
+
+### CLEAN (agent loop — dikarakterisasi dari source)
+- **Deadline wall-clock NYATA ada, terpisah dari iterasi:** `dispatch.py:673-720,850-873`
+  `asyncio.wait_for(..., timeout=hard_timeout)` default 900s (`config.yaml:820`);
+  tool punya `Tool.timeout_s` sendiri (`registry.py:267-280`). Batas koroutine ini tidak
+  memaksa terminasi thread/proses di baliknya (tercakup A6).
+- Satu-satunya guard repetisi sempit: `registry.py:217-255` (menekan ulang request
+  konfirmasi yang sudah ditolak) — bukan no-progress guard umum (A1).
+- `video_analysis.py:764` memakai `max_iterations=max(1, max_frames+10)` hanya sebagai
+  denominator batch terukur.
+- Fase 47 dirancang untuk menghapus A1-A6, A8: completion-driven loop, `NoProgressGuard`,
+  determinisme progress, dan deadline wall-clock tetap.
+
+> Catatan: audit agent-loop diverifikasi lintas dua jalur — subagent paralel (selesai)
+> + konfirmasi inline; temuan di atas menyatukan keduanya.
+
+## Temuan media / tool routing / security surface (source-confirmed)
+
+> Catatan metode: subagent gagal (API error infra); audit diselesaikan inline.
+
+### M1 — Terminal memakai `shell=True` dengan gate konfirmasi berbasis blocklist regex (SEDANG)
+- `jarvis/agent/tools/terminal.py:49-58` (`subprocess.run(..., shell=True)`) dan
+  `terminal.py:161-166` (`Popen(..., shell=True)`).
+- Gate: `terminal.py:19-26` regex `_DANGEROUS` (blocklist) → `needs_confirmation()`
+  (`terminal.py:42-43,158-159`), ditegakkan di dispatch `jarvis/agent/registry.py:219`.
+- **Keterbatasan:** blocklist tidak lengkap — perintah destruktif di luar pola
+  (obfuscated PowerShell/cmd, `del` tanpa `/s`, dst.) lolos tanpa konfirmasi.
+- **Status:** source-confirmed; bukan celah eksploit langsung (ada gate untuk pola
+  diketahui), tapi permukaan shell perlu review berkala.
+
+### M2 — Tidak ada tool akuisisi konten YouTube; hanya buka browser (GAP, bukan bug)
+- `jarvis/agent/task_contracts.py:268-286` (`detect_youtube_latest_play` → URL
+  `youtube.com/results?search_query=`); `jarvis/agent/tools/youtube_voice.py:39` juga
+  buka browser. Tidak ada `yt_dlp`/cookies/netrc di codebase.
+- **Dampak:** kemampuan Fase 48 (URL publik → evidence report bertimestamp) memang belum
+  ada. Konsekuensi positif: belum ada permukaan akuisisi yang bisa disalahgunakan.
+- **Status:** source-confirmed (gap fitur).
+
+### M3 — Temp media dibersihkan (CLEAN)
+- `jarvis/agent/media/video_analysis.py:570,592,792` — `finally` + `Path(...).unlink(missing_ok=True)`.
+  Tidak ditemukan kebocoran temp di pipeline lokal.
+
+### M4 — Capability exposure perlu verifikasi lebih dalam (needs-verification, bukan defect)
+- `jarvis/agent/capabilities.py:29-58` — `descriptors()` menyintesis descriptor untuk
+  SEMUA tool registry (`registry.all_tools()`), bukan hanya allowlist eksplisit; risk
+  diturunkan dari `requires_confirmation`/`read_only`. Fail-closed sesungguhnya berada di
+  permukaan exposure (`toolgroups.py`/`toolsets.py`/`tool_selection.py`) yang belum
+  diverifikasi penuh di audit ini.
+- **Status:** needs-runtime-verification; direkomendasikan audit terpisah terhadap rantai
+  exposure capability → tool call.
+
+## Hasil perbaikan boot/ACTIVATE — 2026-08-17
+
+Perbaikan ditutup sebagai slice terpisah sebelum Fase 46. Kontrak yang dipilih:
+credential tersimpan adalah syarat cukup agar konstruksi window tidak membuka sheet
+ulang; reachability provider bukan bagian dari konstruksi UI. Telemetry boot tetap
+dimiliki `BootSequence`, sedangkan verifikasi setelah ACTIVATE berjalan di worker.
+
+### Yang diubah
+
+- B1: `_check_config()` sekarang hanya membaca keberadaan credential; tidak ada
+  `llm.probe()`/network di constructor `MainWindow`.
+- B2/B4: `ApiKeySheet` sekarang punya status inline, busy guard, submit kosong yang
+  terlihat, retry setelah kegagalan store/probe, serta membersihkan field secret segera
+  setelah encrypted store berhasil. Tombol/input tidak menerima submit ganda saat busy.
+- B2: worker activation hanya menghitung hasil `llm.probe()` lalu emit Qt signal.
+  `_ready`, status, dan visibility sheet hanya diubah slot UI
+  `_on_api_key_verified()`.
+- B3: singleton core GenAI memakai
+  `HttpOptions(timeout=llm.request_timeout_s * 1000)`; config default 6 detik dan
+  pembacaan dibatasi 0,1–120 detik. Karena `probe`, `generate`, dan `stream` memakai
+  singleton yang sama, ketiganya memperoleh request timeout.
+- B5 tidak diperluas diam-diam: `wait_for_api_key()` tetap bounded 300 detik dan
+  ter-unblock bila verifikasi sukses sebelum deadline.
+
+### Bukti RED/GREEN dan gate
+
+- RED pertama: `python -m pytest tests/test_api_key_activation.py -q
+  --basetemp $TEMP/jarvis-api-activation-red` → **5 failed**. Kegagalan membuktikan
+  constructor masih probe, client belum punya timeout, sheet belum punya status,
+  kegagalan store belum retryable, dan worker masih mengubah `_ready` langsung.
+- GREEN focused final: activation + bounded wait + config + window/voice/facade
+  regressions → **86 passed dalam 19,39 detik**. Seluruh provider, keyring, thread, dan
+  Qt seam yang sensitif di-fake/offscreen; tidak ada credential nyata yang dibaca atau
+  dicetak.
+- Focused activation/config sebelumnya → **48 passed dalam 9,91 detik**; window/voice
+  regression terpisah → **38 passed dalam 10,06 detik**.
+- `python -m ruff check .` → **hijau**.
+- `python scripts/verify_frozen.py` → **FROZEN integrity OK (10 file, baseline
+  094b696)**.
+- `git diff --check` → tidak menemukan whitespace error; warning line-ending berasal
+  dari file dirty lain dan tidak diubah slice ini.
+- `python scripts/evidence_status.py --json` berhasil dirender; tidak ada label evidence
+  yang dinaikkan secara implisit.
+
+Suite penuh juga diukur, bukan disembunyikan: **3071 passed, 1 skipped, 2 failed dalam
+217,43 detik**. Kedua failure berasal dari `tests/test_llm_probe.py`, file untracked yang
+sudah ada sebelum slice ini dan sengaja tidak ditimpa:
+
+1. stub `object.__new__(WindowVoiceMixin)` tidak menyediakan Qt signal baru;
+2. kontrak lama menuntut provider probe sinkron saat boot dan bertentangan langsung
+   dengan perbaikan B1.
+
+Tidak ditambahkan fallback yang memanggil slot UI langsung dari worker hanya demi stub,
+karena itu akan menghidupkan kembali mutasi lintas thread. Kontrak lama juga tidak
+dipulihkan: network provider tidak boleh kembali menjadi syarat konstruksi UI.
+
+**Evidence:** `source-present`, `focused-tested`, `runtime-wired`.
+
+**Batas jujur:** tidak ada network/provider/keyring nyata, sesi audio, restart voice,
+atau Gemini Live yang dijalankan. Karena itu hasil ini bukan `live-proven`. Jika batas
+300 detik sudah habis lalu key baru berhasil diverifikasi, pipeline voice belum punya
+owner restart otomatis; lifecycle residual ini tetap terbuka dan tidak boleh diselesaikan
+dengan membuat thread voice kedua.
+
 ## Lampiran — Status evidence fase (dibangkitkan)
 
 | Fase | Judul | Hasil | Bukti eksplisit di bagian Hasil |

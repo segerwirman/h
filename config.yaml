@@ -318,6 +318,7 @@ llm:
   live_model: "models/gemini-3.1-flash-live-preview"
   text_model: "gemini-3.5-flash"
   classify_model: "gemini-3.5-flash"
+  request_timeout_s: 6           # batas request core Gemini (probe/generate/stream)
   api_key_file: "config/api_keys.json"   # relative to project root
 
 boot:

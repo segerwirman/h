@@ -29,6 +29,15 @@ def api_key() -> str | None:
         return None
 
 
+def _request_timeout_ms() -> int:
+    try:
+        seconds = float(config.get("llm.request_timeout_s", 6))
+    except (TypeError, ValueError):
+        seconds = 6.0
+    seconds = max(0.1, min(seconds, 120.0))
+    return int(seconds * 1000)
+
+
 def _get_client():
     global _client
     with _client_lock:
@@ -37,7 +46,10 @@ def _get_client():
             if not key:
                 return None
             from google import genai
-            _client = genai.Client(api_key=key)
+            from google.genai import types
+            _client = genai.Client(
+                api_key=key,
+                http_options=types.HttpOptions(timeout=_request_timeout_ms()))
         return _client
 
 

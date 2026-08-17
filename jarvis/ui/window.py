@@ -125,6 +125,7 @@ class MainWindow(
     _reconfig_sig = pyqtSignal()
     _vision_sig = pyqtSignal(bool)
     _voice_interrupt_sig = pyqtSignal(object)
+    _api_key_verified_sig = pyqtSignal(bool, str)
 
     def __init__(self, services: dict | None = None,
                  facades: object | None = None):
@@ -328,6 +329,7 @@ class MainWindow(
         self._reconfig_sig.connect(self._show_api_sheet)
         self._vision_sig.connect(self._set_vision_visible)
         self._voice_interrupt_sig.connect(self._do_voice_interrupt)
+        self._api_key_verified_sig.connect(self._on_api_key_verified)
         self.vision_panel.frame_available.connect(self._on_vision_frame_ready)
         self.stage.status_changed.connect(self._on_stage_status)
         from jarvis.browser.reply import ReplyFlow

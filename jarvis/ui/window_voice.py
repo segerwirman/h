@@ -362,10 +362,7 @@ class WindowVoiceMixin:
     def _check_config(self) -> bool:
         try:
             from jarvis.core import llm
-            if not llm.api_key():
-                return False
-            ok, _detail = llm.probe()
-            return ok
+            return bool(llm.api_key())
         except Exception:
             return False
 
@@ -373,7 +370,7 @@ class WindowVoiceMixin:
         if self._api_sheet is None:
             return
         c = self.centralWidget()
-        w, h = 480, 240
+        w, h = 480, 280
         self._api_sheet.setGeometry((c.width() - w) // 2,
                                     (c.height() - h) // 2, w, h)
 
@@ -388,32 +385,61 @@ class WindowVoiceMixin:
     def _on_api_key(self, key: str) -> None:
         from jarvis.core import llm, secrets_store
         key = str(key or "").strip()
+        sheet = self._api_sheet
         if not key:
+            if sheet:
+                sheet.set_busy(False)
+                sheet.set_status("API key belum diisi.", "error")
             self.write_log("ERR: API key kosong — credential lama dipertahankan.")
             return
+        if sheet:
+            sheet.set_busy(True)
+            sheet.set_status("Menyimpan credential terenkripsi …", "info")
         if not secrets_store.set("jarvis/llm/gemini", key):
+            if sheet:
+                sheet.set_busy(False)
+                sheet.set_status(
+                    "API key gagal disimpan terenkripsi. Coba lagi.", "error")
             self.write_log("ERR: API key gagal disimpan terenkripsi.")
             return
+        if sheet:
+            sheet.clear_secret()
+            sheet.set_status("Memverifikasi provider …", "info")
         llm.reset_client()
         self._ready = False
 
         def verify_provider() -> None:
-            ok, detail = llm.probe()
-            if not ok:
-                self.write_log(
-                    f"ERR: API key tersimpan, provider belum online ({detail}).")
-                return
-            self._ready = True
-            if self._api_sheet:
-                self._api_sheet.hide()
-            self.write_log("SYS: API key tersimpan — provider terverifikasi, sistem online.")
+            try:
+                ok, detail = llm.probe()
+            except Exception:                                  # noqa: BLE001
+                ok, detail = False, "provider tidak merespons"
+            self._api_key_verified_sig.emit(
+                bool(ok), str(detail or "provider tidak merespons")[:120])
 
-        import threading
         threading.Thread(
             target=verify_provider,
             daemon=True,
             name="gemini-key-probe",
         ).start()
+
+    def _on_api_key_verified(self, ok: bool, detail: str) -> None:
+        sheet = self._api_sheet
+        self._ready = bool(ok)
+        if not ok:
+            message = f"API key tersimpan, provider belum online ({detail})."
+            if sheet:
+                sheet.set_busy(False)
+                sheet.set_status(message, "error")
+                sheet.show()
+                sheet.raise_()
+            self.write_log(f"ERR: {message}")
+            return
+        if sheet:
+            sheet.set_busy(False)
+            sheet.set_status("Provider terverifikasi. Sistem online.", "success")
+            sheet.hide()
+        self.write_log(
+            "SYS: API key tersimpan — provider terverifikasi, sistem online.")
 
     def _on_file(self, path: str) -> None:
         self._current_file = path
