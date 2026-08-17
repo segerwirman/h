@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import time
 
-from jarvis.core import log
+from jarvis.core import log, quiet
 
 _logger = log.get("ui")
 
@@ -115,8 +115,8 @@ class MicMeterController:
                         self._win.write_log(
                             "SYS: Suara tidak dikenali — perintah diabaikan "
                             f"(skor {who.score:.2f} < {who.threshold:.2f}).")
-                except Exception:                            # noqa: BLE001
-                    pass
+                except Exception as exc:                     # noqa: BLE001
+                    quiet.swallowed("ui.mic_meter.feed_failed", exc)
 
                 if verdict.interrupt:
                     self._publish_interrupt(verdict, detected_at=now)

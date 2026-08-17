@@ -5,6 +5,8 @@ from collections import OrderedDict
 from collections.abc import Callable
 from threading import Lock
 
+from jarvis.core import quiet
+
 
 class ResourcePool:
     def __init__(self, *, max_entries: int = 8):
@@ -44,5 +46,5 @@ class ResourcePool:
         if callable(closer):
             try:
                 closer()
-            except Exception:
-                pass
+            except Exception as exc:
+                quiet.swallowed("runtime.resource_pool.close_failed", exc)

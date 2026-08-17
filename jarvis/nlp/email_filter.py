@@ -13,7 +13,7 @@ import email.header
 import imaplib
 import re
 
-from jarvis.core import config, llm, log
+from jarvis.core import config, llm, log, quiet
 from jarvis.nlp.base import Context, Response
 
 _logger = log.get("nlp.email")
@@ -132,6 +132,6 @@ class EmailFiltering:
         finally:
             try:
                 conn.logout()
-            except Exception:
-                pass
+            except Exception as exc:
+                quiet.swallowed("nlp.email_filter.logout_failed", exc)
         return buckets

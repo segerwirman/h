@@ -29,7 +29,7 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field
 
-from jarvis.core import log
+from jarvis.core import log, quiet
 
 _logger = log.get("core.speech")
 
@@ -266,8 +266,8 @@ class SpeechQueue:
                 if self._on_drop is not None:
                     try:
                         self._on_drop(item.text, item.kind)
-                    except Exception:                        # noqa: BLE001
-                        pass
+                    except Exception as exc:                 # noqa: BLE001
+                        quiet.swallowed("core.speech_queue.on_drop_failed", exc)
                 continue
             keep.append(item)
         self._pending = keep

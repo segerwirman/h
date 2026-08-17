@@ -14,7 +14,7 @@ from PyQt6.QtGui import QColor, QPainter, QPixmap, QTransform
 from PyQt6.QtWidgets import (QFileDialog, QLabel, QTextEdit, QVBoxLayout,
                              QWidget)
 
-from jarvis.core import config
+from jarvis.core import config, quiet
 from jarvis.core.bus import BUS
 from jarvis.ui import theme
 
@@ -122,8 +122,8 @@ class SysStatsOverlay(SlidePanel):
             self._last_net = (net.bytes_recv, net.bytes_sent, now)
             up = time.time() - psutil.boot_time()
             self._rows["UPTIME"].setText(f"UP   {int(up//3600):02d}:{int(up%3600//60):02d}")
-        except Exception:
-            pass
+        except Exception as exc:
+            quiet.swallowed("ui.overlays.system_stats_failed", exc)
         try:
             import pynvml
             pynvml.nvmlInit()
