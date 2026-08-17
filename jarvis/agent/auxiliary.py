@@ -16,7 +16,7 @@ jalan merusak kecocokan dimensi vektor di memory_store (§4.2).
 """
 from __future__ import annotations
 
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 from jarvis.agent import llm_client
 from jarvis.agent.providers import Provider, get_provider, list_names
 
@@ -80,7 +80,8 @@ def resolve(task: str) -> tuple[Provider, str]:
             if _provider_available(p):
                 _logger.info("auxiliary.fallback", task=task, provider=name)
                 return p, (model or p.model)
-        except Exception:                                    # noqa: BLE001
+        except Exception as exc:                             # noqa: BLE001
+            quiet.swallowed("agent.auxiliary.provider_probe_failed", exc)
             continue
     return main, (model or main.model)
 

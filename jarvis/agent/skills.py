@@ -17,7 +17,7 @@ import re
 import shutil
 from pathlib import Path
 
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 
 _logger = log.get("agent.skills")
 
@@ -55,7 +55,8 @@ def list_metadata(filter_text: str = "") -> list[dict]:
         try:
             meta, _ = _parse_frontmatter(
                 skill_file.read_text(encoding="utf-8"))
-        except Exception:                                    # noqa: BLE001
+        except Exception as exc:                             # noqa: BLE001
+            quiet.swallowed("agent.skills.frontmatter_parse_failed", exc)
             continue
         name = meta.get("name") or skill_file.parent.name
         desc = meta.get("description", "")

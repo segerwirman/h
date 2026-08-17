@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from jarvis.agent import dispatch, providers, session
+from jarvis.core import quiet
 
 
 def memory_scope_counts() -> dict[str, int]:
@@ -82,6 +83,7 @@ def all_providers() -> list:
     for name in providers.list_names():
         try:
             out.append(providers.get_provider(name))
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            quiet.swallowed("agent.management_surface.provider_load_failed", exc)
             continue
     return out

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Iterator
 
 from jarvis.agent.router import Route, Tier, classify
+from jarvis.core import quiet
 
 
 @dataclass(frozen=True)
@@ -253,8 +254,8 @@ class VoiceToolGate:
             route = self._classifier(text, {"source": self._source})
             if isinstance(route, Route):
                 return route
-        except Exception:  # noqa: BLE001 - voice boundary is never-raise
-            pass
+        except Exception as exc:  # noqa: BLE001 - voice boundary is never-raise
+            quiet.swallowed("agent.voice_gate.classify_failed", exc)
         return _safe_heavy("voice router failed; safe heavy default")
 
     def _take_ready(self, *, timed_out: bool) -> VoiceToolBatch | None:

@@ -11,6 +11,8 @@ import threading
 import time
 from typing import Any
 
+from jarvis.core import quiet
+
 DEFAULT_TIMEOUT_S = 5.0
 CACHE_TTL_S = 300.0
 
@@ -120,8 +122,8 @@ def _request(provider, timeout_s: float):
         try:
             from jarvis.core import secrets_store
             key = secrets_store.get(f"jarvis/oauth/{provider.name}") or key
-        except Exception:
-            pass
+        except Exception as exc:
+            quiet.swallowed("agent.providers_discovery.oauth_secret_failed", exc)
     if kind == "gemini":
         if not key:
             raise DiscoveryError("API key belum diisi")
