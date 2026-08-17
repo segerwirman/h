@@ -5348,6 +5348,32 @@ perangkat. Uji audio/Gemini Live nyata tetap memerlukan otorisasi terpisah.
 
 ---
 
+## Sesi audit & eksekusi checklist — 2026-08-17 (Mes/Hermes, read-only→TDD)
+
+**Audit awal:** suite 3043 passed / 4 failed; 4 drift: config contract
+(`image_generation.max_reference_bytes` + 2 pola `<dynamic>`), Fase 22
+inkonsisten, `routing.light.provider` custom vs gemini, ruff S110
+`jarvis/main.py:76`.
+
+**Yang dikerjakan (8 commit, semua hash diverifikasi + approval Takeda):**
+- `2ab126d` fix(config): deklarasi `media.video.*`, `voice.barge_in.event_max_age_s/post_drain_grace_s`, `image_generation.max_reference_bytes`, section `vision_supervisor`; light lane custom diterima.
+- `8825cf9` docs(fase): Fase 22 → SELESAI (bukti 31 trigger live) + Fase 43 → SEBAGIAN, konsisten prose/appendix.
+- `d4f2894` fix(lint/config): `config.get` literal di `voice_interrupt` + noqa S110 `main.py`/`task_tools.py` + test routing.
+- `ed8e6de` feat(docs): **PDF scan dibaca via vision provider** (render halaman → transkripsi bounded). LIVE-PROVEN: faktur scan terbaca via provider nyata.
+- `567363e` feat(vision): **VisionSupervisor → Telegram** (coalesce+throttle 30s, foto, require_armed; opt-in).
+- `44f6590` feat(provider): `llm.generate` fallback ke provider aktif; upload gambar via `vision_client` (seam W4; embedding & transkripsi audio tetap Gemini — dicatat).
+- `9c141ff` fix(audio): transkripsi genai 2.x — `Part.from_text/from_bytes` (bentuk lama ditolak pydantic; bug nyata di jalur video analysis).
+- `867b9b6` fix(awareness): Pillow `getdata` → `get_flattened_data`.
+- `4672e28` feat(latency): **Fase 42** — penanda rentang gelap akhir-ucapan → ACK (`voice_ack` turn; `speech_end` di `_voice_intercept`, `dispatch_start`+`finish` di dispatch). Hanya mengukur, tidak mengubah perilaku.
+
+**Ukuran:** Fase 35 debt S110/S112 = 188 blok (ruff `--isolated --select S110,S112`, tree penuh; baseline audit 178 dengan scope berbeda).
+
+**Batas jujur:**
+- Fase 42: instrumentasi terpasang & teruji (19 test); **angka pertama menunggu sesi voice nyata** (rentang gelap muncul di log `latency.turn` key `voice_ack`).
+- Transkripsi video live: terblokir **429 quota Gemini** saat sesi (request sudah valid — bukan error kode); vision & clip render LIVE-PROVEN (`clip_9558c395b805_0_2.mp4`).
+- VisionSupervisor: kode+test hijau; live acceptance (arm kamera + Telegram paired) belum dijalankan.
+- W7 kosa kata call: infrastruktur sudah ada (persona `apply_to_prompt`, ack composer, naturalizer aktif); audio call = Gemini Live realtime (tidak lewat naturalizer teks). Gap persona per-konteks = fase lanjutan.
+
 ## Lampiran — Status evidence fase (dibangkitkan)
 
 | Fase | Judul | Hasil | Bukti eksplisit di bagian Hasil |
