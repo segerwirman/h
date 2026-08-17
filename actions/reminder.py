@@ -7,6 +7,8 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from jarvis.core import quiet
+
 _CNW: dict = (
     {"creationflags": subprocess.CREATE_NO_WINDOW}
     if platform.system() == "Windows" else {}
@@ -188,8 +190,8 @@ def _schedule_windows(target_dt: datetime, task_name: str,
 
     try:
         xml_path.unlink(missing_ok=True)
-    except Exception:
-        pass
+    except Exception as exc:
+        quiet.swallowed("actions.reminder.xml_cleanup_failed", exc)
 
     if result.returncode != 0:
         script_path.unlink(missing_ok=True)

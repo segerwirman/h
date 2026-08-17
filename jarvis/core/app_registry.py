@@ -37,7 +37,7 @@ from dataclasses import dataclass
 from difflib import SequenceMatcher
 from pathlib import Path
 
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 
 _logger = log.get("core.app_registry")
 _SYSTEM = platform.system()
@@ -553,7 +553,8 @@ def list_running() -> list[RunningApp]:
                 _tid, pid = win32process.GetWindowThreadProcessId(win._hWnd)
                 if pid:
                     titles.setdefault(int(pid), title)
-            except Exception:                                # noqa: BLE001
+            except Exception as exc:                          # noqa: BLE001
+                quiet.swallowed("core.app_registry.window_pid_failed", exc)
                 continue
     except Exception:                                        # noqa: BLE001
         titles = {}

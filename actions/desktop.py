@@ -9,6 +9,8 @@ import platform
 from pathlib import Path
 from datetime import datetime
 
+from jarvis.core import quiet
+
 try:
     import pyautogui
     _PYAUTOGUI = True
@@ -243,8 +245,8 @@ def set_wallpaper_from_url(url: str) -> str:
         result = set_wallpaper(str(tmp))
         try:
             tmp.unlink()
-        except Exception:
-            pass
+        except Exception as exc:
+            quiet.swallowed("actions.desktop.wallpaper_tmp_unlink_failed", exc)
         return result
     except Exception as e:
         return f"Could not download wallpaper: {e}"

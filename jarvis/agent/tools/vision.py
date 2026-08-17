@@ -9,6 +9,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from jarvis.agent.base import Tool, ToolResult
+from jarvis.core import quiet
 
 
 class _Params(BaseModel):
@@ -70,6 +71,6 @@ def _live_camera_jpeg() -> bytes | None:
         vision = ui_adapter.current_vision_system()
         if vision is not None and hasattr(vision, "latest_frame_jpeg"):
             return vision.latest_frame_jpeg(timeout=2.5)
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                 # noqa: BLE001
+        quiet.swallowed("agent.tools.vision.live_frame_failed", exc)
     return None
