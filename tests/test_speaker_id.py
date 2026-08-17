@@ -386,10 +386,10 @@ def test_the_mic_loop_actually_feeds_the_listener():
     """Modul yang tidak pernah dipanggil tidak mengenali siapa pun."""
     import inspect
 
-    from jarvis.ui import window
+    from jarvis.ui.mic_meter import MicMeterController
 
-    source = inspect.getsource(window.JarvisUI._mic_meter)
-    assert "speaker" in source.lower()
+    source = inspect.getsource(MicMeterController.run)
+    assert "speaker_listener.feed" in source
 
 
 def _speak(listener, audio, block=1024):

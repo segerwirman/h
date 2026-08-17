@@ -1,6 +1,7 @@
 """Mic stream controller for the legacy JarvisUI facade."""
 from __future__ import annotations
 
+import queue
 import time
 
 from jarvis.core import log, quiet
@@ -27,7 +28,7 @@ def _playback_level(win) -> float:
 
 
 class MicMeterController:
-    """Own the single microphone stream used for meter and barge-in."""
+    """Consume frames from the Gemini Live microphone owner."""
 
     def __init__(self, win, stop_event):
         self._win = win
@@ -77,37 +78,45 @@ class MicMeterController:
 
         try:
             import numpy as np
-            import sounddevice as sd
+            from jarvis.integrations.voice_input_owner import frame_hub
 
-            def cb(indata, frames, t, status):
-                now = time.monotonic()
+            frames = frame_hub(self._win)
+            _logger.info("mic_meter.started", **analyzer.diagnostics())
+            _logger.info("speaker_id.started", **speaker_id.diagnostics())
+            while not self._stop_event.is_set():
+                try:
+                    frame = frames.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+                if frame.generation != int(
+                    getattr(self._win, "_voice_capture_generation", 0) or 0
+                ):
+                    continue
+                indata = np.frombuffer(frame.pcm, dtype=np.int16).astype(
+                    np.float32
+                ) / 32768.0
+                if not indata.size:
+                    continue
                 state = self._win._legacy_state
                 rms = float(np.sqrt(np.mean(indata ** 2)))
                 speaking = state == "SPEAKING"
-                if state == "LISTENING" and not self._win._muted:
-                    self._win.orb.feed_amplitude(min(1.0, rms * 12))
-                elif speaking:
-                    import random
-                    self._win.orb.feed_amplitude(random.uniform(0.35, 0.95))
+                level = min(1.0, rms * 12) if state == "LISTENING" else 0.0
+                if speaking:
+                    level = max(level, min(1.0, _playback_level(self._win)))
+                signal = getattr(self._win, "_mic_level_sig", None)
+                emit = getattr(signal, "emit", None)
+                if callable(emit):
+                    emit(level)
 
                 if self._win._muted:
-                    return
+                    continue
                 verdict = analyzer.process_block(
-                    indata, now, speaking=speaking,
+                    indata,
+                    frame.captured_at,
+                    speaking=speaking,
                     speaking_since=getattr(self._win, "_speaking_since", 0.0),
-                    # Level playback DIUKUR dari audio yang benar-benar
-                    # diputar (voice_playback_level tap). Mengasumsikan volume
-                    # penuh membuat ambang begitu tinggi sehingga tidak ada
-                    # yang bisa memotong — barge-in "menyala" tapi mati dalam
-                    # praktik. Worst-case 1.0 hanya dipakai bila tap belum
-                    # terpasang, karena echo yang tak terukur lebih berbahaya
-                    # daripada interupsi yang terlewat.
                     playback_level=_playback_level(self._win),
                 )
-                # §30 — mengamati saja secara default. Gerbangnya mati sampai
-                # Takeda melihat angka dari suaranya sendiri; verifikasi yang
-                # keliru membuat Jarvis TULI terhadap pemiliknya, dan itu jauh
-                # lebih buruk daripada menjawab orang lain sesekali.
                 try:
                     who = speaker_listener.feed(
                         indata, listening=(state == "LISTENING"))
@@ -119,16 +128,8 @@ class MicMeterController:
                     quiet.swallowed("ui.mic_meter.feed_failed", exc)
 
                 if verdict.interrupt:
-                    self._publish_interrupt(verdict, detected_at=now)
-
-            with sd.InputStream(callback=cb, channels=1, samplerate=16000,
-                                blocksize=1024):
-                # §22 — penanda "mic meter HIDUP". Tanpa ini, thread yang mati
-                # dan barge-in yang tidak pernah memicu sama-sama terlihat
-                # sunyi di log, dan sunyi tidak membedakan apa pun.
-                _logger.info("mic_meter.started", **analyzer.diagnostics())
-                _logger.info("speaker_id.started", **speaker_id.diagnostics())
-                while not self._stop_event.wait(0.2):
-                    pass
+                    self._publish_interrupt(
+                        verdict, detected_at=frame.captured_at
+                    )
         except Exception as e:
             _logger.warning("mic_meter.unavailable", error=str(e)[:100])

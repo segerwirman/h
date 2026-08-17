@@ -5346,6 +5346,45 @@ dan typed bounded recovery melalui reconnect owner Gemini Live yang sudah ada.
 Semua RED tests memakai fake stream, fake clock, fake session, dan tidak membuka
 perangkat. Uji audio/Gemini Live nyata tetap memerlukan otorisasi terpisah.
 
+### Hasil 46A — satu physical input owner (fake/offline)
+
+Seam editable `voice_input_owner` kini mengganti hanya `_listen_audio`; `JarvisLive.run`
+dan reconnect owner FROZEN tidak diubah. Satu `InputStream` Live memasukkan `device=`
+secara eksplisit, menyalin buffer PortAudio menjadi owned PCM bytes di callback, lalu
+mem-fan-out ke uplink bounded dan `FrameHub` bounded. Callback/queued frame generasi lama
+ditolak setelah reopen.
+
+`MicMeterController` tidak lagi mengimpor atau membuka `sounddevice.InputStream`. Meter,
+barge-in, dan speaker listener mengonsumsi `FrameHub`; level orb dikirim lewat Qt signal
+sehingga worker meter tidak memutasi widget langsung. Resolver input/output lama tetap
+dipakai, tetapi global `sd.InputStream` tidak lagi dimonkeypatch. Wake arbitration yang
+sudah ada tetap memindahkan ownership temporal wake↔Live berdasarkan pipeline state.
+
+- RED dedicated: **3 failed, 5 passed dalam 0,94 detik**. Ketiga failure membuktikan
+  modul/owner/frame hub belum ada; test device dan wake yang sudah ada tetap hijau.
+- GREEN focused: **65 passed dalam 2,34 detik** pada owner, device selector, wake
+  arbitration, generation interrupt, seam composition, diagnostics, dan speaker listener.
+- Fake stream mengukur **1 open, 1 close, max 1 stream aktif**; `device=0` diteruskan
+  langsung. Setelah fake PortAudio buffer dimutasi menjadi `0xffff`, uplink dan meter tetap
+  memegang copy awal `01020304`.
+- Queue meter berkapasitas 2 diuji dengan 3 frame: frame tertua dibuang dan dua frame
+  terbaru dipertahankan. `JarvisLive.run` serta identity global `sd.InputStream` tetap sama.
+- Ruff pada seluruh file source/test 46A hijau.
+- Suite penuh: **3077 passed, 1 skipped dalam 228,11 detik**, dengan external
+  `--basetemp`; skip tetap privilege symlink Windows yang sudah dikenal.
+- `ruff check .`, `git diff --check`, FROZEN integrity **OK (10 files, baseline
+  094b696)**, dan render `evidence_status.py --json` semuanya hijau.
+
+**Kesalahan rancangan yang ditemukan:** menyimpan `indata` lintas callback akan menunjuk
+buffer PortAudio yang dapat dipakai ulang; fan-out karena itu wajib membawa owned bytes.
+Memindahkan `feed_amplitude()` langsung dari callback ke thread meter juga tetap merupakan
+mutasi widget lintas thread, sehingga dipakai Qt signal khusus.
+
+**Batas jujur:** angka ownership berasal dari fake `InputStream`, bukan perangkat Windows
+nyata. Belum ada microphone, speaker, restart audio, network, atau Gemini Live yang dibuka;
+46A adalah `source-present`, `focused-tested`, `runtime-wired`, bukan `live-proven`.
+Heartbeat dan recovery stall masih milik 46B/46C.
+
 ---
 
 ## Sesi audit & eksekusi checklist — 2026-08-17 (Mes/Hermes, read-only→TDD)

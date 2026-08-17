@@ -83,6 +83,7 @@ def _install_voice_seams(legacy, logger) -> None:
     from jarvis.integrations import (
         voice_audio_devices,
         voice_document,
+        voice_input_owner,
         voice_l1,
         voice_live_transport,
         voice_native_tools,
@@ -99,6 +100,7 @@ def _install_voice_seams(legacy, logger) -> None:
     )
     voice_native_tools.sync_google_declarations(legacy)
     voice_audio_devices.install(legacy)
+    voice_input_owner.install(legacy)
     # Perbaikan 'kosakata terpotong' saat suara: drain-aware playback
     # dipasang via monkeypatch (file main.py FROZEN tidak diubah).
     try:

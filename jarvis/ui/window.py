@@ -125,6 +125,7 @@ class MainWindow(
     _reconfig_sig = pyqtSignal()
     _vision_sig = pyqtSignal(bool)
     _voice_interrupt_sig = pyqtSignal(object)
+    _mic_level_sig = pyqtSignal(float)
     _api_key_verified_sig = pyqtSignal(bool, str)
 
     def __init__(self, services: dict | None = None,
@@ -319,6 +320,7 @@ class MainWindow(
         self.on_remote_clicked = None
         self.on_interrupt = None
         self._muted = False
+        self._voice_capture_generation = 0
         self._current_file: str | None = None
         self._pending_query: str | None = None
         self._ready = self._check_config()
@@ -329,6 +331,7 @@ class MainWindow(
         self._reconfig_sig.connect(self._show_api_sheet)
         self._vision_sig.connect(self._set_vision_visible)
         self._voice_interrupt_sig.connect(self._do_voice_interrupt)
+        self._mic_level_sig.connect(self.orb.feed_amplitude)
         self._api_key_verified_sig.connect(self._on_api_key_verified)
         self.vision_panel.frame_available.connect(self._on_vision_frame_ready)
         self.stage.status_changed.connect(self._on_stage_status)

@@ -8,7 +8,9 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
     from jarvis import main as jmain
     from jarvis.core import llm
     from jarvis.integrations import (
+        voice_audio_devices,
         voice_document,
+        voice_input_owner,
         voice_l1,
         voice_live_transport,
         voice_native_tools,
@@ -17,6 +19,8 @@ def test_install_voice_seams_preserves_runtime_order(monkeypatch):
     )
 
     modules = [
+        voice_audio_devices,
+        voice_input_owner,
         voice_playback_fix,
         voice_l1,
         voice_live_transport,
