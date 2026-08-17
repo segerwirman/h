@@ -1,6 +1,9 @@
 import cv2
 import numpy as np
 import math
+
+from jarvis.core import quiet
+
 try:
     import mediapipe as mp
 except ImportError:
@@ -90,8 +93,8 @@ class VisionProcessor:
                 self.enable_gestures = cfg.get("enable_gestures", True)
                 self.draw_boxes = bool(cfg.get("camera_draw_boxes", False))
                 self.draw_hands = bool(cfg.get("camera_draw_hands", False))
-        except Exception:
-            pass
+        except Exception as exc:
+            quiet.swallowed("core.camera_vision.config_load_failed", exc)
 
     def process_frame(self, frame):
         self.frame_count += 1

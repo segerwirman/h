@@ -6,6 +6,8 @@ import time
 from pathlib import Path
 from contextlib import contextmanager
 
+from jarvis.core import quiet
+
 
 @contextmanager
 def _phase_timer(log, label: str):
@@ -330,7 +332,8 @@ def _open_vscode(project_dir: Path) -> bool:
             _VSCODE_CMD_CACHE = cmd
             print(f"[DevAgent] 💻 VSCode opened: {project_dir}")
             return True
-        except Exception:
+        except Exception as exc:
+            quiet.swallowed("actions.dev_agent.vscode_open_failed", exc)
             continue
     return False
 

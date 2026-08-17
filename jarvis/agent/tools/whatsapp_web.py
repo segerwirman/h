@@ -5,7 +5,7 @@ import asyncio
 
 from pydantic import BaseModel, Field
 
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 from jarvis.agent.base import Tool, ToolResult
 
 _logger = log.get("agent.tools.whatsapp")
@@ -279,8 +279,8 @@ class WhatsAppCall(Tool):
         if _adapter is not None:
             try:
                 await _adapter.progress(announcement)
-            except Exception:                                # noqa: BLE001
-                pass
+            except Exception as exc:                                # noqa: BLE001
+                quiet.swallowed("agent.tools.whatsapp_web.progress_failed", exc)
 
         try:
             result = await asyncio.to_thread(

@@ -12,7 +12,7 @@ import unicodedata
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
-from jarvis.core import config
+from jarvis.core import config, quiet
 
 
 def _int_config(key: str, default: int, *, lo: int, hi: int) -> int:
@@ -329,8 +329,8 @@ def _refusal_cause(task: str) -> str:
             return "heavy_unconfigured"
         if _dispatch.is_active(task):
             return "busy"
-    except Exception:  # noqa: BLE001 - reason text must never break refusal
-        pass
+    except Exception as exc:  # noqa: BLE001 - reason text must never break refusal
+        quiet.swallowed("agent.interaction.refusal_reason_failed", exc)
     return ""
 
 

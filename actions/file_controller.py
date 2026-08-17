@@ -4,6 +4,8 @@ import platform
 from pathlib import Path
 from datetime import datetime
 
+from jarvis.core import quiet
+
 try:
     import send2trash
     _SEND2TRASH = True
@@ -355,7 +357,8 @@ def get_largest_files(path: str = "downloads", count: int = 10) -> str:
             if item.is_file():
                 try:
                     files.append((item.stat().st_size, item))
-                except Exception:
+                except Exception as exc:
+                    quiet.swallowed("actions.file_controller.stat_failed", exc)
                     continue
 
         files.sort(reverse=True)
