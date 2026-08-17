@@ -39,3 +39,21 @@ def allowed_paths() -> list[Path]:
     if isinstance(raw, str):
         raw = [x.strip() for x in raw.split(",") if x.strip()]
     return [Path(x) for x in raw]
+
+
+def is_allowed_path(value: str | Path) -> bool:
+    """Return whether a local path stays inside the configured file roots."""
+    try:
+        candidate = Path(value).expanduser()
+        if not candidate.is_absolute():
+            candidate = workspace_root() / candidate
+        target = candidate.resolve()
+        roots = [workspace_root().expanduser().resolve()]
+        for raw in allowed_paths():
+            root = raw.expanduser()
+            if not root.is_absolute():
+                root = workspace_root() / root
+            roots.append(root.resolve())
+        return any(target == root or root in target.parents for root in roots)
+    except (OSError, TypeError, ValueError):
+        return False
