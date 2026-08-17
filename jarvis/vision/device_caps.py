@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 
 _logger = log.get("vision.device_caps")
 
@@ -95,8 +95,8 @@ def _probe_directml() -> dict | None:
         if "DmlExecutionProvider" in ort.get_available_providers():
             return {"device": "DmlExecutionProvider",
                     "device_name": "DirectML", "half_precision": False}
-    except Exception:
-        pass
+    except Exception as exc:
+        quiet.swallowed("vision.device_caps.directml_probe_failed", exc)
     try:
         import torch_directml  # noqa: F401
         return {"device": "directml", "device_name": "DirectML (torch)",

@@ -30,7 +30,7 @@ from __future__ import annotations
 import re
 import threading
 
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 from jarvis.agent.providers import Provider, get_provider
 
 _logger = log.get("agent.model_routing")
@@ -68,8 +68,8 @@ def publish_provider_event(role: str, provider: str, reason: str,
         BUS.publish("agent.provider_policy", role=str(role)[:40],
                     provider=str(provider)[:80], reason=str(reason)[:180],
                     event=str(event)[:40])
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                 # noqa: BLE001
+        quiet.swallowed("agent.model_routing.policy_publish_failed", exc)
 
 
 # ── lane ringan ───────────────────────────────────────────────────────────

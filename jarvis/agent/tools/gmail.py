@@ -9,6 +9,7 @@ from email.message import EmailMessage
 from pydantic import BaseModel, Field
 
 from jarvis.agent.base import Tool, ToolResult
+from jarvis.core import quiet
 from jarvis.integrations import google_api, google_auth
 
 READ_SCOPE = google_auth.SCOPES["gmail"]["read"]
@@ -37,8 +38,8 @@ def _headers(payload: dict) -> dict[str, str]:
         value = str(item.get("value") or "")
         try:
             value = str(make_header(decode_header(value)))
-        except Exception:
-            pass
+        except Exception as exc:
+            quiet.swallowed("agent.tools.gmail.header_decode_failed", exc)
         if name:
             out[name] = value
     return out
