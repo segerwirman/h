@@ -9,7 +9,7 @@ from PyQt6.QtCore import QTimer
 
 from jarvis.agent.router import Tier as ExecutionTier
 from jarvis.agent.router import classify as _classify_execution_default
-from jarvis.core import config, log
+from jarvis.core import config, latency, log
 from jarvis.core.bus import BUS
 from jarvis.core.router import Intent
 from jarvis.nlp.summarize import ACTIVITY_LOG
@@ -108,6 +108,15 @@ class WindowVoiceMixin:
         divergen. Free-form conversation tetap ke live assistant."""
         if not spoken:
             return
+        # Fase 42 — UKUR rentang gelap akhir-ucapan → ACK. Penanda ini hanya
+        # mengukur; tidak mengubah routing. `latency.turn` ber-key voice_ack
+        # ditutup di dispatch (voice_handoff) saat task masuk.
+        try:
+            latency.start("voice_ack", task=f"voice:{spoken[:60]}")
+            latency.mark("voice_ack", "speech_end")
+        except Exception as exc:                             # noqa: BLE001
+            _logger.debug("latency.voice_ack_open_failed",
+                          error=type(exc).__name__)
         if self.reply_flow.handle_utterance(spoken):
             return
         # Fase 15 — jawaban konfirmasi lewat suara. Kanal baru, gerbang lama:

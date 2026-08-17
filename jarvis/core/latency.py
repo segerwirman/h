@@ -120,6 +120,21 @@ def finish(key, *, now: float | None = None) -> dict:
         return {}
 
 
+def voice_handoff(*, now: float | None = None) -> dict:
+    """Fase 42 — tutup turn ``voice_ack`` saat task masuk dispatch.
+
+    ``total_ms`` turn ini = rentang gelap: akhir ucapan (``speech_end``) →
+    task masuk dispatch (``dispatch_start``, area ACK). No-op bila tidak ada
+    turn voice terbuka (input typed/telegram/cron). Hanya mengukur; tidak
+    pernah mengubah alur kerja.
+    """
+    try:
+        mark("voice_ack", "dispatch_start", now=now)
+        return finish("voice_ack", now=now)
+    except Exception:                                        # noqa: BLE001
+        return {}
+
+
 def active_count() -> int:
     with _lock:
         return len(_turns)
@@ -131,4 +146,4 @@ def reset() -> None:
 
 
 __all__ = ["MAX_TURNS", "active_count", "enabled", "finish", "mark", "reset",
-           "start"]
+           "start", "voice_handoff"]

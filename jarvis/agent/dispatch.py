@@ -661,6 +661,9 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
     # §24 — pengukuran dibuka di ACK, bukan di awal fungsi: ACK adalah titik
     # user mulai menunggu, dan itulah latensi yang ia rasakan.
     latency.start(session.id, task=task)
+    # Fase 42 — tutup turn voice_ack: total_ms-nya = rentang gelap
+    # akhir-ucapan → dispatch (ACK area). No-op untuk input non-voice.
+    latency.voice_handoff()
     _safe_callback(
         on_ack,
         acknowledgement,
