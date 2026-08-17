@@ -1,6 +1,6 @@
 # DELETION_PLAN — Sanitasi Repo
 
-Berbasis temuan terverifikasi di [`AUDIT_FINDINGS_CODE.md`](AUDIT_FINDINGS_CODE.md),
+Berbasis temuan terverifikasi di [`AUDIT_FINDINGS_CODE.md`](../../AUDIT_FINDINGS_CODE.md),
 bukan asumsi. Setiap baris di tabel AMAN HAPUS punya bukti nol-pemanggil yang
 sudah disilangkan dengan **keempat mekanisme pemuatan dinamis** di repo ini.
 

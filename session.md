@@ -1,32 +1,32 @@
 # JARVIS Active Session Handoff
 
-> **Purpose:** Baca file ini pertama kali pada setiap sesi baru. Update setelah fase COMPLETE, PARTIAL, BLOCKED, atau ketika urutan roadmap berubah. Setelah fase complete, sinkronkan juga master roadmap, `JARVIS.MD`, `.hermes/handoffs/current.md`, `.hermes.md`, dan roadmap domain.
+> **Purpose:** Baca file ini pertama kali pada setiap sesi baru. Update setelah fase COMPLETE, PARTIAL, BLOCKED, atau ketika urutan roadmap berubah. Setelah fase complete, sinkronkan juga `jarvisfix.md`, `.hermes/handoffs/current.md`, `.hermes.md`, dan roadmap domain yang masih aktif.
 
 ## Session identity
 
 ```text
 Repository: E:\jarvis agent\h
 Branch: fase13-kejujuran-panggilan
-Code baseline: 7a7b256 refactor(ui): pecah window dan panel Fase 40
-Last updated: 2026-08-11 — audit HEAD dan finalisasi hygiene Fase 40
+Code baseline: 4543295 refactor(lint): Fase 35 slice 6 — suarakan kegagalan close_app
+Last updated: 2026-08-18 — repository hygiene preflight dan arsip planning record
 ```
-Git staging/commit: index kosong after hygiene commit; code baseline 7a7b256; the synchronization is kept in a separate hygiene commit.
+Git staging/commit: dokumentasi hygiene sedang disiapkan sebagai commit terpisah; perubahan source pengguna tidak termasuk allowlist.
 Frozen: OK — 10 files, baseline 094b696
-Worktree after hygiene commit: remaining local residue (`.curator_state.json`, `$null`, `.claude/`, `check_mail.ps1`, `check_mail.ps1.bak`) is not part of the code baseline and must not be committed without review.
+Working tree saat preflight sengaja campuran: 22 file modified dan 8 kelompok untracked. Seluruh perubahan yang tidak terkait hygiene harus dipertahankan.
 ```
 
 ## Read order
 
 1. `session.md`
-2. `.hermes/plans/2026-08-01_224934-jarvis-master-implementation-roadmap.md`
-3. `JARVIS.MD`
-4. `.hermes/handoffs/current.md`
-5. `.hermes.md`
-6. Relevant domain roadmap listed below.
+2. `jarvisfix.md`
+3. `.hermes/handoffs/current.md`
+4. `.hermes.md`
+5. `docs/archive/plans/INDEX.md` bila membutuhkan konteks roadmap historis.
+6. Roadmap domain aktif yang disebut pada status terkini.
 
 Current implementation record:
 
-`E:\jarvis agent\h\jarvisfix.md` (Fase 35–42)
+`E:\jarvis agent\h\jarvisfix.md` (implementation dan evidence ledger aktif)
 
 ## Latest completed phase
 
@@ -318,7 +318,7 @@ SCR  bcf20cd feat(desktop): bounded canary/soak runners + manual UIA acceptance 
 - **Desktop-safe vertical closure**: select-option kini native (CAP1, opaque ref + lease + confirmation, A27 TERBUKA), audit trail opaque (REG), session persistence sanitized (CAP2), canary/soak/acceptance fixtures (SCR).
 - 2 blocker nyata di sesi ini: A62 substring credential query (fix), TEL remote fallthrough `yt_latest` (fix + probe test).
 - Review UX2 `deleg_5f745467` menyatakan hash "tidak exist" karena salah interpretasi cached-diff convention — content review tetap valid; UX2 committed `1e41354` setelah approval.
-- Sisa worktree setelah sesi: `jarvis/agent/skills_data/.curator_state.json` (timestamp noise, jangan commit), `full_run.txt` (artifact, jangan commit), docs continuity (`.hermes.md`, `JARVIS.MD`, `.hermes/plans/*`, `.hermes/handoffs/current.md`, `session.md` ini).
+- Sisa worktree setelah sesi: `jarvis/agent/skills_data/.curator_state.json` (timestamp noise, jangan commit), `full_run.txt` (artifact, jangan commit), docs continuity (`.hermes.md`, retired continuity ledger, `docs/archive/plans/*`, `.hermes/handoffs/current.md`, `session.md` ini).
 
 ### ⚠️ Temuan metodologi: editable install jarvis-mk50 (2026-08-03)
 
@@ -337,7 +337,7 @@ SCR  bcf20cd feat(desktop): bounded canary/soak runners + manual UIA acceptance 
 ### Deliverables
 
 - Stale Phase 20/20.1/20.2 status and obsolete Phase-21-as-next markers are removed or explicitly marked superseded.
-- `session.md`, the master/stabilization roadmaps, `JARVIS.MD`, current handoff, `.hermes.md`, and legacy domain roadmaps agree that Phase 20.2 is complete and Phase 20.3 is next.
+- `session.md`, the master/stabilization roadmaps, the retired continuity ledger, current handoff, `.hermes.md`, and legacy domain roadmaps agree that Phase 20.2 is complete and Phase 20.3 is next.
 - Capability evidence now uses six non-interchangeable labels: `source-present`, `configured`, `runtime-wired`, `focused-tested`, `fixture-accepted`, and `live-proven`.
 - Current provider/credential/device readiness is recorded as **not established** where Phase 20.2 did not inspect or exercise it.
 - Source presence, runtime wiring, focused tests, or disposable fixtures are never promoted to `live-proven`.
@@ -374,9 +374,9 @@ Independent documentation review: PASS.
 ## Active phase
 
 ```text
-Phase: Fase 40 — Pecah jarvis/ui/window.py
-Status: COMPLETE IN CODE — 2026-08-11 (7a7b256)
-Priority: audit hygiene dan kesinambungan handoff
+Phase: Repository hygiene — arsip planning record
+Status: IN PROGRESS — 2026-08-18
+Priority: dokumentasi/archive saja; jangan campur perubahan source pengguna
 ```
 
 ### Outcome
@@ -386,12 +386,12 @@ Priority: audit hygiene dan kesinambungan handoff
 - TDD: RED 5 failed → GREEN 5 passed; regression 40 passed (controls + rollout + states + harness + audio + actor); py_compile + ruff + diff check PASS; frozen `094b696` OK; staged-only canary 18 passed; dua-approval (commit + live run).
 - Worktree bersih: hanya 2 artifact (`.curator_state.json`, `full_run.txt`) — JANGAN di-commit. Index kosong.
 
-### Next phase (audit read-only; cleanup menunggu persetujuan eksplisit)
+### Next phase
 
 ```text
-Phase: Audit 28 local worktrees
-Status: SIAP DIAUDIT, BELUM BOLEH DIBERSIHKAN
-Guardrail: audit read-only; minta persetujuan eksplisit sebelum remove/prune/clean.
+Phase: Generated residue + cache regenerable, lalu audit worktree
+Status: BELUM DIMULAI
+Guardrail: exact manifest; worktree hanya read-only sampai persetujuan remove terpisah.
 ```
 
 ## Planned phase order
@@ -437,16 +437,15 @@ WA9-live call controls ✅ LIVE-PROVEN (CLK 987864e, 2026-08-03)
 After every phase:
 
 1. update this file;
-2. update master roadmap;
-3. update `JARVIS.MD`;
-4. update `.hermes/handoffs/current.md`;
-5. update `.hermes.md`;
-6. update relevant domain roadmap;
-7. record RED/GREEN/regression/compile/diff/frozen/review evidence;
-8. record Git stage/commit state;
-9. state exact next phase, scope, and guardrail;
-10. provide a ready-to-copy new-session prompt;
-11. do not start the next phase automatically.
+2. update `jarvisfix.md`;
+3. update `.hermes/handoffs/current.md`;
+4. update `.hermes.md`;
+5. update relevant active domain roadmap; update the archive index only when records move;
+6. record RED/GREEN/regression/compile/diff/frozen/review evidence;
+7. record Git stage/commit state;
+8. state exact next phase, scope, and guardrail;
+9. provide a ready-to-copy new-session prompt;
+10. do not start the next phase automatically.
 
 ## Resume prompt
 
@@ -455,18 +454,18 @@ Lanjutkan JARVIS di E:\jarvis agent\h.
 
 Baca berurutan:
 1. session.md
-2. JARVIS.MD
+2. jarvisfix.md
 3. .hermes/handoffs/current.md
 4. .hermes.md
-5. jarvisfix.md untuk status Fase 35–42
+5. docs/archive/plans/INDEX.md bila perlu menelusuri roadmap historis
 
-Code baseline: 7a7b256 pada branch fase13-kejujuran-panggilan; S-39 = 94e3596.
-Full suite 2806 passed, 1 skipped, 5 warnings; Ruff dan frozen verifier PASS.
-Worktree memiliki 2 tracked change dan 4 kelompok file lokal tak terlacak.
+Code baseline: 4543295 pada branch fase13-kejujuran-panggilan.
+Baseline hygiene offline: 3090 passed, 1 skipped, 1 warning; Ruff dan frozen verifier PASS.
+Worktree sengaja campuran; pertahankan seluruh perubahan source pengguna.
 
-Tugas berikutnya: audit 28 local worktrees secara read-only. Dilarang
-menjalankan cleanup sebelum persetujuan eksplisit. Fase 38 tetap parsial dan
-belum live-proven; live validation memerlukan approval live terpisah.
+Tugas berikutnya: lanjutkan repository hygiene dari `jarvisfix.md`. Worktree
+hanya boleh diaudit dan dimasukkan ke exact allowlist; dilarang menghapus
+worktree sebelum manifest ditampilkan dan persetujuan terpisah diberikan.
 
 Prosedur tetap: audit read-only → TDD RED→GREEN → stage exact allowlist/
 partial index → gates (isolated staged-only, cross-boundary, compile, Ruff,

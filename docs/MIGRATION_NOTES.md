@@ -30,7 +30,7 @@
   FROZEN pada master spec tetap berlaku; perubahan runtime harus hanya melalui
   seam perilaku yang diperlukan.
 - Roadmap detail disimpan di
-  `.hermes/plans/2026-07-21_085845-jarvis-maturity-natural-conversation.md`.
+  `docs/archive/plans/2026-07-21_085845-jarvis-maturity-natural-conversation.md`.
   Acceptance contract ada di `docs/JARVIS_CONVERSATION_ACCEPTANCE.md`.
 - Fase 0 program ini hanya dokumentasi dan baseline; regression awal OAuth,
   provider, model routing, interaktivitas, ingress, dan voice routing lulus:

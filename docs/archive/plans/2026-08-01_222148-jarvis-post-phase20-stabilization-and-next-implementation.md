@@ -123,8 +123,8 @@ git diff --check
 - Modify: `JARVIS.MD`
 - Modify: `.hermes/handoffs/current.md`
 - Modify: `.hermes.md`
-- Modify: `.hermes/plans/2026-07-31_032152-jarvis-roadmap.md`
-- Modify: `.hermes/plans/2026-07-31_123827-jarvis-next-phases.md`
+- Modify: `docs/archive/plans/2026-07-31_032152-jarvis-roadmap.md`
+- Modify: `docs/archive/plans/2026-07-31_123827-jarvis-next-phases.md`
 - Keep this plan as the new source for post-Phase-20 implementation.
 
 **Tasks:**

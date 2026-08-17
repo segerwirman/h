@@ -266,7 +266,7 @@ master + stabilization roadmaps
 → capability audit snapshot with unknown current config/live states explicit
 → Phase 20.3 immediate-next contract
 
-JARVIS.MD + .hermes.md + current handoff
+retired continuity ledger + .hermes.md + current handoff
 → same completion/next-phase truth
 → source/unit/fake/fixture evidence cannot be promoted to live proof
 
@@ -333,14 +333,14 @@ Independent documentation review: PASS.
 
 ```text
 session.md
-JARVIS.MD
+retired continuity ledger
 .hermes.md
 .hermes/handoffs/current.md
-.hermes/plans/2026-08-01_224934-jarvis-master-implementation-roadmap.md
-.hermes/plans/2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md
-.hermes/plans/2026-07-31_032152-jarvis-roadmap.md
-.hermes/plans/2026-07-31_123827-jarvis-next-phases.md
-.hermes/plans/2026-08-01_224041-jarvis-whatsapp-call-agent-calendar-timer-roadmap.md
+docs/archive/plans/2026-08-01_224934-jarvis-master-implementation-roadmap.md
+docs/archive/plans/2026-08-01_222148-jarvis-post-phase20-stabilization-and-next-implementation.md
+docs/archive/plans/2026-07-31_032152-jarvis-roadmap.md
+docs/archive/plans/2026-07-31_123827-jarvis-next-phases.md
+docs/archive/plans/2026-08-01_224041-jarvis-whatsapp-call-agent-calendar-timer-roadmap.md
 ```
 
 ## Authority/privacy/Git boundary
@@ -356,12 +356,13 @@ JARVIS.MD
 
 ## Next phase
 
-**Audit 28 local worktrees** (read-only terlebih dahulu; cleanup menunggu persetujuan eksplisit)
+**Repository hygiene bertahap** — arsip planning record, lalu residue/cache; worktree tetap read-only sampai persetujuan remove terpisah.
 
 ### Goal
 
-Catat path, branch, commit, lock, dan status dirty setiap worktree tanpa mengubah
-worktree mana pun.
+Selesaikan arsip planning record dan reference graph, lalu residue/cache dari exact
+manifest. Setelah itu catat path, branch, commit, lock, dan dirty state worktree
+tanpa mengubah worktree mana pun.
 
 ### Setelah audit
 
@@ -384,19 +385,19 @@ Lanjutkan JARVIS di E:\jarvis agent\h.
 
 Baca berurutan:
 1. session.md
-2. JARVIS.MD
+2. jarvisfix.md
 3. .hermes/handoffs/current.md
 4. .hermes.md
-5. jarvisfix.md untuk status Fase 35–42
+5. docs/archive/plans/INDEX.md bila perlu menelusuri roadmap historis
 
-Code baseline 7a7b256 pada branch fase13-kejujuran-panggilan; S-39 adalah
-94e3596. Full suite 2806 passed, 1 skipped, 5 warnings; Ruff dan frozen
-verifier lulus. Worktree memiliki dirty docs/state dan artefak lokal; jangan
-anggap itu bagian dari HEAD.
+Code baseline 4543295 pada branch fase13-kejujuran-panggilan. Baseline hygiene
+offline 3090 passed, 1 skipped, 1 warning; Ruff dan frozen verifier lulus.
+Worktree memiliki perubahan source pengguna dan artefak lokal; jangan anggap
+itu bagian dari scope hygiene.
 
-Tugas sesi berikutnya: audit 28 local worktrees secara read-only. Jangan
-menjalankan cleanup sebelum persetujuan eksplisit. Setelah cleanup disetujui,
-Fase 38 tetap belum live-proven dan memerlukan approval live terpisah.
+Tugas sesi berikutnya: lanjutkan repository hygiene dari `jarvisfix.md`.
+Worktree hanya boleh diaudit dan dimasukkan ke exact allowlist; jangan remove
+sebelum manifest ditampilkan dan persetujuan terpisah diberikan.
 Jangan git add -A/reset/checkout/restore/clean/stash/discard/amend. Jangan ubah
 provider/credential/live integration/authority/frozen.
 ```

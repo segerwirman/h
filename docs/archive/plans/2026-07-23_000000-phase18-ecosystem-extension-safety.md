@@ -19,7 +19,7 @@
 - Modify: `jarvis/plugins/runtime.py`
 - Modify: `tests/test_plugin_runtime.py`
 - Modify: `docs/OPERATIONS_RUNBOOK.md`
-- Create: `.hermes/plans/2026-07-23_000000-phase18-ecosystem-extension-safety.md`
+- Create: `docs/archive/plans/2026-07-23_000000-phase18-ecosystem-extension-safety.md`
 
 ## Verification
 

@@ -3545,7 +3545,7 @@ boot.
 "menyelamatkan yang menggantung":
 
 * penghapusan `AUDIT_REPORT.md`, `JARVIS.MD`, `JARVIS_MK50_MASTER_SPEC.md`
-  (2.271 baris). Ketiganya masih dirujuk `.hermes/plans/*`, dan `jarvisfix.md`
+  (2.271 baris). Ketiganya masih dirujuk `docs/archive/plans/*`, dan `jarvisfix.md`
   sendiri menyebut "MK50 §7". Menghapus spesifikasi induk butuh keputusan
   Takeda, bukan efek samping pembersihan.
 * `.hermes/handoffs/current.md` dan `.curator_state.json` — keduanya state
@@ -5961,3 +5961,70 @@ provider nyata atau Qt event-loop live. Evidence tetap `source-present`, `focuse
 | 44 | Analisis video bounded dan image-reference yang jujur — 2026-08-16 | SEBAGIAN | source-present, focused-tested, runtime-wired |
 | 45 | Kebenaran sumber interupsi dan guard playback — 2026-08-16 | SELESAI DI KODE | source-present, focused-tested, runtime-wired |
 | 46 | Satu pemilik input, heartbeat, dan recovery bounded | — | — |
+
+---
+
+## Repository hygiene — planning archive — 2026-08-18
+
+### Baseline yang diukur sebelum perubahan
+
+- Branch `fase13-kejujuran-panggilan`, HEAD `4543295`.
+- Working tree sengaja campuran: **22 modified** dan **8 kelompok untracked**;
+  staged diff kosong. Tidak ada perubahan source pengguna yang dimasukkan ke
+  allowlist dokumentasi.
+- Markdown proyek: **56 file, 1.186.010 byte** (sekitar 1,13 MiB), sehingga
+  Markdown bukan penyebab utama penggunaan storage.
+- Worktree terdaftar: **97 total**, **96 secondary**, terdiri dari **20 locked**
+  dan **76 unlocked**; seluruh secondary tercatat clean saat baseline. Belum ada
+  worktree yang dihapus dan baseline ini bukan izin penghapusan.
+- Cache regenerable exact manifest: **32 direktori, 1.878 file, 26.721.577
+  byte**. Cache belum dihapus pada slice dokumentasi ini.
+- Gate preflight offline: Ruff no-cache lulus; FROZEN integrity **OK (10 files,
+  baseline `094b696`)**; suite penuh dengan external network diblok di level
+  socket, `PYTHONDONTWRITEBYTECODE=1`, cacheprovider mati, dan `--basetemp` di
+  luar repo menghasilkan **3090 passed, 1 skipped, 1 warning dalam 208,22
+  detik**. Skip adalah privilege symlink Windows yang telah dikenal.
+
+### Slice arsip planning record
+
+- Dua puluh file tracked dari direktori planning legacy dipindahkan
+  dengan history-aware rename ke `docs/archive/plans/` tanpa mengubah basename
+  timestamp.
+- Record sanitasi yang telah dieksekusi dipindahkan dari
+  `docs/DELETION_PLAN.md` ke
+  `docs/archive/plans/2026-07-27-repository-sanitation.md`.
+- `docs/archive/plans/INDEX.md` mengurutkan 21 record secara kronologis dan
+  membedakan `complete-evidenced`, `superseded/absorbed`,
+  `assessment-record`, serta `deferred-items-remain`. Proposal lama tidak
+  diubah menjadi klaim implementasi.
+- Active read order sekarang memakai `session.md` + `jarvisfix.md`;
+  `JARVIS.MD` yang sengaja dipensiunkan pada commit `93cc967` tidak lagi menjadi
+  dependensi continuity aktif. Path lama hanya dipertahankan pada kolom
+  `Original path` di archive index.
+- `docs/UI_LEGACY_RETIREMENT_PLAN.md`, `docs/PHASE12_VERIFICATION.md`, runtime
+  prompt/skills, runbook operator, `readme.md`, user content, source, config,
+  credential, data, log, model, dan berkas FROZEN tidak dipindahkan.
+
+### Verifikasi sesudah arsip
+
+- Suite penuh offline sesudah seluruh rename/reference edit: **3090 passed, 1
+  skipped, 1 warning dalam 227,86 detik**. External network diblok di level
+  socket, loopback diizinkan, `PYTHONDONTWRITEBYTECODE=1`, pytest cacheprovider
+  mati, dan `--basetemp` berada di luar repo. Skip tetap privilege symlink
+  Windows yang telah dikenal.
+- Focused continuity/evidence: **29 passed dalam 1,59 detik**.
+- Ruff seluruh repo dengan `--no-cache`: lulus; evidence parser `--json`: lulus;
+  FROZEN integrity: **OK (10 file, baseline `094b696`)**.
+- Local Markdown links: **40 target valid** (contoh regex di
+  `AUDIT_REPORT.md` sengaja dikecualikan); assertion hygiene: **21 record
+  archived, active continuity clean**; staged dan unstaged `git diff --check`
+  lulus, selain warning normal LF→CRLF dari Git pada working tree Windows.
+
+### Batas jujur
+
+Slice ini hanya merapikan dokumentasi tracked dan reference graph. Tidak ada
+network/provider/keyring/audio/camera/browser atau sesi Gemini Live yang
+berjalan; tidak ada kemampuan Jarvis yang ditambah/dikurangi dan tidak ada
+klaim `live-proven`. Generated prompt, `$null`, cache, dan worktree masih
+menunggu slice masing-masing. Penghapusan worktree tetap memerlukan exact
+numbered allowlist dan persetujuan pengguna yang terpisah.

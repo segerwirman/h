@@ -112,13 +112,13 @@ UI typed/voice/Telegram/cron
 ### Plans created
 
 ```text
-.hermes/plans/2026-07-22_182154-phase14-local-first-dashboard-telegram-rollout.md
-.hermes/plans/2026-07-22_222009-phase15a-critical-hardening.md
-.hermes/plans/2026-07-22_222500-phase15b-runtime-authority.md
-.hermes/plans/2026-07-22_225616-phase15b2-voice-cooperative-stop.md
-.hermes/plans/2026-07-22_230000-phase16-reliability-evaluation.md
-.hermes/plans/2026-07-22_231000-phase17-telegram-production-ring.md
-.hermes/plans/2026-07-23_000000-phase18-ecosystem-extension-safety.md
+docs/archive/plans/2026-07-22_182154-phase14-local-first-dashboard-telegram-rollout.md
+docs/archive/plans/2026-07-22_222009-phase15a-critical-hardening.md
+docs/archive/plans/2026-07-22_222500-phase15b-runtime-authority.md
+docs/archive/plans/2026-07-22_225616-phase15b2-voice-cooperative-stop.md
+docs/archive/plans/2026-07-22_230000-phase16-reliability-evaluation.md
+docs/archive/plans/2026-07-22_231000-phase17-telegram-production-ring.md
+docs/archive/plans/2026-07-23_000000-phase18-ecosystem-extension-safety.md
 ```
 
 ## 6. Latest verification evidence
