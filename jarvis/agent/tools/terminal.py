@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from jarvis.agent.base import Tool, ToolResult
 from jarvis.agent.paths import workspace_root
+from jarvis.core import quiet
 
 _CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
@@ -101,7 +102,8 @@ class ProcessList(Tool):
                            if p.info["memory_info"] else 0)
                     rows.append((p.info["pid"], name,
                                  p.info["cpu_percent"] or 0.0, mem))
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                except (psutil.NoSuchProcess, psutil.AccessDenied) as exc:
+                    quiet.swallowed("agent.tools.terminal.process_probe_failed", exc)
                     continue
             rows.sort(key=lambda r: r[3], reverse=True)
             return rows[:60]

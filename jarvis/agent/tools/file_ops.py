@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from jarvis.agent.base import Tool, ToolResult
 from jarvis.agent.paths import allowed_paths, workspace_root
+from jarvis.core import quiet
 
 _MAX_READ = 200_000
 _SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv",
@@ -188,7 +189,8 @@ class FileSearch(Tool):
                             hits.append(f"{f}:{i}: {line.strip()[:200]}")
                             if len(hits) >= max_results:
                                 break
-                except OSError:
+                except OSError as exc:
+                    quiet.swallowed("agent.tools.file_ops.scan_skip_failed", exc)
                     continue
             return hits
 

@@ -223,8 +223,8 @@ def _scan_windows() -> dict[str, AppMatch]:
                     rf"shell:AppsFolder\{app_id}",
                     "start_apps",
                 )
-    except (OSError, ValueError, subprocess.SubprocessError):
-        pass
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        quiet.swallowed("core.app_registry.start_apps_probe_failed", exc)
 
     try:
         import winreg
@@ -556,7 +556,8 @@ def list_running() -> list[RunningApp]:
             except Exception as exc:                          # noqa: BLE001
                 quiet.swallowed("core.app_registry.window_pid_failed", exc)
                 continue
-    except Exception:                                        # noqa: BLE001
+    except Exception as exc:                                 # noqa: BLE001
+        quiet.swallowed("core.app_registry.window_enum_failed", exc)
         titles = {}
 
     try:

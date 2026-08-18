@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from jarvis.agent.base import Tool, ToolResult
 from jarvis.agent.paths import data_dir
+from jarvis.core import quiet
 
 _CREATE_NO_WINDOW = 0x08000000 if sys.platform == "win32" else 0
 
@@ -77,8 +78,8 @@ class ExecuteCode(Tool):
             finally:
                 try:
                     script.unlink()
-                except OSError:
-                    pass
+                except OSError as exc:
+                    quiet.swallowed("agent.tools.code_exec.cleanup_failed", exc)
 
         try:
             r = await asyncio.to_thread(_exec)

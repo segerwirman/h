@@ -6064,6 +6064,59 @@ Bukti Slice 9 adalah **focused-tested** + **runtime-wired**, bukan
 speaker, browser, atau Gemini Live yang dibuka. Semua perubahan user, manifest
 `.claude`, dan berkas FROZEN tetap di luar scope.
 
+## Fase 35 slice 10 — fallback tools lokal berhenti diam — 2026-08-18
+
+Slice ini dimulai dari HEAD `9a81f05` pada branch `fase13-kejujuran-panggilan`.
+Preflight aktual mengonfirmasi empat source target bersih terhadap commit tersebut,
+non-FROZEN, dan tidak termasuk 22 modified atau 6 untracked path milik user.
+Raw Ruff terisolasi sebelum perubahan mengukur **150 match di 49 berkas**:
+**125 S110 + 25 S112**.
+
+Lima blok lokal dipilih dan diuji dengan `quiet.swallowed(...)`:
+
+- `agent.tools.code_exec.cleanup_failed` — cleanup skrip temporer tetap fail-open;
+- `agent.tools.terminal.process_probe_failed` — proses yang hilang/terlarang tetap
+  di-skip dan proses lain tetap dilisting;
+- `agent.tools.file_ops.scan_skip_failed` — file yang gagal dibaca tetap di-skip;
+- `core.app_registry.start_apps_probe_failed` — probe `Get-StartApps` tetap fallback
+  ke hasil discovery lokal yang sudah ada;
+- `core.app_registry.window_enum_failed` — kegagalan enumerasi window tetap
+  mengosongkan judul dan melanjutkan scan proses.
+
+RED-first sebelum migrasi source menghasilkan **5 failed** dalam 0,91 detik.
+Kelima failure tepat pada event observability yang belum ada; tidak ada import/setup
+failure. Setelah implementasi, lima test menjadi **5 passed dalam 0,94 detik**.
+Control flow lama tidak berubah: `pass`/fallback tetap fail-open, `continue` tetap
+melanjutkan loop, dan cleanup tidak mengubah `ToolResult`.
+
+`actions/weather_report.py` sengaja tidak dipilih walau memiliki dua local `pass`
+karena modul yang sama menjalankan browser weather flow. `actions/reminder.py`
+juga tidak dipilih: catches yang tampak berada dalam generated standalone child
+script, tidak menjadi finding Ruff, dan penyuntikan `quiet` dapat memuat config/.env
+atau mematahkan child saat package tidak tersedia. Jalur winsound/audio, self-delete,
+provider, network, credential/keyring, voice/live, FROZEN, `.claude/`, dan seluruh
+perubahan user tetap di luar slice.
+
+### Gate aktual Slice 10
+
+- Focused regression (test baru, `quiet`, Slice 6–9 quiet tests, evidence/next-phase,
+  high-risk tools, dan native actions): **95 passed dalam 8,41 detik**.
+- Import smoke empat modul: **`IMPORT_SMOKE=ok`**.
+- Scoped Ruff pada empat source dan dua test baru: **All checks passed!**.
+- Root configured `python -m ruff check .`: **All checks passed!**.
+- Raw Ruff sesudah perubahan tetap **150 match di 49 berkas** (**125 S110 + 25 S112**).
+  Ini jujur: kelima handler yang diinstrumentasi tidak mengurangi matcher raw S110/S112
+  saat ini, sehingga tidak ada ledger `pyproject.toml` yang diubah.
+- FROZEN verifier: **`FROZEN integrity: OK (10 files, baseline 094b696)`**.
+- `git diff --check`: bersih; warning line-ending normal Git pada Windows tidak
+  diperlakukan sebagai product failure.
+
+Full offline pytest dan selective commit masih merupakan gate berikutnya pada slice
+ini. Sampai keduanya selesai, perubahan tidak boleh disebut selesai atau root raw
+S110/S112 green. Evidence saat ini **focused-tested** + **runtime-wired**, bukan
+**live-proven**; tidak ada provider/network/browser/keyring/audio/voice/live session
+yang dijalankan.
+
 ## Lampiran — Status evidence fase (dibangkitkan)
 
 | Fase | Judul | Hasil | Bukti eksplisit di bagian Hasil |
