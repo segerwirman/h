@@ -6020,11 +6020,40 @@ provider nyata atau Qt event-loop live. Evidence tetap `source-present`, `focuse
   archived, active continuity clean**; staged dan unstaged `git diff --check`
   lulus, selain warning normal LF→CRLF dari Git pada working tree Windows.
 
+### Slice generated residue dan cache regenerable
+
+- `.gitignore` diperluas secara sempit untuk `.ruff_cache/`,
+  `.claude/worktrees/`, empat pola generated prompt, quarantine lokal,
+  `lanjut.txt`, dan `$null`; runtime data, credential, model, log, serta
+  source tidak ikut di-ignore baru.
+- Empat prompt generated dipindahkan, bukan dihapus, ke
+  `.claude/quarantine/generated-prompts/`. SHA-256 dan ukuran sebelum pindah:
+  `next-phase-39.md` 3.049 byte (`b1beef814e12801c55fea73b0eec7bf90ce49e4e7d1086cab13094f3365c2e85`),
+  `next-phase-39-codex.md` 1.721 byte
+  (`034568d0e2e13b41be1669c046919adedabbfc03daf14e3676118b4c5b85a66e`),
+  `next-phase-40.md` 5.952 byte
+  (`0ce36265c8c525872159737c5c890ca20e7aa3e360b47e2658687744e1715377`),
+  dan `next-phase-40-codex.md` 3.296 byte
+  (`7d4009c10ed580430b81d719b973e46c85e1b60afcfcc5e3173b8262305fc9ce`).
+- `$null` dihapus hanya setelah pemeriksaan ulang membuktikan tetap untracked,
+  regular file, bukan symlink, dan berukuran 0 byte. `lanjut.txt` tetap
+  dipertahankan sebagai output regenerable.
+- Exact manifest `.claude/cache-delete-manifest.json` mencatat 32 direktori,
+  1.878 file, dan 26.721.577 byte sebelum cleanup. Seluruh file cache yang
+  dapat diakses telah dihapus: `.ruff_cache/`, root `__pycache__/`, dan file
+  cache lain berjumlah 26.721.577 byte. Sebelas direktori kosong di bawah
+  `.pytest_cache/` tetap ada karena ACL Windows mengembalikan `Access is denied`;
+  tidak ada force-delete atau perubahan permission dilakukan. Manifest mencatat
+  status ini sebagai `blocked_empty_directory`, dengan 0 file dan 0 byte
+  tersisa.
+- Ruff `--no-cache`, evidence parser, FROZEN verifier, dan `git diff --check`
+  sesudah cleanup lulus. Tidak ada network/provider/keyring/audio/camera/browser
+  atau sesi Gemini Live yang dijalankan.
+
 ### Batas jujur
 
-Slice ini hanya merapikan dokumentasi tracked dan reference graph. Tidak ada
-network/provider/keyring/audio/camera/browser atau sesi Gemini Live yang
-berjalan; tidak ada kemampuan Jarvis yang ditambah/dikurangi dan tidak ada
-klaim `live-proven`. Generated prompt, `$null`, cache, dan worktree masih
-menunggu slice masing-masing. Penghapusan worktree tetap memerlukan exact
-numbered allowlist dan persetujuan pengguna yang terpisah.
+Slice ini hanya merapikan generated residue dan cache regenerable. Tidak ada
+kemampuan Jarvis yang ditambah/dikurangi dan tidak ada klaim `live-proven`.
+Sebelas direktori pytest kosong yang terkunci ACL dibiarkan; worktree belum
+dihapus dan tetap memerlukan exact numbered allowlist serta persetujuan pengguna
+yang terpisah.

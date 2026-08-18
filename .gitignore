@@ -40,3 +40,11 @@ hermes-agent-main/
 
 # sidecar telemetry skill (runtime)
 jarvis/agent/skills_data/.usage.json
+
+# local Claude Code residue and regenerable cache
+/.ruff_cache/
+/.claude/worktrees/
+/.claude/next-phase-*.md
+/.claude/quarantine/
+/lanjut.txt
+/$null
