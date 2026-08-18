@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 import threading
 
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 from jarvis.agent import skill_usage, skills, tool_usage, toolgroups
 
 _logger = log.get("agent.capability")
@@ -149,7 +149,8 @@ def set_skill_pinned(name: str, pinned: bool) -> bool:
     try:
         skill_usage.set_pinned(name, pinned)
         return True
-    except Exception:                                        # noqa: BLE001
+    except Exception as exc:                                 # noqa: BLE001
+        quiet.swallowed("agent.capability_service.skill_pin_failed", exc)
         return False
 
 

@@ -25,7 +25,7 @@ from jarvis.agent import auxiliary
 from jarvis.agent.interaction import (ACK_LIMIT, detect_language,
                                       persona_address, render_ack,
                                       sanitize_for_speech)
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 
 _logger = log.get("agent.ack_composer")
 _IN_FLIGHT = threading.BoundedSemaphore(value=1)
@@ -82,7 +82,8 @@ def _timeout() -> float:
     raw = config.get("agent.interaction.ack_timeout_s", 0.25)
     try:
         return max(0.001, min(float(raw), 1.0))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError) as exc:
+        quiet.swallowed("agent.ack_composer.ack_timeout_invalid", exc)
         return 0.25
 
 

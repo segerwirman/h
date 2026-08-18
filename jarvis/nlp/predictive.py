@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from collections import Counter
 
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 from jarvis.nlp.base import Context, Response
 
 _logger = log.get("nlp.predictive")
@@ -34,7 +34,8 @@ class PredictiveText:
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
             self._history = Counter({str(k): int(v) for k, v in data.items()})
-        except Exception:
+        except Exception as exc:                             # noqa: BLE001
+            quiet.swallowed("nlp.predictive.history_load_failed", exc)
             self._history = Counter()
 
     def _save(self) -> None:

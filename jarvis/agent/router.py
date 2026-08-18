@@ -17,7 +17,7 @@ from dataclasses import dataclass, replace
 from enum import IntEnum
 from typing import Any
 
-from jarvis.core import config
+from jarvis.core import config, quiet
 
 
 class Tier(IntEnum):
@@ -585,7 +585,8 @@ def _first_json_object(raw: str) -> dict | None:
             continue
         try:
             value, _ = decoder.raw_decode(raw[index:])
-        except (json.JSONDecodeError, TypeError, ValueError):
+        except (json.JSONDecodeError, TypeError, ValueError) as exc:
+            quiet.swallowed("agent.router.json_scan_skipped", exc)
             continue
         if isinstance(value, dict):
             return value

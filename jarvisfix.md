@@ -6414,3 +6414,71 @@ memerlukan slice kontrak terpisah.
 Fase 35 tetap **SEBAGIAN**. Evidence dibatasi pada **focused-tested** dan
 **runtime-wired**; tidak ada klaim **live-proven**, provider nyata, atau Gemini Live
 nyata.
+
+
+## Fase 35 slice 13 — telemetry silent fallback lokal Type-A — 2026-08-18
+
+Slice ini dimulai dari baseline commit `3434327` pada branch
+`fase13-kejujuran-panggilan`. Preflight mempertahankan boundary pengguna: 22
+modified tracked files dan 7 untracked paths tetap ada dan tidak di-stage, tidak
+disentuh, atau ditimpa. Empat source target pada baseline tracked-clean dan
+non-FROZEN; test baru menjadi satu-satunya path untracked tambahan milik slice.
+Tidak ada perubahan pada `.claude/`, manifest, `jarvis/core/quiet.py`, atau 10
+berkas FROZEN.
+
+Raw Ruff diukur sebelum dan sesudah dengan perintah yang sama:
+
+`ruff check --select S110,S112 --isolated --no-cache --output-format json .`
+
+Baseline aktual: **142 match / 43 berkas / 119 S110 / 23 S112**. Slice ini
+sengaja Type-A: Ruff saat ini tidak mengklasifikasikan empat handler typed/local
+ini sebagai S110/S112 raw debt, sehingga hasil sesudah tetap **142 match / 43
+berkas / 119 S110 / 23 S112** dan tidak ada hunk `pyproject.toml` yang dibenarkan.
+Exit nonzero raw Ruff tetap diharapkan karena debt raw lain masih tersisa.
+
+Empat fallback lokal diberi telemetry bounded melalui `quiet.swallowed(...)`
+tanpa mengubah alur kendali, fallback, retry, callback, ownership, atau return
+value:
+
+- `agent.router.json_scan_skipped` pada
+  `jarvis/agent/router.py::_first_json_object`: fragment JSON malformed tetap
+di-skip dan objek valid berikutnya tetap dikembalikan.
+- `agent.ack_composer.ack_timeout_invalid` pada
+  `jarvis/agent/ack_composer.py::_timeout`: konfigurasi invalid tetap kembali ke
+  default `0.25`, sedangkan nilai valid tidak menghasilkan event.
+- `agent.capability_service.skill_pin_failed` pada
+  `jarvis/agent/capability_service.py::set_skill_pinned`: kegagalan setter lokal
+  tetap mengembalikan `False`; jalur sukses tetap `True`.
+- `nlp.predictive.history_load_failed` pada
+  `jarvis/nlp/predictive.py::PredictiveText._load`: history corrupt/missing tetap
+  menjadi `Counter()` dan history valid tetap dimuat.
+
+Characterization RED-first dibuat di `tests/test_slice13_quiet.py`. Sebelum
+instrumentasi, proses menghasilkan **5 failed, 6 passed**; seluruh failure hanya
+menunjukkan event telemetry yang belum ada, tanpa failure import/setup/provider/
+network/audio/hardware. Setelah instrumentasi, test Slice 13 menjadi **11
+passed**. Focused regression (`Slice 13`, quiet helper, router, capability,
+evidence status, dan next-phase parser) menjadi **113 passed**. Import smoke
+menghasilkan **`IMPORT_SMOKE=ok`**. Scoped Ruff dan configured root Ruff
+menghasilkan **All checks passed!**. FROZEN verifier menghasilkan
+**`FROZEN integrity: OK (10 files, baseline 094b696)`**. `git diff --check`
+bersih.
+
+Full pytest offline dijalankan dengan `PYTHONDONTWRITEBYTECODE=1`,
+`-p no:cacheprovider`, dan `--basetemp` di luar repo. Hasil aktual: **3136
+passed, 1 skipped, 1 warning dalam 224,72 detik**. Skip adalah privilege symlink
+Windows yang sudah dikenal; warning berasal dari deprecation Starlette/httpx.
+Tidak ada provider, browser, network, credential/keyring, microphone, speaker,
+audio session, camera, hardware, Telegram/WhatsApp, dashboard, atau Gemini Live
+yang diakses.
+
+Kandidat raw yang tetap dikecualikan mencakup provider/browser/network/remote,
+credential/keyring, audio/voice, camera/hardware, dashboard, GUI/system-control,
+FROZEN, callback/delivery, scheduler/Telegram, Hermes worker, `actions/code_helper.py`,
+dan seluruh path user-dirty. Fase 35 tetap **SEBAGIAN** karena raw debt relevan
+belum selesai. Evidence dibatasi pada **focused-tested** dan **runtime-wired**;
+tidak ada klaim **live-proven**, sesi provider nyata, atau Gemini Live nyata.
+
+Preservasi sesudah gate menunjukkan perubahan slice hanya pada empat source
+terpilih dan `tests/test_slice13_quiet.py` serta bagian dokumentasi ini; path user
+lain tetap dipertahankan. `pyproject.toml` tidak diubah.
