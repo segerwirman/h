@@ -30,8 +30,11 @@ async def observe(live, text: str, *, had_audio: bool) -> None:
         live.ui.write_log(
             "SYS: Respons Gemini diterima tanpa audio; teks tetap ditampilkan."
         )
-    except Exception:  # noqa: BLE001 - observation must never break voice
-        pass
+    except Exception as exc:  # noqa: BLE001 - observation must never break voice
+        _logger.warning(
+            "voice.text_only.write_failed",
+            error=type(exc).__name__,
+        )
 
 
 __all__ = ["observe"]
