@@ -6050,10 +6050,38 @@ provider nyata atau Qt event-loop live. Evidence tetap `source-present`, `focuse
   sesudah cleanup lulus. Tidak ada network/provider/keyring/audio/camera/browser
   atau sesi Gemini Live yang dijalankan.
 
-### Batas jujur
+### Slice worktree cleanup — setelah persetujuan terpisah
 
-Slice ini hanya merapikan generated residue dan cache regenerable. Tidak ada
-kemampuan Jarvis yang ditambah/dikurangi dan tidak ada klaim `live-proven`.
-Sebelas direktori pytest kosong yang terkunci ACL dibiarkan; worktree belum
-dihapus dan tetap memerlukan exact numbered allowlist serta persetujuan pengguna
-yang terpisah.
+- Exact numbered allowlist `.claude/worktree-removal-allowlist.json` berisi 76
+  kandidat secondary yang saat snapshot memiliki branch valid, HEAD
+  `d5fa35a42e4d74fd4c4282ae099c9d8218b08be5`, status clean, dan unlocked.
+- Pengguna kemudian memberi persetujuan eksplisit untuk semua 76 kandidat.
+  Tepat sebelum tindakan, seluruh kandidat direvalidasi terhadap path exact,
+  branch, HEAD, lock state, keberadaan direktori, dan `git status`; hasilnya
+  **76/76 lulus**.
+- `git worktree remove <exact-path>` dijalankan satu per satu untuk 76 kandidat;
+  hasil aktual **76 removed, 0 skipped**. Branch tidak dihapus.
+- Setelah cleanup: **21 worktree tersisa** — primary yang dirty dan 20
+  secondary yang locked. Semua 20 locked tetap dipertahankan; semuanya berada
+  pada HEAD `d5fa35a42e4d74fd4c4282ae099c9d8218b08be5` dan clean.
+- `git worktree prune --dry-run` sesudah removal menghasilkan output kosong;
+  `prune` nyata tidak dijalankan.
+- Primary tetap pada HEAD `a096e5cfea7369e5690e0a00e8008a5a4080b7b6` dan seluruh
+  perubahan lokal pengguna tetap ada. Tidak ada branch, source, credential,
+  runtime state, atau worktree locked yang dihapus.
+- Apparent size allowlist sebelum removal: **347.958.420 byte**. Pengukuran
+  physical bytes `0` pada Windows tidak dipakai sebagai klaim disk recovery.
+
+### Gate dan batas jujur
+
+Slice ini hanya merapikan generated residue, cache regenerable, dan secondary
+worktree yang telah mendapat persetujuan terpisah. Tidak ada kemampuan Jarvis
+yang ditambah/dikurangi dan tidak ada klaim `live-proven` baru. Sesudah removal:
+FROZEN verifier lulus (`10 file`, baseline `094b696`), evidence parser lulus,
+Ruff `--no-cache` lulus, dan `git diff --check` lulus dengan warning LF→CRLF
+normal pada Windows. Full pytest tidak dijalankan ulang setelah worktree
+removal; hasil full offline terakhir sebelum removal tetap **3090 passed, 1
+skipped, 1 warning**. Tidak ada network/provider/keyring/audio/camera/browser
+atau sesi Gemini Live yang dijalankan.
+Sebelas direktori pytest kosong yang terkunci ACL dibiarkan; 20 worktree locked
+juga dibiarkan dan tidak boleh dihapus tanpa keputusan terpisah.
