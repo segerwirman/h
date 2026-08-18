@@ -6348,3 +6348,69 @@ Starlette/httpx deprecation.
 Gate offline ini lulus. Evidence saat ini **focused-tested** + **runtime-wired**, bukan
 **live-proven**. Tidak ada klaim sesi provider atau Gemini Live nyata.
 
+
+## Fase 35 slice 12 — suarakan fallback lokal berikutnya — 2026-08-18
+
+Slice ini dimulai dari HEAD `1f1eab8`. Preflight live mempertahankan seluruh perubahan
+lokal yang sudah ada: target awal tetap 22 modified tracked files dan 7 untracked paths;
+selama implementasi Slice 12, tiga file baru menjadi untracked sebagai bagian slice
+(`tests/test_slice12_quiet.py`) dan source target menjadi dirty secara terukur. Tidak ada
+path user, `.claude/`, manifest audit, atau file FROZEN yang diubah atau di-stage.
+`jarvis/core/quiet.py` ada dan mengekspor `swallowed(event, exc=None, **context)`;
+recorder yang dipakai mengikuti idiom `tests/test_quiet.py` dan test `*_quiet.py` yang
+sudah ada.
+
+Raw Ruff dipatok pada perintah yang sama sebelum dan sesudah:
+
+`ruff check --select S110,S112 --isolated --no-cache --output-format json .`
+
+Baseline terukur: **145 match / 46 berkas / 122 S110 / 23 S112**. Tiga blok lokal,
+tracked-clean, non-FROZEN dipilih dan diuji offline:
+
+- `ui.task_halo.task_arc_paint_failed` pada `jarvis/ui/task_halo.py:80`. Kegagalan
+  paint arc kosmetik tetap fail-open; state orb dan progress tetap tidak berubah.
+- `ui.content_studio.title_field_sync_failed` pada
+  `jarvis/ui/content_studio.py:108`. Kegagalan `setText()` field judul lokal tetap
+  tidak menggagalkan bounded setter; title, status, return metadata, dan field lain
+  tetap mengikuti kontrak lama.
+- `scripts.next_phase_prompt.stdout_reconfigure_failed` pada
+  `scripts/next_phase_prompt.py:280`. Kegagalan reconfigure stdout tetap fallback
+  ke print biasa; prompt tetap dicetak dan parser/Git probing tidak disentuh.
+
+Characterization RED-first dibuat di `tests/test_slice12_quiet.py`. Sebelum migrasi
+source, ketiga test gagal hanya pada event telemetry yang belum tercatat; tidak ada
+failure import, setup, network, provider, atau audio. Setelah migrasi, GREEN menjadi
+**3 passed**. Focused regression yang mencakup helper, tiga test Slice 12, test Task
+Deck/UI, Content Studio, title setter, dan parser prompt menjadi **81 passed**.
+
+Instrumentasi source hanya mengikat exception sebagai `exc`, memanggil satu event
+stabil melalui `quiet.swallowed(...)`, lalu mempertahankan `pass` dan alur lama.
+`pyproject.toml` menghapus hanya tiga ledger entry yang terbukti nol untuk
+`task_halo.py`, `content_studio.py`, dan `scripts/next_phase_prompt.py`; tidak ada
+blanket ignore dan tidak ada perubahan pada `quiet.py`.
+
+Scoped Ruff dan configured root Ruff: **All checks passed!**. Import smoke:
+**`IMPORT_SMOKE=ok`**. FROZEN verifier: **`FROZEN integrity: OK (10 files, baseline
+094b696)`**. `git diff --check` tidak menemukan whitespace error; peringatan LF/CRLF
+Git pada file modified yang sudah ada bersifat normal untuk Windows.
+
+Raw Ruff sesudah migrasi: **142 match / 43 berkas / 119 S110 / 23 S112**. Pengurangan
+aktual adalah **3 match, 3 S110, dan 3 berkas**; S112 tidak berkurang pada slice ini.
+Exit nonzero raw Ruff tetap diharapkan karena debt yang relevan masih tersisa. Full
+pytest offline menggunakan `PYTHONDONTWRITEBYTECODE=1`, `-p no:cacheprovider`,
+`--basetemp` di luar repo, dan guard socket loopback-only yang mempertahankan
+`socket.socket` sebagai class serta memblokir koneksi non-loopback. Hasil final harus
+dicatat dari output proses yang benar-benar selesai; bila gagal, jangan menyebut suite
+hijau.
+
+Exclusion boundary tetap tegas: provider, browser, network, credential/keyring,
+audio, voice, camera, hardware, live session, Telegram/WhatsApp, dashboard, FROZEN,
+`.claude/`, dan seluruh perubahan user tidak disentuh. `actions/code_helper.py`
+dikecualikan karena cleanup berada di dalam operasi screenshot/Gemini provider;
+`jarvis/agent/capabilities.py` dan `jarvis/ui/window_actions.py` dikecualikan karena
+dirty/user-modified; callback/delivery, cron/Telegram, Hermes worker, dan jalur voice
+memerlukan slice kontrak terpisah.
+
+Fase 35 tetap **SEBAGIAN**. Evidence dibatasi pada **focused-tested** dan
+**runtime-wired**; tidak ada klaim **live-proven**, provider nyata, atau Gemini Live
+nyata.

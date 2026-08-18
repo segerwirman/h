@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout, QWidget,
 )
 
+from jarvis.core import quiet
 from jarvis.core.content_project import ContentProject, Scene
 from jarvis.core.content_title_policy import admit_title
 from jarvis.core.content_scene_reorder import admit_reorder, apply_reorder
@@ -105,7 +106,8 @@ class ContentStudioSheet(QWidget):
             # local UI sync only, no generic dispatch
             try:
                 field.setText(clean)
-            except Exception:
+            except Exception as exc:
+                quiet.swallowed("ui.content_studio.title_field_sync_failed", exc)
                 pass
         self._status.setText("Judul project lokal diperbarui.")
         return {"ok": True, "title": clean, "intent": "content_studio_title"}

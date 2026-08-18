@@ -24,6 +24,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from jarvis.core import quiet
+
 ROOT = Path(__file__).resolve().parent.parent
 PLAN = ROOT / "jarvisfix.md"
 
@@ -277,7 +279,8 @@ def _print(text: str) -> None:
     """
     try:
         sys.stdout.reconfigure(encoding="utf-8")             # type: ignore[attr-defined]
-    except Exception:                                        # noqa: BLE001
+    except Exception as exc:                                 # noqa: BLE001
+        quiet.swallowed("scripts.next_phase_prompt.stdout_reconfigure_failed", exc)
         pass
     try:
         print(text)

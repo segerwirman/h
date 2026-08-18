@@ -23,7 +23,7 @@ import math
 from PyQt6.QtCore import QPointF, QRectF, Qt
 from PyQt6.QtGui import QColor, QPainter, QPen
 
-from jarvis.core import config
+from jarvis.core import config, quiet
 from jarvis.ui import theme
 from jarvis.ui.orb import OrbRenderer, OrbState
 
@@ -77,7 +77,8 @@ class TaskHaloOrb(OrbRenderer):
             return
         try:
             self._paint_task_arc()
-        except Exception:                                    # noqa: BLE001
+        except Exception as exc:                             # noqa: BLE001
+            quiet.swallowed("ui.task_halo.task_arc_paint_failed", exc)
             pass                                             # UI tidak boleh jatuh
 
     def _geometry(self) -> tuple[QPointF, float]:
