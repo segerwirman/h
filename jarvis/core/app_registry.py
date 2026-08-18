@@ -106,8 +106,8 @@ def _load_store() -> dict:
             raw.setdefault("aliases", {})
             raw.setdefault("preferences", {})
             return raw
-    except (OSError, ValueError):
-        pass
+    except (OSError, ValueError) as exc:
+        quiet.swallowed("core.app_registry.store_read_failed", exc)
     return {"aliases": {}, "preferences": {}}
 
 

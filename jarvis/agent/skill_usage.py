@@ -30,7 +30,7 @@ import threading
 import time
 from pathlib import Path
 
-from jarvis.core import log
+from jarvis.core import log, quiet
 
 _logger = log.get("agent.skill_usage")
 _lock = threading.Lock()
@@ -78,8 +78,8 @@ def _atomic_write(data: dict) -> None:
     except Exception:
         try:
             os.unlink(tmp)
-        except OSError:
-            pass
+        except OSError as exc:
+            quiet.swallowed("agent.skill_usage.cleanup_failed", exc)
         raise
 
 

@@ -32,7 +32,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from jarvis.core import log
+from jarvis.core import log, quiet
 from jarvis.ui import theme
 
 _logger = log.get("ui.task_deck")
@@ -101,7 +101,8 @@ class JsonlTail:
                 continue
             try:
                 record = json.loads(line)
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as exc:
+                quiet.swallowed("ui.task_deck.line_skipped", exc)
                 continue                          # baris separuh tertulis
             if isinstance(record, dict):
                 fresh.append(record)

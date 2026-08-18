@@ -9,7 +9,7 @@ import pytest
 from jarvis.agent import capability_service as svc
 from jarvis.agent import registry, tool_usage, toolgroups
 from jarvis.agent.base import Tool, ToolResult
-from jarvis.core import config
+from jarvis.core import config, quiet
 
 
 class EchoTool(Tool):
@@ -139,11 +139,32 @@ def _rec(tool: str, ok: bool) -> str:
     return json.dumps({"ts": 1.0, "tool": tool, "ok": ok}) + "\n"
 
 
-def test_aggregate_hanya_yang_sukses(tmp_jsonl):
+def test_aggregate_hanya_yang_sukses(tmp_jsonl, monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        quiet, "swallowed",
+        lambda event, exc=None, **_context: events.append(
+            (event, type(exc).__name__ if exc is not None else None)),
+    )
     tmp_jsonl.write_text(_rec("read_file", True) + _rec("read_file", False)
                          + _rec("patch", True) + "bukan json\n",
                          encoding="utf-8")
     assert tool_usage.aggregate() == {"read_file": 1, "patch": 1}
+    assert events == [("agent.tool_usage.line_skipped", "JSONDecodeError")]
+
+
+def test_aggregate_baris_rusak_tidak_menghentikan_baris_valid(tmp_jsonl, monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        quiet, "swallowed",
+        lambda event, exc=None, **_context: events.append(
+            (event, type(exc).__name__ if exc is not None else None)),
+    )
+    tmp_jsonl.write_text(
+        _rec("read_file", True) + "bukan json\n" + _rec("patch", True),
+        encoding="utf-8")
+    assert tool_usage.aggregate() == {"read_file": 1, "patch": 1}
+    assert events == [("agent.tool_usage.line_skipped", "JSONDecodeError")]
 
 
 def test_aggregate_incremental_dan_truncate(tmp_jsonl):

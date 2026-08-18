@@ -18,6 +18,7 @@ pytest.importorskip("PyQt6.QtWidgets")
 from PyQt6.QtWidgets import QApplication            # noqa: E402
 
 from jarvis.agent.tasks import TaskRegistry         # noqa: E402
+from jarvis.core import quiet                      # noqa: E402
 from jarvis.ui import theme                         # noqa: E402
 from jarvis.ui.orb import OrbState                  # noqa: E402
 from jarvis.ui.task_deck import JsonlTail, TaskDeckPanel   # noqa: E402
@@ -196,6 +197,24 @@ def test_jsonl_rotasi_dan_baris_rusak(tmp_path: Path) -> None:
     path.write_text('{"tool":"b","session":"s1"}\n', encoding="utf-8")  # rotasi
     tail.refresh()
     assert any(r.get("tool") == "b" for r in tail.records())
+
+
+def test_jsonl_baris_rusak_mencatat_event(tmp_path: Path, monkeypatch) -> None:
+    events = []
+    monkeypatch.setattr(
+        quiet, "swallowed",
+        lambda event, exc=None, **_context: events.append(
+            (event, type(exc).__name__ if exc is not None else None)),
+    )
+    path = tmp_path / "tools.jsonl"
+    path.write_text(
+        '{"tool":"a"}\n{ RUSAK\n{"tool":"b"}\n',
+        encoding="utf-8")
+    tail = JsonlTail(path)
+
+    assert tail.refresh() == 2
+    assert [record["tool"] for record in tail.records()] == ["a", "b"]
+    assert events == [("ui.task_deck.line_skipped", "JSONDecodeError")]
 
 
 def test_jsonl_hilang_tidak_menjatuhkan(tmp_path: Path) -> None:

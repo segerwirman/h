@@ -6006,6 +6006,64 @@ mencoba network.
 provider nyata atau Qt event-loop live. Evidence tetap `source-present`, `focused-tested`,
 `runtime-wired`; bukan `live-proven`.
 
+---
+
+## Fase 35 slice 9 — telemetry lokal untuk JSONL dan fallback sidecar — 2026-08-18
+
+Slice ini dimulai dari baseline commit `cfc49bc` dengan pengukuran raw Ruff
+**151 match di 50 berkas** (**125 S110 + 26 S112**). Lima blok dipilih dari
+berkas tracked yang bersih, non-FROZEN, dan offline: tidak ada jalur provider,
+browser, audio, voice, network, credential, keyring, atau perubahan user yang
+menjadi target.
+
+RED-first dijalankan sebelum migrasi source: **7 failed, 50 passed dalam 5,48
+detik**. Semua failure tepat pada event observability yang belum ada; tidak ada
+failure import/setup. Setelah implementasi, kontrak Slice 9 menjadi **57 passed**.
+Control flow lama dipertahankan: JSONL rusak tetap di-skip, fallback sidecar tetap
+mengembalikan store kosong, cleanup tetap melakukan outer `raise`, dan audit tetap
+fail-open.
+
+Event yang ditambahkan:
+
+- `agent.tool_usage.line_skipped`
+- `ui.task_deck.line_skipped`
+- `agent.skill_usage.cleanup_failed`
+- `core.app_registry.store_read_failed`
+- `core.target_resolver.audit_failed`
+
+Empat konversi typed exception menambah jejak kegagalan tanpa dihitung Ruff
+S110/S112 pada konfigurasi saat ini. Satu blok broad `except Exception` pada
+`tool_usage` menghapus finding raw S112. Pengukuran sesudah perubahan benar-benar
+menjadi **150 match di 49 berkas** (**125 S110 + 25 S112**): delta **-1 match /
+-1 S112**, sedangkan S110 tidak berubah. Karena itu angka raw debt tetap nonzero
+dan Fase 35 tidak disebut root-lint green atau selesai.
+
+### Gate aktual Slice 9
+
+- Focused regression (`quiet`, evidence/next-phase, Slice 9 targets, dan log
+  rotation): **115 passed dalam 6,63 detik**.
+- Import smoke untuk lima modul: **`IMPORT_SMOKE=ok`**.
+- Scoped Ruff pada source/test Slice 9: **All checks passed!**.
+- Root configured `python -m ruff check .`: **All checks passed!**.
+- Raw Ruff terisolasi tanpa cache: **150 / 49 / 125 S110 / 25 S112** seperti
+  pengukuran di atas; raw debt sengaja tetap dilaporkan.
+- FROZEN verifier: **`FROZEN integrity: OK (10 files, baseline 094b696)`**.
+- `git diff --check`: bersih.
+- Full offline pytest dengan socket non-loopback diblokir dan loopback diizinkan,
+  `PYTHONDONTWRITEBYTECODE=1`, `-p no:cacheprovider`, serta `--basetemp` unik di
+  luar repo menghasilkan **3108 passed, 1 skipped, 1 warning dalam 236,98 detik**.
+  Skip tetap symlink Windows yang memerlukan privilege (`WinError 1314`); warning
+  tetap dilaporkan sebagai `StarletteDeprecationWarning` dari dependency FastAPI,
+  bukan disamarkan sebagai zero-warning.
+- `scripts/verify_frozen.py`: **`FROZEN integrity: OK (10 files, baseline
+  094b696)`**; `git diff --check`: bersih selain warning line-ending normal Git
+  pada working tree Windows.
+
+Bukti Slice 9 adalah **focused-tested** + **runtime-wired**, bukan
+**live-proven**. Tidak ada network/provider/keyring, sesi audio, microphone,
+speaker, browser, atau Gemini Live yang dibuka. Semua perubahan user, manifest
+`.claude`, dan berkas FROZEN tetap di luar scope.
+
 ## Lampiran — Status evidence fase (dibangkitkan)
 
 | Fase | Judul | Hasil | Bukti eksplisit di bagian Hasil |

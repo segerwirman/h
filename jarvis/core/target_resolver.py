@@ -28,7 +28,7 @@ import platform
 import time
 from dataclasses import dataclass, field
 
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 
 _logger = log.get("core.target_resolver")
 
@@ -173,8 +173,8 @@ def _audit(entry: dict) -> None:
         entry.setdefault("ts", time.time())
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
-    except OSError:
-        pass
+    except OSError as exc:
+        quiet.swallowed("core.target_resolver.audit_failed", exc)
 
 
 # ── resolution ───────────────────────────────────────────────────────────

@@ -11,7 +11,7 @@ import pytest
 
 from jarvis.agent import skill_usage, skills
 from jarvis.agent.tools.skill_tools import SkillManage, SkillView
-from jarvis.core import config
+from jarvis.core import config, quiet
 
 
 @pytest.fixture()
@@ -68,6 +68,33 @@ def test_sidecar_corrupt_tidak_crash(tmp_skills):
     assert skill_usage.usage_of("x") == 1
     data = json.loads(skill_usage.sidecar_path().read_text(encoding="utf-8"))
     assert data["x"]["use"] == 1
+
+
+def test_atomic_write_cleanup_gagal_mencatat_event(tmp_skills, monkeypatch):
+    events = []
+    monkeypatch.setattr(
+        quiet, "swallowed",
+        lambda event, exc=None, **_context: events.append(
+            (event, type(exc).__name__ if exc is not None else None)),
+    )
+    original_replace = skill_usage.os.replace
+    original_unlink = skill_usage.os.unlink
+
+    def replace_boom(_source, _target):
+        raise OSError("replace gagal")
+
+    def unlink_boom(_path):
+        raise OSError("cleanup gagal")
+
+    monkeypatch.setattr(skill_usage.os, "replace", replace_boom)
+    monkeypatch.setattr(skill_usage.os, "unlink", unlink_boom)
+    with pytest.raises(OSError, match="replace gagal"):
+        skill_usage._atomic_write({"x": {"use": 1}})
+    assert events == [("agent.skill_usage.cleanup_failed", "OSError")]
+    assert skill_usage.os.replace is replace_boom
+    assert skill_usage.os.unlink is unlink_boom
+    assert original_replace is not None
+    assert original_unlink is not None
 
 
 def test_bump_set_last_used(tmp_skills):

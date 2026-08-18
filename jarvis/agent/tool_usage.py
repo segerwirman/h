@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 
 from jarvis.agent.paths import logs_dir
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 
 _logger = log.get("agent.tool_usage")
 _lock = threading.RLock()
@@ -51,7 +51,8 @@ def _successful_counts(lines: bytes) -> dict[str, int]:
     for raw in lines.splitlines():
         try:
             record = json.loads(raw.decode("utf-8", errors="replace"))
-        except Exception:
+        except Exception as exc:                              # noqa: BLE001
+            quiet.swallowed("agent.tool_usage.line_skipped", exc)
             continue
         if record.get("ok") is True and record.get("tool"):
             name = str(record["tool"])

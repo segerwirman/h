@@ -185,10 +185,11 @@ ignore = [
 "tests/*" = ["F811", "F841"]
 
 # ── §35: utang S110/S112 yang TERSISA — didaftarkan, bukan disembunyikan ────
-# 32 blok sudah diubah menjadi quiet.swallowed() di inti agent dan jarvis/core.
-# Sisanya di bawah, per berkas dengan jumlahnya, supaya pelanggaran BARU di
-# berkas mana pun tetap membuat CI merah sementara yang lama dikerjakan
-# bertahap. Bentuk yang sama dipakai E722 sejak Fase 10.
+# 50 blok sudah diubah menjadi quiet.swallowed() di inti agent dan jarvis/core
+# serta slice-slice Fase 35 sebelumnya. Sisanya di bawah, per berkas dengan
+# jumlahnya, supaya pelanggaran BARU di berkas mana pun tetap membuat CI merah
+# sementara yang lama dikerjakan bertahap. Bentuk yang sama dipakai E722 sejak
+# Fase 10.
 #
 # jarvis/core/quiet.py TETAP di daftar ini selamanya: helper pencatat yang
 # mencatat kegagalan pencatatannya sendiri akan berulang tanpa henti.
@@ -210,7 +211,6 @@ ignore = [
 "jarvis/agent/mcp_client.py" = ["S110", "S112"]   # 2
 "jarvis/agent/providers.py" = ["S110", "S112"]   # 2
 "jarvis/agent/skill_hub.py" = ["S110", "S112"]   # 2
-"jarvis/agent/tool_usage.py" = ["S110", "S112"]   # 1
 "jarvis/agent/tools/browser.py" = ["S110", "S112"]   # 4
 "jarvis/automation/uia_capture.py" = ["S110", "S112"]   # 1
 "jarvis/browser/agent_view.py" = ["S110", "S112"]   # 3
