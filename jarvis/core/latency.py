@@ -19,7 +19,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 
 _logger = log.get("core.latency")
 
@@ -70,8 +70,8 @@ def start(key, *, task: str = "", now: float | None = None) -> None:
                 _turns.pop(oldest, None)
             _turns[name] = _Turn(started_at=moment, last_at=moment,
                                  task=str(task or "")[:160])
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                 # noqa: BLE001
+        quiet.swallowed("core.latency.start_failed", exc)
 
 
 def mark(key, stage: str, *, now: float | None = None) -> None:
@@ -92,8 +92,8 @@ def mark(key, stage: str, *, now: float | None = None) -> None:
             turn.seen.add(label)
             turn.stages.append((label, round((moment - turn.last_at) * 1000, 1)))
             turn.last_at = moment
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                 # noqa: BLE001
+        quiet.swallowed("core.latency.mark_failed", exc)
 
 
 def finish(key, *, now: float | None = None) -> dict:

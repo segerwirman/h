@@ -3699,6 +3699,58 @@ keyring, browser, atau network nyata yang dijalankan; bukti slice ini
 
 ---
 
+### Fase 35 slice 8 — `latency` dan `system_monitor` berhenti diam — 2026-08-18
+
+Slice ini dimulai dari commit `b047561` dan mengukur ulang baseline raw Ruff
+secara langsung: **156 match di 51 berkas** (**130 S110 + 26 S112**). Lima blok
+baru dipilih dari berkas bersih dan non-FROZEN: dua fallback pengukur latensi dan
+tiga probe metric opsional. Tidak ada berkas modified/untracked user, manifest
+`.claude`, atau FROZEN yang menjadi target.
+
+RED-first dibuat tanpa hardware, provider, network, browser, audio, credential,
+atau keyring. Lima test awal gagal karena event observability belum ada (2
+latency + 3 system-monitor). Setelah migrasi, seluruh test Slice 8 menjadi
+**5 passed**. Perubahan hanya mengganti suara `except` dan mempertahankan
+fallthrough/fallback:
+
+- `core.latency.start_failed`
+- `core.latency.mark_failed`
+- `actions.system_monitor.gpu_pynvml_failed`
+- `actions.system_monitor.cpu_temp_psutil_failed`
+- `actions.system_monitor.cpu_temp_wmi_failed`
+
+`quiet.swallowed(event, exc)` tidak menerima credential, payload provider, audio,
+identity, atau raw path user. Repeated NVML candidate loop (`S112`) sengaja
+ditunda; itu sebabnya system-monitor masih memiliki satu debt terdaftar.
+Per-file-ignore `jarvis/core/latency.py` dihapus karena target mencapai nol,
+sedangkan ledger `actions/system_monitor.py` diperbarui dari 4 menjadi 1 dengan
+catatan bahwa loop NVML berulang ditunda.
+
+**Gate aktual:** focused Slice 8 + latency breakdown + quiet + Slice 6/7 quiet
+regression menghasilkan **42 passed**. Import smoke latency/system monitor lulus.
+Raw post-change Ruff menjadi **151 match di 50 berkas** (**125 S110 + 26 S112**),
+delta tepat **-5** dari baseline b047561. Ruff terkonfigurasi pada bundle
+Slice 8 menghasilkan `All checks passed!`; raw `--select S110,S112` tetap nonzero
+hanya untuk `actions/system_monitor.py:56` (`S112` berulang), sesuai ledger.
+
+Full offline pytest memakai guard socket yang memblokir koneksi non-loopback,
+loopback tetap diizinkan, `PYTHONDONTWRITEBYTECODE=1`, `-p no:cacheprovider`, dan
+`--basetemp` eksternal: **3100 passed, 1 skipped, 1 warning dalam 232,61 detik**.
+Skip adalah symlink Windows yang memerlukan privilege (`WinError 1314`). Import
+smoke, `tests/test_next_phase_prompt.py` + `tests/test_evidence_status.py`
+(**29 passed**), `scripts/verify_frozen.py` (`FROZEN integrity: OK; 10 files,
+baseline 094b696`), dan `git diff --check` lulus. Root Ruff terkonfigurasi juga
+menghasilkan `All checks passed!`; angka raw S110/S112 tetap dilaporkan karena
+ledger membedakan debt yang terdaftar dari lint root.
+
+Bukti Slice 8 adalah **focused-tested** dan **runtime-wired**, bukan
+**live-proven**. Tidak ada sesi Gemini Live, provider, microphone, speaker,
+browser, network eksternal, credential, keyring, atau operasi hardware pada
+slice offline ini. Fase 35 tetap **SEBAGIAN**: debt raw S110/S112 masih 151 match
+dan harus diselesaikan bertahap.
+
+---
+
 ### Fase 35 slice 7 — `hermes` dan `computer_control` berhenti diam — 2026-08-18
 
 Slice ini dipilih dari pengukuran raw Ruff current tree dan dibatasi pada lima
