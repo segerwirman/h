@@ -19,7 +19,7 @@ Return string ringkas — kontrak yang sama dengan action module lain
 """
 from __future__ import annotations
 
-from jarvis.core import log
+from jarvis.core import log, quiet
 from jarvis.integrations.hermes.async_dispatch import dispatch_async
 from jarvis.integrations.hermes.bridge import HermesBridge, is_enabled
 
@@ -30,8 +30,8 @@ def _ui_log(player, msg: str) -> None:
     try:
         if player is not None and hasattr(player, "write_log"):
             player.write_log(msg)
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                # noqa: BLE001
+        quiet.swallowed("actions.hermes.ui_log_failed", exc)
 
 
 def hermes_action(parameters: dict | None = None, player=None,
@@ -86,16 +86,16 @@ def hermes_action(parameters: dict | None = None, player=None,
         if speak:
             try:
                 speak(f"Tugas selesai. {short}")
-            except Exception:                                # noqa: BLE001
-                pass
+            except Exception as exc:                        # noqa: BLE001
+                quiet.swallowed("actions.hermes.speak_done_failed", exc)
 
     def _on_error(err: str):
         _ui_log(player, f"ERR: hermes task — {err[:160]}")
         if speak:
             try:
                 speak("Maaf, tugas Hermes gagal diselesaikan.")
-            except Exception:                                # noqa: BLE001
-                pass
+            except Exception as exc:                        # noqa: BLE001
+                quiet.swallowed("actions.hermes.speak_error_failed", exc)
 
     started = dispatch_async(task, on_done=_on_done, on_error=_on_error)
     if not started:

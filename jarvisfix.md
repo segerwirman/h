@@ -3699,6 +3699,50 @@ keyring, browser, atau network nyata yang dijalankan; bukti slice ini
 
 ---
 
+### Fase 35 slice 7 — `hermes` dan `computer_control` berhenti diam — 2026-08-18
+
+Slice ini dipilih dari pengukuran raw Ruff current tree dan dibatasi pada lima
+blok di dua berkas bersih, non-FROZEN. Baseline dari `HEAD` menghasilkan **161
+match di 53 berkas** (**135 S110 + 26 S112**); lima target berada pada
+`actions/hermes_action.py` dan `actions/computer_control.py`. Setelah migrasi,
+raw current tree menjadi **156 match di 51 berkas** (**130 S110 + 26 S112**),
+sehingga delta terukur adalah **-5**. Target kedua berkas tidak lagi memiliki
+S110/S112.
+
+RED-first memakai fake player, dispatch callback, speaker, path root, dan JSON
+sementara tanpa Hermes CLI, TTS, provider, network, memory user nyata, atau
+screenshot. Sebelum implementasi, lima test baru gagal karena event belum
+tercatat. Setelah implementasi, test Slice 7 menjadi **5 passed**; focused
+regression gabungan menjadi **43 passed**. Import smoke kedua action juga
+lulus, dan scoped Ruff S110/S112 melaporkan `All checks passed!`.
+
+Perubahan hanya mengganti `except Exception: pass` dengan
+`quiet.swallowed(event, exc)` dan mempertahankan fallback serta completion:
+`actions.hermes.ui_log_failed`, `actions.hermes.speak_done_failed`,
+`actions.hermes.speak_error_failed`,
+`actions.computer_control.screenshot_path_failed`, dan
+`actions.computer_control.user_profile_failed`. Tidak ada context berisi
+credential, payload provider, audio, identity, atau raw path user yang dikirim.
+
+**Gate aktual:** full offline pytest dengan socket non-loopback diblokir,
+loopback tetap diizinkan, `PYTHONDONTWRITEBYTECODE=1`, `-p no:cacheprovider`,
+dan `--basetemp` eksternal menghasilkan **3095 passed, 1 skipped, 1 warning**
+dalam **268,31 detik**. Skip adalah symlink Windows yang memerlukan privilege
+(`WinError 1314`). `scripts/verify_frozen.py` menghasilkan **FROZEN integrity:
+OK (10 files, baseline 094b696)**; `tests/test_next_phase_prompt.py` dan
+`tests/test_evidence_status.py` menghasilkan **29 passed**; dan
+`git diff --check` bersih.
+
+Root Ruff penuh **tidak lulus** pada current mixed tree: exit code 1 dengan
+**2049 findings** lint umum (termasuk **130 S110** dan **26 S112**; command
+`--select S110,S112` sendiri mengukur **156**). Ini adalah debt existing di
+luar lima target dan bukan klaim root lint green. Evidence generator tetap
+menandai Fase 35 **SEBAGIAN**. Bukti slice ini `focused-tested` dan
+`runtime-wired`, bukan `live-proven`; tidak ada operasi Gemini Live, provider,
+credential, keyring, browser, mikrofon, speaker, atau audio nyata.
+
+---
+
 ## Fase 36 — Batas sandbox dijaga uji (S-36)
 
 **Menutup:** S-36. Dikerjakan lebih awal karena murah dan menjaga permukaan

@@ -15,6 +15,8 @@ import time
 import random
 from pathlib import Path
 
+from jarvis.core import quiet
+
 try:
     import pyautogui
     pyautogui.FAILSAFE = True
@@ -72,8 +74,8 @@ def _safe_screenshot_path(requested: str | None) -> Path:
             if p.is_relative_to(root.resolve()):
                 p.parent.mkdir(parents=True, exist_ok=True)
                 return p
-    except Exception:
-        pass
+    except Exception as exc:                                # noqa: BLE001
+        quiet.swallowed("actions.computer_control.screenshot_path_failed", exc)
     return fallback
 
 def _require_pyautogui():
@@ -151,8 +153,8 @@ def _user_profile() -> dict:
             data     = json.loads(_MEMORY_PATH.read_text(encoding="utf-8"))
             identity = data.get("identity", {})
             return {k: v.get("value", "") for k, v in identity.items()}
-    except Exception:
-        pass
+    except Exception as exc:                                # noqa: BLE001
+        quiet.swallowed("actions.computer_control.user_profile_failed", exc)
     return {}
 
 def _type(text: str, interval: float = 0.03) -> str:
