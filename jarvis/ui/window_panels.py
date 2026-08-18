@@ -5,7 +5,7 @@ import threading
 
 from PyQt6.QtCore import QTimer
 
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 from jarvis.core.bus import BUS
 from jarvis.core.command_palette import CommandPaletteModel
 from jarvis.core.target_resolver import decide_and_close
@@ -114,12 +114,12 @@ class WindowPanelsMixin:
             pass
         try:
             model.set_recent(self.memory.get_recent_episodes(limit=15))
-        except Exception:
-            pass
+        except Exception as exc:
+            quiet.swallowed("ui.window_panels.palette_recent_failed", exc)
         try:
             model.set_macros(self.memory.list_macros(approved_only=True))
-        except Exception:
-            pass
+        except Exception as exc:
+            quiet.swallowed("ui.window_panels.palette_macros_failed", exc)
         return model
 
     _PALETTE_COMMANDS = {

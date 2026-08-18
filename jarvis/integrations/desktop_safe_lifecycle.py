@@ -5,6 +5,8 @@ when unavailable or failing, the legacy close path always continues.
 """
 from __future__ import annotations
 
+from jarvis.core import quiet
+
 
 def install(window_class) -> bool:
     """Idempotently revoke all desktop-safe refs before legacy window close."""
@@ -17,8 +19,8 @@ def install(window_class) -> bool:
     def close_event(self, event):
         try:
             desktop_safe_session().clear_all()
-        except Exception:
-            pass
+        except Exception as exc:
+            quiet.swallowed("integrations.desktop_safe_lifecycle.teardown_failed", exc)
         return original(self, event)
 
     window_class.closeEvent = close_event

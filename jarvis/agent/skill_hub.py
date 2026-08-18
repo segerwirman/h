@@ -9,7 +9,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 from jarvis.agent import skill_usage, skills
 
 _logger = log.get("agent.skill_hub")
@@ -52,7 +52,8 @@ def hub_sources() -> list[Path]:
             p = config.resolve_path(str(entry))
             if p.is_dir():
                 out.append(p)
-        except Exception:                                    # noqa: BLE001
+        except Exception as exc:                             # noqa: BLE001
+            quiet.swallowed("agent.skill_hub.source_resolve_failed", exc)
             continue
     return out
 
@@ -76,7 +77,8 @@ def list_available(filter_text: str = "") -> list[dict]:
                 meta, _ = skills._parse_frontmatter(
                     skill_file.read_text(encoding="utf-8",
                                          errors="replace"))
-            except Exception:                                # noqa: BLE001
+            except Exception as exc:                         # noqa: BLE001
+                quiet.swallowed("agent.skill_hub.frontmatter_parse_failed", exc)
                 continue
             name = str(meta.get("name") or folder.name)
             if name in seen or _blocked(name) or _blocked(folder.name):

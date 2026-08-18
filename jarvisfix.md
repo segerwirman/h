@@ -6292,3 +6292,59 @@ skipped, 1 warning**. Tidak ada network/provider/keyring/audio/camera/browser
 atau sesi Gemini Live yang dijalankan.
 Sebelas direktori pytest kosong yang terkunci ACL dibiarkan; 20 worktree locked
 juga dibiarkan dan tidak boleh dihapus tanpa keputusan terpisah.
+
+## Fase 35 slice 11 — fallback katalog dan palette lokal bersuara — 2026-08-18
+
+Slice ini dimulai dari HEAD `f5d6df8` pada branch `fase13-kejujuran-panggilan`.
+Preflight target mengonfirmasi bahwa berkas yang dipilih tracked-clean, non-FROZEN,
+dan tidak termasuk perubahan lokal pengguna. Raw Ruff isolated/no-cache sebelum
+perubahan mengukur **150 match di 49 berkas**: **125 S110 + 25 S112**.
+
+Lima blok lokal dipilih dan diberi telemetry melalui `quiet.swallowed(...)` tanpa
+mengubah control flow atau kontrak fallback:
+
+- `agent.skill_hub.source_resolve_failed` — sumber hub yang gagal di-resolve tetap
+  dilewati; sumber valid berikutnya tetap dikembalikan.
+- `agent.skill_hub.frontmatter_parse_failed` — `SKILL.md` yang rusak tetap
+  dilewati; skill valid dan filter/blocklist tetap berjalan.
+- `ui.window_panels.palette_recent_failed` — kegagalan recent-memory tetap fail-open;
+  model palette tetap dibangun dan macro setup tetap berjalan.
+- `ui.window_panels.palette_macros_failed` — kegagalan macro-memory tetap fail-open;
+  recent setup dan model palette tetap berjalan.
+- `integrations.desktop_safe_lifecycle.teardown_failed` — kegagalan `clear_all()`
+  tidak menghalangi legacy `closeEvent`; return value legacy tetap diteruskan.
+
+RED-first menghasilkan **5 failure** yang seluruhnya terisolasi pada event telemetry
+yang belum ada. Setelah migrasi source, test Slice 11 menjadi **5 passed**. Focused
+regression menjadi **71 passed dalam 3,85 detik**. Test hanya memakai fake, monkeypatch,
+tmp path, dan objek lokal; tidak ada provider, browser, network, keyring, microphone,
+speaker, audio session, hardware, atau Gemini Live yang diakses.
+
+Perubahan source hanya pada tiga blok terpilih. `pyproject.toml` menghapus tiga
+entry per-file S110/S112 yang telah mencapai nol untuk `skill_hub.py`,
+`window_panels.py`, dan `desktop_safe_lifecycle.py`; tidak ada blanket ignore baru.
+Scoped Ruff dan configured root Ruff sama-sama **All checks passed!**. Import smoke
+menghasilkan **`IMPORT_SMOKE=ok`**. FROZEN verifier menghasilkan **`FROZEN integrity:
+OK (10 files, baseline 094b696)`**. `git diff --check` bersih.
+
+Raw Ruff sesudah perubahan terukur **145 match di 46 berkas**: **122 S110 + 23
+S112**, yaitu pengurangan 5 match, 3 S110, 2 S112, dan 3 berkas. Angka ini adalah
+hasil pengukuran aktual; Fase 35 tetap **SEBAGIAN** karena debt raw yang relevan
+masih tersisa. `content_studio.py`, `task_halo.py`, jalur UI/artifact yang dekat
+dengan voice, cron/Telegram, provider/browser/network/auth, audio/voice/live,
+hardware, FROZEN, `.claude/`, dan seluruh path modified/untracked milik user tetap
+dikecualikan.
+
+Full offline pytest pertama setelah pemulihan dokumen menghasilkan **3114 passed,
+1 skipped, 1 warning, 4 failed** karena file dokumentasi sempat tertimpa sebelum
+restoration. Setelah restore dan append Slice 11, satu rerun terisolasi sempat
+menunjukkan **3117 passed, 1 skipped, 1 warning, 1 failed** pada task-ledger;
+rerun terisolasi 20 kali menghasilkan **20/20 passed**, sehingga failure itu flaky
+dan unrelated terhadap Slice 11. Rerun full final setelah dokumentasi pulih menghasilkan
+**3118 passed, 1 skipped, 1 warning dalam 218,80 detik**. Tidak ada Slice 11 failure.
+Skip adalah privilege symlink Windows yang telah dikenal; warning berasal dari
+Starlette/httpx deprecation.
+
+Gate offline ini lulus. Evidence saat ini **focused-tested** + **runtime-wired**, bukan
+**live-proven**. Tidak ada klaim sesi provider atau Gemini Live nyata.
+
