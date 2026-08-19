@@ -126,6 +126,13 @@ def _register_whatsapp_shutdown(supervisor: RuntimeSupervisor) -> None:
     supervisor.add_stop("whatsapp_web", whatsapp_web.shutdown_existing)
 
 
+def _register_browser_shutdown(supervisor: RuntimeSupervisor) -> None:
+    """Register owned-CDP teardown without creating a browser during shutdown."""
+    from jarvis.agent.tools.browser import shutdown_browser_cdp
+
+    supervisor.add_stop("browser_cdp", shutdown_browser_cdp)
+
+
 def _start_voice_pipeline(ui, *, stop_requested: threading.Event | None = None):
     """Run the legacy JarvisLive (Gemini Live audio) against the new UI."""
     logger = log.get("voice")
@@ -185,6 +192,7 @@ def run(no_voice: bool = False, *, ui_factory=None) -> int:
         on_error=lambda name, exc: logger.warning(
             "runtime.shutdown_failed", service=name, error=str(exc)[:120]))
     _register_whatsapp_shutdown(supervisor)
+    _register_browser_shutdown(supervisor)
 
     # Indeks aplikasi terpasang dibangun di latar (~0,03 dtk untuk ~500 entri)
     # supaya router tahu apa yang benar-benar ada, bukan menebak lewat

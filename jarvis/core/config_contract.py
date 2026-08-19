@@ -111,6 +111,18 @@ _LITERAL_DOMAINS: dict[tuple[str, str, str], tuple[str, ...]] = {
         "_auxiliary_fields",
         "auxiliary.{sid}.model",
     ): tuple(slot for slot in _SLOT_IDS if slot != "embedding"),
+    (
+        "jarvis/agent/tools/browser.py",
+        "_cdp_timeout",
+        "agent.browser.cdp.{name}",
+    ): (
+        "enabled",
+        "address",
+        "port",
+        "startup_timeout_s",
+        "close_timeout_s",
+        "user_data_dir",
+    ),
 }
 
 

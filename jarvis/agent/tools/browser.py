@@ -53,6 +53,132 @@ def _jarvis_profile_dir() -> str:
     return os.path.join(base, "JARVIS", "ChromeProfile")
 
 
+def _cdp_enabled() -> bool:
+    """Whether the Jarvis-owned browser exposes its loopback CDP endpoint."""
+    return bool(config.get("agent.browser.cdp.enabled", True))
+
+
+def _cdp_address() -> str:
+    value = str(config.get(
+        "agent.browser.cdp.address", "127.0.0.1") or "127.0.0.1").strip()
+    if value != "127.0.0.1":
+        raise ValueError("dedicated CDP wajib bind ke 127.0.0.1")
+    return value
+
+
+def _cdp_port() -> int:
+    raw = config.get("agent.browser.cdp.port", 9333)
+    try:
+        port = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("port CDP dedicated tidak valid") from exc
+    if not 1024 <= port <= 65535:
+        raise ValueError("port CDP dedicated harus berada pada 1024-65535")
+    return port
+
+
+def _cdp_profile_dir() -> str:
+    """Resolve and validate the profile owned by Jarvis CDP."""
+    import os
+    from pathlib import Path
+
+    configured = str(config.get(
+        "agent.browser.cdp.user_data_dir", "") or "").strip()
+    if configured:
+        candidate = Path(os.path.expandvars(os.path.expanduser(configured)))
+    else:
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        candidate = Path(base) / "JARVIS" / "ChromeCDPProfile"
+
+    resolved = candidate.resolve()
+    repo = Path(config.base_dir()).resolve()
+    if resolved == repo or repo in resolved.parents:
+        raise ValueError("profil CDP dedicated tidak boleh berada di repository")
+
+    resolved_text = str(resolved).replace("\\", "/").casefold()
+    local = os.environ.get("LOCALAPPDATA", "")
+    chrome_user_data = (
+        Path(local) / "Google" / "Chrome" / "User Data"
+        if local else None
+    )
+    if chrome_user_data is not None:
+        chrome_root = chrome_user_data.resolve()
+        if resolved == chrome_root or chrome_root in resolved.parents:
+            raise ValueError(
+                "profil CDP dedicated tidak boleh memakai Chrome User Data user"
+            )
+    # Reject the canonical Chrome User Data shape even when a configured path
+    # names another Windows account than the one running this process.
+    if "/google/chrome/user data" in resolved_text:
+        raise ValueError(
+            "profil CDP dedicated tidak boleh memakai Chrome User Data user"
+        )
+    if "profile 8" in resolved_text:
+        raise ValueError("profil CDP dedicated tidak boleh memakai Profile 8")
+    return str(resolved)
+
+
+def _cdp_timeout(name: str, default: float) -> float:
+    raw = config.get(f"agent.browser.cdp.{name}", default)
+    try:
+        return max(0.1, float(raw))
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _cdp_probe(address: str, port: int, timeout_s: float) -> dict | None:
+    """Read only the local CDP version endpoint; never returns page data."""
+    from urllib.error import URLError
+    from urllib.request import Request, urlopen
+
+    request = Request(
+        f"http://{address}:{int(port)}/json/version",
+        headers={"Accept": "application/json"},
+    )
+    try:
+        with urlopen(request, timeout=max(0.05, float(timeout_s))) as response:
+            raw = response.read(4096)
+    except (OSError, URLError, ValueError):
+        return None
+    try:
+        import json
+        payload = json.loads(raw.decode("utf-8", errors="replace"))
+    except Exception:  # noqa: BLE001
+        # A responding listener is still an ownership conflict, even when it
+        # does not speak the expected JSON shape.
+        return {"reachable": True}
+    return payload if isinstance(payload, dict) else {"reachable": True}
+
+
+def _wait_for_cdp(timeout_s: float | None = None) -> bool:
+    address = _cdp_address()
+    port = _cdp_port()
+    deadline = time.monotonic() + (
+        _cdp_timeout("startup_timeout_s", 20.0)
+        if timeout_s is None else max(0.1, float(timeout_s))
+    )
+    while time.monotonic() < deadline:
+        if _cdp_probe(address, port, 0.25) is not None:
+            return True
+        time.sleep(min(0.1, max(0.01, deadline - time.monotonic())))
+    return _cdp_probe(address, port, 0.25) is not None
+
+
+def _wait_for_cdp_gone(timeout_s: float | None = None) -> bool:
+    """Wait for the owned endpoint to disappear without touching other ports."""
+    address = _cdp_address()
+    port = _cdp_port()
+    deadline = time.monotonic() + (
+        _cdp_timeout("close_timeout_s", 10.0)
+        if timeout_s is None else max(0.1, float(timeout_s))
+    )
+    while time.monotonic() < deadline:
+        if _cdp_probe(address, port, 0.25) is None:
+            return True
+        time.sleep(min(0.1, max(0.01, deadline - time.monotonic())))
+    return _cdp_probe(address, port, 0.25) is None
+
+
 def _browser_executable_candidates(channel: str) -> list[str]:
     """Installed Chromium executables Playwright channel lookup may miss."""
 
@@ -95,15 +221,66 @@ def _browser_executable_candidates(channel: str) -> list[str]:
     return found
 
 
-def _launch_browser(pw, headless: bool):
-    """Luncurkan Chrome asli dengan profil khusus JARVIS (persisten).
+def _launch_browser(pw, headless: bool, *, dedicated_cdp: bool = False):
+    """Launch Chrome with either the ordinary or dedicated CDP profile.
 
-    Mengembalikan ``(context, browser)``. ``browser`` bernilai ``None`` bila
-    dipakai ``launch_persistent_context`` (context sudah menjadi pemilik).
-    Fallback aman ke Chromium bundled bila Chrome asli/profil tidak tersedia,
-    supaya JARVIS tidak pernah hard-crash — tetapi jalur utama BUKAN lagi
-    Chrome for Testing.
+    ``dedicated_cdp`` selects the separate Jarvis-owned CDP profile. The
+    ordinary browser lane keeps its historical configuration and behavior.
     """
+    if dedicated_cdp:
+        if not _cdp_enabled():
+            raise RuntimeError("dedicated CDP dimatikan di config")
+        user_data_dir = _cdp_profile_dir()
+        channel = str(config.get("agent.browser.channel", "chrome") or "chrome").strip()
+        args = [
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-blink-features=AutomationControlled",
+            f"--remote-debugging-address={_cdp_address()}",
+            f"--remote-debugging-port={_cdp_port()}",
+        ]
+        import os
+        address = _cdp_address()
+        port = _cdp_port()
+        if _cdp_probe(address, port, 0.25) is not None:
+            raise RuntimeError(
+                f"port CDP dedicated {port} sudah dipakai proses lain")
+        try:
+            os.makedirs(user_data_dir, exist_ok=True)
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("browser.cdp.profile_dir_failed", error=str(exc)[:120])
+        try:
+            ctx = pw.chromium.launch_persistent_context(
+                user_data_dir=user_data_dir,
+                channel=channel or None,
+                headless=headless,
+                no_viewport=True,
+                args=args,
+            )
+            _logger.info("browser.cdp.launched", mode="persistent-chrome")
+            return ctx, None
+        except Exception as exc:
+            _logger.warning("browser.cdp.persistent_chrome_unavailable",
+                            error=str(exc)[:160], fallback="installed-executable")
+            for executable in _browser_executable_candidates(channel):
+                try:
+                    ctx = pw.chromium.launch_persistent_context(
+                        user_data_dir=user_data_dir,
+                        executable_path=executable,
+                        headless=headless,
+                        no_viewport=True,
+                        args=args,
+                    )
+                    _logger.info("browser.cdp.launched",
+                                 mode="persistent-executable")
+                    return ctx, None
+                except Exception as path_exc:  # noqa: BLE001
+                    _logger.warning("browser.cdp.installed_executable_failed",
+                                    error=str(path_exc)[:160])
+            raise RuntimeError(
+                f"Chrome CDP dedicated gagal diluncurkan: {str(exc)[:180]}"
+            ) from exc
+
     import os
     channel = str(config.get("agent.browser.channel", "chrome") or "chrome").strip()
     user_data_dir = _jarvis_profile_dir()
@@ -413,18 +590,35 @@ class _BrowserHost:
     _lock = threading.Lock()
 
     @classmethod
-    def get(cls) -> "_BrowserHost":
+    def get(cls, *, dedicated_cdp: bool | None = None) -> "_BrowserHost":
+        if dedicated_cdp is None:
+            dedicated_cdp = _cdp_enabled()
         with cls._lock:
             if cls._instance is None:
-                cls._instance = _BrowserHost()
+                cls._instance = _BrowserHost(dedicated_cdp=dedicated_cdp)
+            elif bool(cls._instance._dedicated_cdp) != bool(dedicated_cdp):
+                raise RuntimeError("browser host sudah dimiliki mode lain")
             return cls._instance
 
-    def __init__(self):
+    @classmethod
+    def peek(cls) -> "_BrowserHost | None":
+        with cls._lock:
+            return cls._instance
+
+    @classmethod
+    def reset_for_tests(cls) -> None:
+        with cls._lock:
+            cls._instance = None
+
+    def __init__(self, *, dedicated_cdp: bool = False):
         self._jobs: queue.Queue = queue.Queue()
         self._thread: threading.Thread | None = None
         self._state = "stopped"  # stopped | starting | accepting | closing
         self._started = threading.Event()
         self._fail: str | None = None
+        self._dedicated_cdp = bool(dedicated_cdp)
+        self._cdp_ready = False
+        self._cdp_owned = False
         self._console: list[str] = []
         self._dialog_action: tuple[str, str] | None = None
         self._snapshot_ready = False
@@ -437,6 +631,46 @@ class _BrowserHost:
         self._context = None
 
     # ── lifecycle ─────────────────────────────────────────────────────────
+
+    def close(self, timeout: float = 10.0) -> None:
+        """Gracefully stop this host within a bounded timeout."""
+        bounded = max(0.1, float(timeout))
+        with self._lock:
+            thread = self._thread
+            alive = bool(thread and thread.is_alive())
+            if alive and self._state != "closing":
+                self._state = "closing"
+                self._jobs.put(None)
+
+        # A dead worker is not proof that a dedicated Chrome endpoint is gone.
+        # Probe it before clearing ownership so a survivor remains visible and
+        # an unknown process is never mistaken for a clean shutdown.
+        if not alive:
+            if self._dedicated_cdp and not _wait_for_cdp_gone(bounded):
+                raise TimeoutError("endpoint CDP dedicated masih reachable")
+            with self._lock:
+                self._state = "stopped"
+                self._thread = None
+                self._context = None
+                self.page = None
+                self._cdp_ready = False
+                self._cdp_owned = False
+            return
+
+        if threading.current_thread() is thread:
+            return
+        thread.join(timeout=bounded)
+        if thread.is_alive():
+            raise TimeoutError("dedicated CDP masih memiliki survivor")
+        if self._dedicated_cdp and not _wait_for_cdp_gone(bounded):
+            raise TimeoutError("endpoint CDP dedicated masih reachable")
+        with self._lock:
+            self._state = "stopped"
+            self._thread = None
+            self._context = None
+            self.page = None
+            self._cdp_ready = False
+            self._cdp_owned = False
 
     def _ensure(self) -> None:
         while True:
@@ -474,13 +708,21 @@ class _BrowserHost:
             # idle limit may already have moved the host to closing.
 
     def _main(self) -> None:
+        ctx = None
+        browser = None
         try:
             from playwright.sync_api import sync_playwright
             with sync_playwright() as pw:
                 headless = bool(config.get("agent.browser.headless", True))
-                ctx, browser = _launch_browser(pw, headless)
+                ctx, browser = _launch_browser(
+                    pw, headless, dedicated_cdp=self._dedicated_cdp)
                 self._context = ctx
                 self._set_page(ctx.pages[0] if ctx.pages else ctx.new_page())
+                if self._dedicated_cdp:
+                    if not _wait_for_cdp():
+                        raise RuntimeError("CDP dedicated tidak siap dalam batas waktu")
+                    self._cdp_ready = True
+                    self._cdp_owned = True
                 with self._lock:
                     self._state = "accepting"
                 self._started.set()
@@ -542,12 +784,24 @@ class _BrowserHost:
                     except Exception:                        # noqa: BLE001
                         pass
         except Exception as e:                               # noqa: BLE001
+            # Readiness failures happen before the normal worker loop reaches
+            # its close block. Close only the resources this host just opened;
+            # never kill or attach to an unrelated process.
+            for resource in (ctx, browser):
+                if resource is None:
+                    continue
+                try:
+                    resource.close()
+                except Exception:                            # noqa: BLE001
+                    pass
             self._fail = f"playwright gagal start: {str(e)[:200]}"
             _logger.error("browser.start_failed", error=self._fail)
             self._started.set()
         finally:
             self.page = None
             self._context = None
+            self._cdp_ready = False
+            self._cdp_owned = False
             with self._lock:
                 with self._lease_lock:
                     self.invalidate_snapshot()
@@ -771,6 +1025,9 @@ def _owner_id(session) -> str:
     return str(inherited or getattr(session, "id", "") or "")
 
 
+_compat_host = None
+
+
 def _claim_host(session):
     """Return the singleton after claiming it for a real agent session.
 
@@ -779,7 +1036,13 @@ def _claim_host(session):
     ``wants_context`` and therefore always participate in the lease.
     """
 
+    # ``get()`` resolves the configured default mode. Keeping the call
+    # argument-free preserves the contract of small host fakes used by the
+    # existing browser lease tests while the default config still selects the
+    # dedicated CDP lane.
     host = _BrowserHost.get()
+    global _compat_host
+    _compat_host = host
     owner = _owner_id(session)
     if owner:
         host.claim_session(owner)
@@ -787,14 +1050,81 @@ def _claim_host(session):
 
 
 def release_browser_session(session_id: str) -> None:
-    """Public dispatch cleanup hook for all terminal task outcomes."""
+    """Release an existing browser lease without starting a browser."""
 
-    host = _BrowserHost.get()
+    global _compat_host
+    host = _BrowserHost.peek() or _compat_host
+    if host is None:
+        return
     release = getattr(host, "release_session_after_pending", None)
     if callable(release):
         release(str(session_id or ""))
     else:  # Contract fakes and compatibility hosts.
         host.release_session(str(session_id or ""))
+    if host is _compat_host:
+        _compat_host = None
+
+
+def shutdown_browser_cdp() -> None:
+    """Stop the owned host if it exists; never create one during shutdown."""
+    host = _BrowserHost.peek()
+    if host is None or not host._dedicated_cdp:
+        return
+    host.close(timeout=_cdp_timeout("close_timeout_s", 10.0))
+
+
+def browser_cdp_status() -> dict:
+    """Aggregate CDP status for lifecycle callers; no page metadata."""
+    try:
+        port = _cdp_port()
+    except ValueError as exc:
+        return {
+            "owned": False, "state": "stopped", "port": None,
+            "ready": False, "tabs": 0, "reason": str(exc),
+        }
+    host = _BrowserHost.peek()
+    if host is None or not host._dedicated_cdp:
+        return {
+            "owned": False, "state": "stopped", "port": port,
+            "ready": False, "tabs": 0,
+            "reason": "dedicated CDP belum dimulai",
+        }
+    ready = bool(host._cdp_ready and host._state == "accepting")
+    tabs = 0
+    if ready:
+        try:
+            tabs = len(host._context.pages) if host._context else 0
+        except Exception:  # noqa: BLE001
+            tabs = 0
+    return {
+        "owned": bool(host._cdp_owned),
+        "state": str(host._state),
+        "port": port,
+        "ready": ready,
+        "tabs": tabs,
+        "reason": str(host._fail or "")[:200],
+    }
+
+
+def ensure_browser_cdp() -> dict:
+    """Ensure the one dedicated host is accepting, with bounded startup."""
+    host = _BrowserHost.get()
+    host._ensure()
+    return browser_cdp_status()
+
+
+__all__ = [
+    "browser_cdp_status",
+    "ensure_browser_cdp",
+    "release_browser_session",
+    "shutdown_browser_cdp",
+]
+
+
+# Public aliases used by integration facades without a second owner.
+status_browser_cdp = browser_cdp_status
+ensure_cdp = ensure_browser_cdp
+shutdown_cdp = shutdown_browser_cdp
 
 
 def _target(page, ref: str = "", selector: str = ""):

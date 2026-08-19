@@ -412,6 +412,8 @@ browser:
     cdp_flag: "--cdp"
     snapshot_args: [snapshot, -i]
     timeout_s: 15
+    # false = agent-browser remains attach-only; no implicit Chrome launch.
+    manage_owned_cdp: false
   allowed_schemes: [https, http]
   dom_ready_extra_ms: 1200       # settle time after loadFinished before extraction
   extract_max_chars: 18000
@@ -938,6 +940,14 @@ agent:
     # Isi dgn path User Data Chrome + profile_directory bila mau berbagi profil.
     user_data_dir: ""
     profile_directory: ""        # mis. "Profile 8" bila memakai User Data user
+    # Dedicated Jarvis-owned CDP lane; never points at the user's Chrome profile.
+    cdp:
+      enabled: true
+      address: "127.0.0.1"
+      port: 9333
+      startup_timeout_s: 20
+      close_timeout_s: 10
+      user_data_dir: ""        # empty → LOCALAPPDATA/JARVIS/ChromeCDPProfile
   calorie:
     popup_s: 18                  # lama pop-up kalori bertahan di frame kamera
   image_provider: ""             # "" = provider aktif; atau gemini/openai/local

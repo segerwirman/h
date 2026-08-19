@@ -4,15 +4,15 @@ Wraps the real ``agent-browser`` CLI (https://github.com/vercel-labs/agent-brows
 a browser-automation tool for AI agents that drives Chrome/Chromium over CDP and
 returns accessibility-tree snapshots with compact ``@eN`` element refs.
 
-Real CLI surface (matched here):
-    agent-browser [--cdp <port|ws-url>] snapshot [-i]     # "see" the page
-    agent-browser [--cdp <port|ws-url>] click  <@eN|css>  # interact
+Real CLI surface (matched here)::
+    agent-browser [--cdp <port|ws-url>] snapshot [-i]
+    agent-browser [--cdp <port|ws-url>] click  <@eN|css>
     agent-browser [--cdp <port|ws-url>] type   <@eN|css> <text>
     agent-browser [--cdp <port|ws-url>] open   <url>
 
 An optional ``--cdp`` target may attach to a browser session owned by the
-agent tool. This module never mounts a browser in ContentStage. The executable,
-CDP flag, and snapshot flags remain configurable for installed CLI variants.
+agent tool. The executable, CDP flag, snapshot flags, and owner bridge remain
+configurable for installed CLI variants.
 """
 from __future__ import annotations
 
@@ -38,6 +38,11 @@ class BrowserAgent:
             "browser.agent_cli.snapshot_args", ["snapshot", "-i"]))
         self._timeout = float(config.get(
             "browser.agent_cli.timeout_s", 15))
+        # Existing callers that pass a CDP target remain attach-only by default.
+        # The bridge is opt-in so fixture tests and arbitrary external targets
+        # never start a browser implicitly.
+        self._manage_owned_cdp = bool(config.get(
+            "browser.agent_cli.manage_owned_cdp", False))
 
     def attach(self, cdp: str | int) -> None:
         """Point the agent at an owned browser CDP port or ws:// URL."""
@@ -52,7 +57,8 @@ class BrowserAgent:
         even when the CLI IS installed — the "browser.agent.missing" log. Passing
         the full ``…\\agent-browser.CMD`` path (which ``shutil.which`` resolves
         via PATHEXT) runs correctly. If nothing is found, fall back to the bare
-        name so a genuinely-missing CLI still degrades honestly."""
+        name so a genuinely-missing CLI still degrades honestly.
+        """
         if self._resolved_exe is None:
             self._resolved_exe = shutil.which(self.executable) or self.executable
         return self._resolved_exe
@@ -63,7 +69,27 @@ class BrowserAgent:
             cmd += [self._cdp_flag, str(self.cdp)]
         return cmd
 
+    def _ensure_owned_cdp(self) -> bool:
+        """Ensure only the configured Jarvis-owned endpoint is launched."""
+        if not self._manage_owned_cdp or not self.cdp:
+            return True
+        try:
+            from jarvis.agent.tools import browser
+            target = str(self.cdp).strip()
+            if target != str(browser._cdp_port()):
+                # ws:// and other arbitrary targets are attach-only.
+                return True
+            from jarvis.integrations import jarvis_browser_cdp
+            result = jarvis_browser_cdp.ensure()
+            return bool(result.get("owned") and result.get("ready"))
+        except Exception as exc:  # noqa: BLE001
+            _logger.warning("browser.agent.cdp_owner_failed",
+                            error=str(exc)[:120])
+            return False
+
     def _run(self, args: list[str]) -> subprocess.CompletedProcess | None:
+        if not self._ensure_owned_cdp():
+            return None
         try:
             return subprocess.run(self._base() + args, capture_output=True,
                                   text=True, timeout=self._timeout)
@@ -81,7 +107,8 @@ class BrowserAgent:
 
         Returns the CLI's text snapshot — passed straight to the LLM, which
         selects a ``CLICK @eN`` / ``TYPE @eN | text`` / ``GOTO url`` action.
-        None means the agent-browser CLI is unavailable / errored."""
+        None means the agent-browser CLI is unavailable / errored.
+        """
         r = self._run(self._snapshot_args)
         if r is None:
             return None
