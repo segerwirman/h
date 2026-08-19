@@ -76,5 +76,10 @@ def _log(message: str, player=None) -> None:
     if player:
         try:
             player.write_log(f"JARVIS: {message}")
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            from jarvis.core import quiet
+            quiet.swallowed(
+                "actions.weather_report.player_log_failed",
+                exc,
+                message=message,
+            )
