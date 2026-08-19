@@ -5608,6 +5608,62 @@ audio terotorisasi sebelum klaim runtime nyata.
 
 ---
 
+## Fase 47 — Dedicated Jarvis Chrome CDP profile
+
+Fase ini memisahkan browser yang dimiliki Jarvis dari Chrome harian user. Lane
+`browser_*` memakai User Data baru di luar repository, sedangkan
+`user_browser_*` tetap attach-only ke Chrome harian dan `browser.agent_cli` tetap
+menjadi client CDP, bukan launcher kedua. Endpoint dedicated hanya bind ke
+`127.0.0.1:9333` secara default.
+
+### Hasil Fase 47 — SELESAI DI KODE 2026-08-19
+
+**Bukti:** `source-present`, `focused-tested`, `runtime-wired`,
+`endpoint-reachable`, dan `live-proven`. Dua label terakhir dibatasi hanya pada
+satu observasi empty-profile untuk endpoint dedicated `127.0.0.1:9333`; hasil ini
+tidak menjadi bukti apa pun untuk Chrome harian `Profile 8`.
+
+Implementasi menambahkan `_BrowserHost` sebagai satu owner launch, readiness,
+attach access, lease, dan close. Profile default adalah
+`%LOCALAPPDATA%\\JARVIS\\ChromeCDPProfile`; resolver menolak repository, Chrome
+User Data standar, dan `Profile 8`. Jalur dedicated tidak meneruskan
+`user_data_dir`/`profile_directory` generik dan tidak menyalin `Local State`,
+cookies, token, credential, extension, atau database profile. Port yang sudah
+dipakai proses tidak dikenal menyebabkan fail-closed; Jarvis tidak attach,
+restart, mutate, atau menutup proses tersebut.
+
+Startup dan shutdown bounded memakai state host yang sama. Close hanya menutup
+context yang dibuka owner, memeriksa endpoint menghilang, dan melaporkan survivor
+atau timeout tanpa force-kill. Concurrent ensure tetap converge ke satu host;
+shutdown callback tidak membuat browser baru. RuntimeSupervisor dan facade
+aggregate-only sudah wired, sementara target CDP arbitrary pada `BrowserAgent`
+tetap attach-only kecuali owner bridge opt-in eksplisit.
+
+### Ukuran dan observasi yang benar-benar dijalankan
+
+- Test dedicated browser/lifecycle offline: **60 passed**; regression
+  config/lifecycle/evidence terkait: **48 passed**; gabungan suite terkait:
+  **108 passed**. Fake Playwright, endpoint, clock, dan thread dipakai; tidak ada
+  Chrome nyata, Profile 8, provider, credential, keyring, audio, atau Gemini Live
+  yang diakses.
+- Python compilation lulus; `git diff --check` lulus; verifier FROZEN tetap
+  **OK (10 files, baseline `094b696`)**. Tidak ada API force-kill di jalur
+  browser dedicated.
+- Observasi live terpisah hanya menjalankan ensure/status/close pada profile
+  dedicated kosong. Aggregate ensure: `owned=true`, `ready=true`, `port=9333`,
+  `tabs=1`, `state=accepting`, `reason=""`. Setelah close bounded, probe lokal
+  mencatat `endpoint_gone=true`. Fungsi close tidak mengembalikan record
+  aggregate; endpoint disappearance itulah bukti close yang dipakai.
+
+**Batas jujur:** `live-proven` di sini hanya berarti endpoint dedicated
+`127.0.0.1:9333` benar-benar reachable dan kemudian hilang setelah close pada
+observasi tersebut. Tidak ada navigasi, URL, DOM, tab Profile 8, media,
+credential, provider, microphone, speaker, audio session, atau Gemini Live yang
+dijalankan. Evidence dedicated tidak menaikkan status Profile 8; lane user tetap
+memerlukan acceptance terpisah.
+
+---
+
 ## Sesi audit & eksekusi checklist — 2026-08-17 (Mes/Hermes, read-only→TDD)
 
 **Audit awal:** suite 3043 passed / 4 failed; 4 drift: config contract
@@ -6168,6 +6224,7 @@ yang dijalankan.
 | 44 | Analisis video bounded dan image-reference yang jujur — 2026-08-16 | SEBAGIAN | source-present, focused-tested, runtime-wired |
 | 45 | Kebenaran sumber interupsi dan guard playback — 2026-08-16 | SELESAI DI KODE | source-present, focused-tested, runtime-wired |
 | 46 | Satu pemilik input, heartbeat, dan recovery bounded | — | — |
+| 47 | Dedicated Jarvis Chrome CDP profile | SELESAI DI KODE | source-present, focused-tested, runtime-wired, endpoint-reachable, live-proven |
 
 ---
 

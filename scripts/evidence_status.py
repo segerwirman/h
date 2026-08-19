@@ -26,6 +26,7 @@ _EVIDENCE_ORDER = (
     "source-present",
     "focused-tested",
     "runtime-wired",
+    "endpoint-reachable",
     "measured",
     "live-proven",
     "unproven-live",
