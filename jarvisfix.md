@@ -6838,3 +6838,26 @@ Gate aktual:
 Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada Steam, subprocess nyata, registry, GUI, network, provider, credential/keyring, browser, microphone, speaker, audio session, camera, hardware, atau Gemini Live yang dijalankan.
 
 Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit dan otorisasi boundary baru; jangan otomatis memigrasikan residual `game_updater.py`, `code_helper.py`, `open_app.py`, browser/provider/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
+
+## Fase 35 slice 22 — narasi progres UI tidak lagi diam — 2026-08-20
+
+Slice ini diotorisasi secara eksplisit hanya untuk S110 pada `jarvis/agent/adapters/ui.py:119-120`, yaitu fallback narasi progres di `UIAdapter.progress()`. Dua S110 lain pada file yang sama (`ask()` dan `send_image()`) tetap tidak diubah. Tidak ada perubahan pada boundary UI/speech lain, speech ownership, queue, provider, browser, network, credential/keyring, voice/audio session, camera/hardware, GUI/system-control, FROZEN, `.claude/`, atau path user-dirty.
+
+RED-first sebelum instrumentasi menghasilkan **1 failed** pada test baru setelah fixture diperbaiki: `SYS: still working` tetap ditulis, fake `_speak_line` melempar `OSError`, tetapi event `agent.adapter.ui.progress_narration_failed` belum tercatat (`events == 0`). Kegagalan awal fixture yang salah (`ui_adapter.quiet` belum ada) diperbaiki sebelum menyimpulkan RED. Setelah perubahan satu blok, focused UIAdapter regression menghasilkan **46 passed** (`tests/test_ui_adapter_quiet.py`, speech scoping, dan voice confirmation). Test sepenuhnya offline dengan fake window/narrator dan monkeypatch; tidak ada Qt window nyata, speaker, audio session, provider, network, browser, credential, atau hardware yang diakses.
+
+Control flow dipertahankan: `win.write_log("SYS: ...")` tetap berjalan, exception narasi tetap fail-open, dan hanya telemetry `quiet.swallowed("agent.adapter.ui.progress_narration_failed", exc)` yang ditambahkan.
+
+Raw Ruff authoritative (`--isolated --select S110,S112 --no-cache`) sebelum slice: **134 match / 39 berkas / 111 S110 / 23 S112**. Sesudah slice: **exit 1; 133 match / 39 berkas / 110 S110 / 23 S112**. Delta terukur tepat **-1 match / -1 S110 / 0 S112 / 0 berkas**, sesuai expected. Raw debt tetap nonzero; Fase 35 tidak disebut root-lint green atau selesai.
+
+Gate aktual:
+
+- Test baru `tests/test_ui_adapter_quiet.py`: **All checks passed**.
+- Configured Ruff pada source target tetap exit 1 hanya karena dua S110 berdekatan yang tidak diotorisasi pada `jarvis/agent/adapters/ui.py:153` dan `:183`; keduanya tidak disentuh. Residual tersebut bukan failure baru dari Slice 22.
+- `scripts/verify_frozen.py`: **`FROZEN integrity: OK (10 files, baseline 094b696)`**.
+- Compile check source/test: **lulus**.
+- Slice-specific `git diff --check`: **lulus**; warning LF→CRLF pada test baru adalah normal Git Windows.
+- Source dan test di-commit selektif sebagai `af9510a` (`refactor(lint): instrument UI progress narration fallback`). Commit hanya memuat `jarvis/agent/adapters/ui.py` dan `tests/test_ui_adapter_quiet.py`; perubahan user lain tidak di-stage atau dicampur.
+
+Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada speaker, microphone, audio session, Gemini Live, provider nyata, network, browser, credential/keyring, camera, atau hardware yang dijalankan.
+
+Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit dan otorisasi boundary baru; jangan otomatis memigrasikan dua residual S110 UIAdapter, residual `game_updater.py`, `code_helper.py`, `open_app.py`, browser/provider/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
