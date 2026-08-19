@@ -6583,3 +6583,46 @@ dicampur. Fase 35 tetap **SEBAGIAN** dengan evidence **focused-tested** dan
 Langkah berikutnya tetap memerlukan audit/otorisasi boundary baru. Jangan
 melanjutkan ke enam residual `open_app.py`, `computer_settings.py`, browser,
 provider, voice/audio, hardware, atau GUI/system-control tanpa keputusan terpisah.
+
+## Fase 35 slice 15 — fallback log player cuaca berhenti diam — 2026-08-19
+
+Slice ini diotorisasi secara eksplisit hanya untuk satu boundary: blok S110 pada
+`actions/weather_report.py:76-80`, yaitu fallback `player.write_log(...)` di
+`_log`. Tidak ada blok lain di `weather_report.py` yang dimigrasikan; S110 pada
+baris 68 (set_last_search session memory) tetap menjadi debt terpisah. Seluruh
+boundary lain — enam residual `open_app.py`, `computer_settings.py`, provider,
+browser, network/remote, credential/keyring, audio/voice, camera/hardware,
+GUI/system-control, callback/delivery, scheduler/Telegram/WhatsApp, FROZEN,
+`.claude/`, dan path user-dirty — tetap dikecualikan.
+
+Raw baseline sebelum slice (authoritative `--isolated --select S110,S112`):
+**141 match / 42 berkas / 118 S110 / 23 S112**. RED-first test di
+`tests/test_weather_report_quiet.py` gagal **1 test** sebelum instrumentasi
+hanya karena event telemetry belum ada (`assert 0 == 1`), membuktikan fallback
+sebelumnya gagal diam.
+
+Setelah perubahan, test tersebut serta regression `test_phase5_stage_home.py` dan
+`test_runtime_acceleration.py` menghasilkan **23 passed**. Perubahan source hanya
+menangkap exception sebagai `exc`, mencatat satu event
+`actions.weather_report.player_log_failed` melalui `quiet.swallowed(...)`, lalu
+mempertahankan return value, control flow, dan perilaku sukses `_log` lama. Tidak
+ada perubahan pada URL, `webbrowser.open`, cache, metrics, `BUS.publish`, atau
+session memory.
+
+Raw Ruff sesudah slice: **exit 1; 140 match / 42 berkas / 117 S110 / 23 S112**.
+Delta terukur tepat **-1 match / -1 S110 / 0 S112 / 0 berkas**, sesuai expected.
+Configured Ruff untuk target: **All checks passed!**; FROZEN verifier:
+**`FROZEN integrity: OK (10 files, baseline 094b696)`**; `git diff --check`:
+lulus. Tidak ada provider, browser, network, credential, keyring, audio session,
+microphone, speaker, camera, hardware, Gemini Live, atau live runtime yang
+diakses.
+
+Perubahan slice di-commit selektif sebagai `014ec29` (`refactor(lint):
+instrument weather report player log fallback`). Commit hanya memuat
+`actions/weather_report.py` dan `tests/test_weather_report_quiet.py`; perubahan
+user lain tidak di-stage atau dicampur. Fase 35 tetap **SEBAGIAN** dengan
+evidence **focused-tested** dan **runtime-wired**, bukan `live-proven`.
+
+Langkah berikutnya tetap memerlukan audit/otorisasi boundary baru. Jangan
+melanjutkan ke enam residual `open_app.py`, `computer_settings.py`, browser,
+provider, voice/audio, hardware, atau GUI/system-control tanpa keputusan terpisah.
