@@ -92,8 +92,13 @@ def _launch_windows(app_name: str) -> bool:
             subprocess.Popen(f"start {app_name}", shell=True)
             time.sleep(1.0)
             return True
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            from jarvis.core import quiet
+            quiet.swallowed(
+                "actions.open_app.windows_start_failed",
+                exc,
+                app_name=app_name,
+            )
 
     try:
         import pyautogui

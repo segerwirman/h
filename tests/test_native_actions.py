@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 import time
+import types
 
 from actions import open_app as open_app_action
+from jarvis.core import quiet
 from jarvis.agent import tool_selection
 from jarvis.agent.tools.app_control import OpenApp
 from jarvis.agent.tools.capability_status import CapabilityStatus
@@ -40,6 +43,47 @@ def test_windows_url_uses_native_shell(monkeypatch):
     result = native_actions.open_external_url("https://example.com")
     assert result.ok
     assert seen == ["https://example.com"]
+
+
+def test_open_app_windows_start_fallback_records_failure(monkeypatch):
+    events = []
+    monkeypatch.setattr(open_app_action, "_SYSTEM", "Windows")
+    monkeypatch.setattr(open_app_action.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(
+        open_app_action.subprocess,
+        "Popen",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("start failed")),
+    )
+    monkeypatch.setattr(
+        open_app_action.time,
+        "sleep",
+        lambda _seconds: None,
+    )
+    monkeypatch.setitem(sys.modules, "pyautogui", types.ModuleType("pyautogui"))
+    monkeypatch.setattr(
+        sys.modules["pyautogui"],
+        "press",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            OSError("start menu unavailable")
+        ),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        sys.modules["pyautogui"],
+        "write",
+        lambda *_args, **_kwargs: None,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        quiet,
+        "swallowed",
+        lambda event, exc=None, **context: events.append((event, exc, context)),
+    )
+
+    assert open_app_action._launch_windows("ms-settings:") is False
+    assert len(events) == 1
+    assert events[0][0] == "actions.open_app.windows_start_failed"
+    assert isinstance(events[0][1], OSError)
 
 
 def test_app_registry_launches_resolved_start_menu_target(monkeypatch):
