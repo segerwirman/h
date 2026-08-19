@@ -53,8 +53,12 @@ class CapabilityRegistry:
                     timeout_s=float(getattr(tool, "timeout_s", 60)),
                 )
                 items[descriptor.id] = descriptor
-        except Exception:                                   # noqa: BLE001
-            pass
+        except Exception as exc:                            # noqa: BLE001
+            from jarvis.core import quiet
+            quiet.swallowed(
+                "agent.capabilities.discovery_failed",
+                exc,
+            )
         return [items[key] for key in sorted(items)]
 
     def descriptor_for_tool(self, tool_name: str) -> CapabilityDescriptor | None:

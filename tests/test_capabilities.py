@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import pytest
 
+from jarvis.core import quiet
+
 
 @pytest.fixture(autouse=True)
 def _restore_global_capability_registry():
@@ -30,6 +32,33 @@ def test_registry_hanya_mengekspos_capability_enabled_dan_policy_allowed():
     )
 
     assert registry.exposed_tool_names(remote) == []
+
+
+def test_registry_discovery_failure_is_recorded_and_keeps_explicit_descriptors(monkeypatch):
+    from jarvis.agent import registry
+    from jarvis.agent.capabilities import CapabilityDescriptor, CapabilityRegistry
+
+    events = []
+    monkeypatch.setattr(quiet, "swallowed", lambda event, exc=None, **context: events.append((event, exc, context)))
+    monkeypatch.setattr(
+        registry,
+        "all_tools",
+        lambda: (_ for _ in ()).throw(OSError("registry unavailable")),
+    )
+
+    capability = CapabilityRegistry()
+    capability.register(CapabilityDescriptor(
+        id="status.read", tool_name="status", toolset="safe", risk="low", timeout_s=5,
+    ))
+
+    descriptors = capability.descriptors()
+
+    assert descriptors == [CapabilityDescriptor(
+        id="status.read", tool_name="status", toolset="safe", risk="low", timeout_s=5,
+    )]
+    assert len(events) == 1
+    assert events[0][0] == "agent.capabilities.discovery_failed"
+    assert isinstance(events[0][1], OSError)
 
 
 def test_registry_menampilkan_safe_tool_yang_enabled():
