@@ -225,8 +225,14 @@ def _notify_result(job: dict, ok: bool, text: str) -> None:
         from jarvis.core.bus import BUS
         BUS.publish("agent.cron.done", name=job["name"], ok=ok,
                     text=(text or "")[:400])
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                # noqa: BLE001
+        from jarvis.core import quiet
+        quiet.swallowed(
+            "agent.cron.bus_publish_failed",
+            exc,
+            name=job["name"],
+            ok=ok,
+        )
 
 
 # ── scheduler thread ──────────────────────────────────────────────────────

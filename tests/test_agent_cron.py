@@ -6,6 +6,9 @@ import time
 import pytest
 
 import jarvis.agent.cron as cron
+from jarvis.core import bus, quiet
+
+
 
 
 @pytest.fixture(autouse=True)
@@ -54,6 +57,34 @@ def test_update_schedule_recomputes_next_run():
     after = cron.get_job(jid)["next_run"]
     assert after != before
     assert after - time.time() < 120
+
+
+def test_notify_result_bus_failure_is_recorded_without_changing_payload(monkeypatch):
+    events = []
+    published = []
+
+    class Bus:
+        def publish(self, *args, **kwargs):
+            published.append((args, kwargs))
+            raise OSError("bus unavailable")
+
+    monkeypatch.setattr(quiet, "swallowed", lambda event, exc=None, **context: events.append((event, exc, context)))
+    monkeypatch.setattr(bus.BUS, "publish", Bus().publish)
+    monkeypatch.setattr(cron, "BUS", bus.BUS, raising=False)
+    monkeypatch.setattr(
+        "jarvis.agent.adapters.telegram.send_from_anywhere",
+        lambda _message: None,
+    )
+
+    cron._notify_result({"name": "daily", "internal": 0}, True, "completed")
+
+    assert published == [(
+        ("agent.cron.done",),
+        {"name": "daily", "ok": True, "text": "completed"},
+    )]
+    assert len(events) == 1
+    assert events[0][0] == "agent.cron.bus_publish_failed"
+    assert isinstance(events[0][1], OSError)
 
 
 def test_run_now_uses_dispatch(monkeypatch):
