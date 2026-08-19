@@ -6754,3 +6754,45 @@ Langkah berikutnya tetap memerlukan audit/otorisasi boundary baru. Jangan
 melanjutkan ke `cron.py:222` Telegram, enam residual `open_app.py`,
 `computer_settings.py`, browser, provider, voice/audio, hardware, atau
 GUI/system-control tanpa keputusan terpisah.
+
+## Fase 35 slice 19 — fallback Telegram cron berhenti diam — 2026-08-19
+
+Slice ini diotorisasi secara eksplisit hanya untuk satu boundary remote/delivery:
+`jarvis/agent/cron.py:217-223`, fallback S110 di sekitar
+`telegram.send_from_anywhere(...)`. Blok BUS local telemetry pada baris 224-235
+sudah selesai pada Slice 17 dan tidak diubah. Tidak ada perubahan pada
+`telegram.py` atau delivery boundary lain. Seluruh boundary lain — enam residual
+`open_app.py`, `computer_settings.py`, provider, browser, credential/keyring,
+voice/audio, camera/hardware, GUI/system-control, FROZEN, `.claude/`, dan path
+user-dirty — tetap dikecualikan.
+
+Raw baseline sebelum slice (authoritative `--isolated --select S110,S112`):
+**137 match / 40 berkas / 114 S110 / 23 S112**.
+
+RED-first test gagal **1 test** sebelum instrumentasi: Telegram failure sudah
+membiarkan BUS lanjut dan payload tetap benar, tetapi event telemetry belum ada
+(`events == 0`). Setelah perubahan, focused `tests/test_agent_cron.py`
+menghasilkan **10 passed**. Test berjalan offline dengan Telegram sender palsu
+yang melempar, BUS palsu yang merekam payload, dan memastikan satu event
+`agent.cron.telegram_notify_failed` tercatat tanpa network/Telegram nyata.
+Urutan Telegram lalu BUS, payload text terpotong 400 karakter, serta fallback
+scheduler tetap dipertahankan.
+
+Raw Ruff sesudah slice: **exit 1; 136 match / 39 berkas / 113 S110 / 23 S112**.
+Delta terukur tepat **-1 match / -1 berkas / -1 S110 / 0 S112**, sesuai expected.
+Configured Ruff target: **All checks passed!**; FROZEN verifier:
+**`FROZEN integrity: OK (10 files, baseline 094b696)`**; compile check dan
+`git diff --check` lulus. Tidak ada provider, credential, keyring, browser,
+audio session, microphone, speaker, camera, hardware, Gemini Live, atau live
+runtime yang diakses.
+
+Perubahan slice di-commit selektif sebagai `e554dd4` (`refactor(lint): instrument
+cron telegram fallback`). Commit hanya memuat `jarvis/agent/cron.py` dan
+`tests/test_agent_cron.py`; perubahan user lain tidak di-stage atau dicampur.
+Fase 35 tetap **SEBAGIAN** dengan evidence **focused-tested** dan
+**runtime-wired**, bukan `live-proven`.
+
+Langkah berikutnya tetap memerlukan audit/otorisasi boundary baru. Jangan
+melanjutkan ke enam residual `open_app.py`, `actions/computer_settings.py`,
+browser, provider, voice/audio, hardware, atau GUI/system-control tanpa keputusan
+terpisah.
