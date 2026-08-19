@@ -6712,3 +6712,45 @@ Langkah berikutnya tetap memerlukan audit/otorisasi boundary baru. Jangan
 melanjutkan ke enam residual `open_app.py`, `actions/computer_settings.py`,
 browser, provider, voice/audio, hardware, atau GUI/system-control tanpa keputusan
 terpisah.
+
+## Fase 35 slice 18 — fallback discovery capability berhenti diam — 2026-08-19
+
+Slice ini diotorisasi secara eksplisit hanya untuk satu boundary pada path
+user-dirty `jarvis/agent/capabilities.py:35-57`, yaitu fallback S110 ketika
+`registry.all_tools()` gagal. Hanya blok fallback yang diubah; dua descriptor
+user-dirty `video.video_analyze` dan `video.video_clip` tetap dipertahankan byte-
+for-byte dalam working tree dan tidak masuk commit. Seluruh boundary lain —
+`cron.py:222` Telegram, enam residual `open_app.py`, `computer_settings.py`,
+provider, browser, network/remote, credential/keyring, audio/voice,
+camera/hardware, GUI/system-control, FROZEN, `.claude/`, dan path user-dirty lain
+— tetap dikecualikan.
+
+Sebelum edit, diff user-dirty `capabilities.py` dicadangkan ke temp sebagai
+898 bytes dan berisi hanya empat baris descriptor video. Raw baseline
+authoritative: **138 match / 41 berkas / 115 S110 / 23 S112**.
+
+RED-first test gagal **1 test** sebelum instrumentasi karena `events` tetap kosong
+saat fallback registry gagal. Setelah perubahan, capability dan remote-policy
+regression menghasilkan **16 passed**. Test memastikan explicit descriptor tetap
+tersedia, exception `OSError` tidak keluar, dan event
+`agent.capabilities.discovery_failed` tercatat. Tidak ada provider, network,
+keyring, browser, audio, camera, hardware, atau Gemini Live yang diakses.
+
+Raw Ruff sesudah slice: **exit 1; 137 match / 40 berkas / 114 S110 / 23 S112**.
+Delta terukur tepat **-1 match / -1 berkas / -1 S110 / 0 S112**, sesuai expected.
+Configured Ruff target: **All checks passed!**; FROZEN verifier:
+**`FROZEN integrity: OK (10 files, baseline 094b696)`**; compile check dan
+`git diff --check` lulus.
+
+Preservation review menunjukkan working-tree diff user-dirty descriptor video tetap
+ada dan tidak tercampur. Staging memakai index blob yang hanya memuat fallback
+instrumentasi dan test eksplisit. Perubahan slice di-commit sebagai `a8cc8f9`
+(`refactor(lint): instrument capability discovery fallback`); commit hanya memuat
+`jarvis/agent/capabilities.py` fallback dan `tests/test_capabilities.py`, bukan
+dua descriptor user-dirty. Fase 35 tetap **SEBAGIAN** dengan evidence
+**focused-tested** dan **runtime-wired**, bukan `live-proven`.
+
+Langkah berikutnya tetap memerlukan audit/otorisasi boundary baru. Jangan
+melanjutkan ke `cron.py:222` Telegram, enam residual `open_app.py`,
+`computer_settings.py`, browser, provider, voice/audio, hardware, atau
+GUI/system-control tanpa keputusan terpisah.
