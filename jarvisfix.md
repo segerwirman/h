@@ -6539,3 +6539,47 @@ tidak ada klaim **live-proven**, sesi provider nyata, atau Gemini Live nyata.
 Preservasi sesudah gate menunjukkan perubahan slice hanya pada empat source
 terpilih dan `tests/test_slice13_quiet.py` serta bagian dokumentasi ini; path user
 lain tetap dipertahankan. `pyproject.toml` tidak diubah.
+
+## Fase 35 slice 14 — fallback `start` Windows berhenti diam — 2026-08-19
+
+Slice ini diotorisasi secara eksplisit hanya untuk satu boundary: blok S110 pada
+`actions/open_app.py:95`, yaitu fallback `subprocess.Popen("start ...")` untuk
+nama target Windows yang mengandung `:`. Tidak ada blok lain di `open_app.py`
+yang dimigrasikan; enam S110 residual pada file tersebut tetap menjadi debt
+terpisah. `actions/computer_settings.py` serta seluruh boundary provider,
+browser, network/remote, credential/keyring, audio/voice, camera/hardware,
+GUI/system-control lain, callback/delivery, scheduler/Telegram/WhatsApp,
+FROZEN, `.claude/`, dan path user-dirty tetap dikecualikan.
+
+Rekonsiliasi line-level menemukan drift angka dokumentasi sebelumnya berasal dari
+commit dedicated-CDP `aa880a0`, bukan dari `actions/open_app.py`: dibandingkan
+`f04dc69`, lima finding S110 baru muncul di `jarvis/agent/tools/browser.py` dan
+empat finding lama pada file yang sama bergeser/hilang, sehingga agregat berubah
+141/42/118/23 menjadi 142/42/119/23. Setelah itu tidak ada perubahan pada raw
+inventory sampai slice ini. Angka current baseline sebelum slice adalah **142
+match / 42 berkas / 119 S110 / 23 S112**.
+
+RED-first characterization untuk fallback Windows gagal **1 test** sebelum
+instrumentasi, hanya karena event telemetry belum ada. Setelah perubahan,
+test tersebut dan focused native-action regression menghasilkan **11 passed**.
+Perubahan source hanya menangkap exception sebagai `exc`, mencatat satu event
+`actions.open_app.windows_start_failed` melalui `quiet.swallowed(...)`, lalu
+mempertahankan fallback Start Menu, return value, dan control flow lama.
+
+Raw Ruff sesudah slice: **exit 1; 141 match / 42 berkas / 118 S110 / 23 S112**.
+Delta terukur tepat **-1 match / -1 S110 / 0 S112 / 0 berkas**. Residual
+`open_app.py` tetap enam S110. Configured Ruff untuk target: **All checks passed!**;
+FROZEN verifier: **`FROZEN integrity: OK (10 files, baseline 094b696)`**;
+`git diff --check`: lulus. Tidak ada provider, browser, network, credential,
+keyring, audio session, microphone, speaker, camera, hardware, Gemini Live,
+atau live runtime yang diakses.
+
+Perubahan slice di-commit selektif sebagai `6f18741` (`refactor(lint):
+instrument open app Windows fallback`). Commit hanya memuat `actions/open_app.py`
+dan `tests/test_native_actions.py`; perubahan user lain tidak di-stage atau
+dicampur. Fase 35 tetap **SEBAGIAN** dengan evidence **focused-tested** dan
+**runtime-wired**, bukan `live-proven`.
+
+Langkah berikutnya tetap memerlukan audit/otorisasi boundary baru. Jangan
+melanjutkan ke enam residual `open_app.py`, `computer_settings.py`, browser,
+provider, voice/audio, hardware, atau GUI/system-control tanpa keputusan terpisah.
