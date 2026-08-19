@@ -65,8 +65,14 @@ def weather_action(
     if session_memory:
         try:
             session_memory.set_last_search(query=search_query, response=msg)
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            from jarvis.core import quiet
+            quiet.swallowed(
+                "actions.weather_report.session_memory_failed",
+                exc,
+                city=city,
+                time=when,
+            )
 
     return msg
 
