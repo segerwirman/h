@@ -6796,3 +6796,23 @@ Langkah berikutnya tetap memerlukan audit/otorisasi boundary baru. Jangan
 melanjutkan ke enam residual `open_app.py`, `actions/computer_settings.py`,
 browser, provider, voice/audio, hardware, atau GUI/system-control tanpa keputusan
 terpisah.
+
+## Fase 35 slice 20 — cleanup screenshot-analysis tidak lagi diam — 2026-08-20
+
+Slice ini diotorisasi secara eksplisit hanya untuk cleanup sukses setelah analisis screenshot pada `actions/code_helper.py:488-491`. Error-path cleanup yang berdekatan tetap tidak diubah. Boundary provider/Gemini, screenshot nyata, camera/hardware, browser, network, credential/keyring, audio/voice, GUI/system-control, FROZEN, `.claude/`, dan seluruh path user-dirty tetap dikecualikan.
+
+RED-first sebelum instrumentasi menghasilkan **1 failed** pada test baru: fake analysis berhasil dan cleanup fake melempar `OSError`, tetapi event `actions.code_helper.screenshot_cleanup_failed` belum tercatat (`events == 0`). Setelah perubahan satu blok, focused code-helper regression menghasilkan **4 passed**. Test memakai fake screenshot, fake `google.genai` module/client/response, placeholder key getter, dan monkeypatch offline; tidak ada provider constructor nyata, network, keyring, screenshot/camera, audio, atau browser yang diakses. Return analysis tetap `analysis result`, dan kegagalan cleanup tidak mengubah hasil analisis.
+
+Raw Ruff authoritative (`--isolated --select S110,S112 --no-cache`) sebelum slice: **136 match / 39 berkas / 113 S110 / 23 S112**. Sesudah slice: **exit 1; 135 match / 39 berkas / 112 S110 / 23 S112**. Delta terukur tepat **-1 match / -1 S110 / 0 S112 / 0 berkas**, sesuai expected. Raw debt tetap nonzero; Fase 35 tidak disebut root-lint green atau selesai.
+
+Gate aktual:
+
+- Configured Ruff pada `actions/code_helper.py` dan `tests/test_code_helper_quiet.py`: **All checks passed!**
+- `scripts/verify_frozen.py`: **`FROZEN integrity: OK (10 files, baseline 094b696)`**.
+- Compile check untuk source/test slice: **lulus**.
+- Slice-specific `git diff --check`: **lulus**; warning LF→CRLF pada test baru adalah normal Git Windows.
+- Source dan test di-commit selektif sebagai `e40b7e6` (`refactor(lint): instrument code helper screenshot cleanup`). Commit hanya memuat `actions/code_helper.py` dan `tests/test_code_helper_quiet.py`; perubahan user lain tidak di-stage atau dicampur.
+
+Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada Gemini Live, provider nyata, network, credential/keyring, browser, screenshot/camera, microphone, speaker, audio session, atau hardware yang dijalankan.
+
+Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit dan otorisasi boundary baru; jangan otomatis memigrasikan error-path cleanup yang tersisa, residual `open_app.py`, provider/browser/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
