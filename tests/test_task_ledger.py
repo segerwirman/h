@@ -164,6 +164,36 @@ def test_registry_hydration_produces_non_active_recovery_views():
         ledger.clear_all()
 
 
+def test_recovery_hydration_tidak_membuat_context_audio_atau_replay(monkeypatch):
+    from jarvis.agent import conversation_context
+    from jarvis.agent.paths import db_path
+    from jarvis.agent.task_ledger import TaskLedger
+    from jarvis.agent.tasks import TaskRegistry
+
+    store = conversation_context.ConversationContextStore()
+    monkeypatch.setattr(conversation_context, "STORE", store)
+    ledger = TaskLedger(db_path())
+    stale = _incarnation_id()
+    ledger.create(
+        "T-old-audio",
+        title="lanjutkan tugas rahasia",
+        source="voice-task-tool",
+        conversation="voice-live",
+        incarnation=stale,
+    )
+
+    try:
+        registry = TaskRegistry()
+        views = registry.hydrate_recovery(ledger)
+
+        assert views
+        assert registry.active() == []
+        assert store.active_tasks("voice-live") == []
+        assert store.context_block("voice-live") == ""
+    finally:
+        ledger.clear_all()
+
+
 def test_recovery_views_never_occupy_slots(ledger):
     from jarvis.agent.tasks import TaskRegistry
     from jarvis.agent.task_ledger import RecoveryDisposition

@@ -128,18 +128,23 @@ def _on_task_finished(data: dict) -> None:
     Notice hanya diantre di sini; pengirimannya menunggu batas giliran yang
     aman supaya hasil tugas tidak memotong Jarvis di tengah kalimat.
     """
-    if not bool(config.get("ui.task_deck.speak_on_complete", True)):
-        return
     task = dict(data.get("task") or {})
-    if str(task.get("completion_owner", "registry")) != "registry":
-        return                          # caller callback owns terminal speech
     source = str(task.get("source", "") or "")
     if source not in {"voice-native", "voice-task-tool"}:
         return              # never leak typed/remote/headless task into Live
+    tid = str(task.get("id", ""))
+    if tid:
+        from jarvis.agent import conversation_context
+        conversation_context.STORE.end_task(
+            conversation_context.AUDIO_CONVERSATION_ID, tid
+        )
+    if not bool(config.get("ui.task_deck.speak_on_complete", True)):
+        return
+    if str(task.get("completion_owner", "registry")) != "registry":
+        return                          # caller callback owns terminal speech
     status = str(task.get("status", ""))
     if status not in ("done", "failed"):
         return                                   # cancelled → user sudah tahu
-    tid = str(task.get("id", ""))
     title = _safe_notice_text(task.get("title", ""), 160) or "tugas latar"
     if status == "failed":
         body = f"GAGAL: {_safe_notice_text(task.get('error', ''), 600)}"

@@ -439,6 +439,90 @@ def test_task_start_inherits_voice_task_source_scope(monkeypatch) -> None:
     assert view.source == "voice-task-tool"
 
 
+def test_task_start_binds_registry_id_to_scoped_audio_conversation(monkeypatch) -> None:
+    from jarvis.agent import conversation_context
+
+    store = conversation_context.ConversationContextStore()
+    monkeypatch.setattr(conversation_context, "STORE", store)
+
+    def fake_dispatch(task, title=None, on_task=None, **_kwargs):
+        metadata = SimpleNamespace(id="T-audio", title=title or task)
+        on_task(metadata)
+        return SimpleNamespace(
+            id=metadata.id,
+            title=metadata.title,
+            status=TaskStatus.QUEUED,
+        )
+
+    monkeypatch.setattr(dispatch, "dispatch_task", fake_dispatch)
+
+    with dispatch.source_scope(
+        "voice-task-tool",
+        completion_owner="registry",
+        conversation_id="voice-live",
+    ):
+        res = _run(registry.all_tools()["task_start"].run(task="riset voice"))
+
+    assert res.ok
+    assert [item["task_id"] for item in store.active_tasks("voice-live")] == [
+        "T-audio"
+    ]
+    assert store.active_tasks("voice") == []
+
+
+def test_task_start_non_voice_tidak_mencemari_audio_context(monkeypatch) -> None:
+    from jarvis.agent import conversation_context
+
+    store = conversation_context.ConversationContextStore()
+    monkeypatch.setattr(conversation_context, "STORE", store)
+
+    def fake_dispatch(task, title=None, on_task=None, **_kwargs):
+        metadata = SimpleNamespace(id="T-typed", title=title or task)
+        on_task(metadata)
+        return SimpleNamespace(
+            id=metadata.id,
+            title=metadata.title,
+            status=TaskStatus.QUEUED,
+        )
+
+    monkeypatch.setattr(dispatch, "dispatch_task", fake_dispatch)
+
+    res = _run(registry.all_tools()["task_start"].run(task="riset typed"))
+
+    assert res.ok
+    assert store.active_tasks("voice-live") == []
+    assert store.active_tasks("voice") == []
+
+
+@pytest.mark.parametrize("status", ["done", "failed", "cancelled"])
+def test_terminal_voice_task_membersihkan_binding_sebelum_filter_notice(
+    monkeypatch, status
+) -> None:
+    from jarvis.agent import conversation_context
+    from jarvis.core import config
+
+    store = conversation_context.ConversationContextStore()
+    monkeypatch.setattr(conversation_context, "STORE", store)
+    store.begin_task(
+        "voice-live", task_id="T-1234", task="riset laptop",
+        source="voice-task-tool",
+    )
+    real_get = config.get
+    monkeypatch.setattr(
+        config,
+        "get",
+        lambda key, default=None: (
+            False if key == "ui.task_deck.speak_on_complete"
+            else real_get(key, default)
+        ),
+    )
+
+    voice_tasks._on_task_finished(_finish_event(status=status))
+
+    assert store.active_tasks("voice-live") == []
+    assert voice_tasks.pending_notices() == 0
+
+
 def test_task_start_menolak_saat_agent_tidak_tersedia(monkeypatch) -> None:
     monkeypatch.setattr(dispatch, "available", lambda: False)
     res = _run(registry.all_tools()["task_start"].run(task="apa saja"))

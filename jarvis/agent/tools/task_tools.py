@@ -63,11 +63,14 @@ class TaskStart(Tool):
         def _bind(metadata) -> None:
             try:
                 from jarvis.agent import conversation_context
+                scope = dispatch.current_source_scope()
+                if scope is None or not scope.conversation_id:
+                    return
                 conversation_context.STORE.begin_task(
-                    "voice",
+                    scope.conversation_id,
                     task_id=str(getattr(metadata, "id", "") or ""),
                     task=str(getattr(metadata, "title", "") or text),
-                    source="voice",
+                    source=scope.source,
                 )
             except Exception:                                # noqa: BLE001, S110
                 pass

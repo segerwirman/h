@@ -46,8 +46,21 @@ _ARTIFACT_REF_RE = re.compile(
     re.IGNORECASE,
 )
 _CONTEXT_MARKER = "\n\n[KONTEKS PERCAKAPAN LANGSUNG]"
+_PROMPT_CONTEXT_MARKER = "[KONTEKS PERCAKAPAN LANGSUNG]"
 _LEGACY_TASK_PREFIX = "~"          # synthetic key for title-only legacy binding
 _MAX_ACTIVE_TASKS = 4
+AUDIO_CONVERSATION_ID = "voice-live"
+
+_REMOTE_URL_RE = re.compile(r"(?i)(?:https?://|www\.)\S+")
+_PRIVATE_PATH_RE = re.compile(
+    r'(?i)(?:file:///|\\\\|(?<!\w)[A-Za-z]:[\\/])[^\s<>|?*\"]+'
+)
+_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(api[_ -]?key|authorization|bearer|password|passwd|secret|token|"
+    r"otp|pin|cvv)\s*[:=]\s*([^\s,;]+)"
+)
+_BEARER_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+_SK_SECRET_RE = re.compile(r"(?<!\w)sk-[A-Za-z0-9_-]{8,}")
 
 
 @dataclass
@@ -228,13 +241,13 @@ class ConversationContextStore:
             titles = {entry.title for entry in context.active_tasks.values()}
             return next(iter(titles)) if len(titles) == 1 else ""
 
-    def fail_task(self, conversation_id: str, task_id: str) -> None:
-        """Remove one failed task binding by registry ID (never others).
+    def end_task(self, conversation_id: str, task_id: str) -> None:
+        """Remove one terminal task binding by registry ID (never others).
 
         The session itself is preserved while it still carries unrelated safe
         continuity (a recent result, artifact, or recent intent). Only a truly
-        empty context is evicted, so failing the last active task never erases
-        a completed result the user may want to reference.
+        empty context is evicted, so ending the last active task never erases a
+        completed result the user may want to reference.
         """
         key = _key(conversation_id)
         tid = str(task_id or "").strip()
@@ -247,6 +260,10 @@ class ConversationContextStore:
             context.active_tasks.pop(tid, None)
             if not context.active_tasks and not _keeps_session(context):
                 self._sessions.pop(key, None)
+
+    def fail_task(self, conversation_id: str, task_id: str) -> None:
+        """Compatibility alias for a failed terminal task."""
+        self.end_task(conversation_id, task_id)
 
     def resolve(self, conversation_id: str, reference: str) -> FollowUpResult:
         """Structured resolution so callers can ask rather than dispatch a guess.
@@ -303,17 +320,48 @@ class ConversationContextStore:
         )
 
     def context_block(self, conversation_id: str) -> str:
-        """Safe, compact block for optional naturalization only."""
+        """Bounded remote-safe context for a freshly built Live prompt."""
 
         with self._lock:
             context = self._sessions.get(_key(conversation_id))
-            if context is None or not context.last_spoken:
+            if context is None:
                 return ""
-            return (
-                "Konteks percakapan langsung (jangan menambah fakta baru): "
-                f"tugas terakhir={context.last_intent}; "
-                f"brief terakhir={context.last_spoken}"
+            last_intent = _remote_safe(context.last_intent, 160)
+            last_spoken = _remote_safe(context.last_spoken, 300)
+            active = [
+                (
+                    _remote_safe(entry.task_id, 64),
+                    _remote_safe(entry.title, 120),
+                )
+                for entry in reversed(list(context.active_tasks.values()))
+            ][:_MAX_ACTIVE_TASKS]
+
+        lines: list[str] = []
+        if last_intent and last_spoken:
+            lines.append(f"Tugas terakhir: {last_intent}")
+            lines.append(f"Brief terakhir yang aman: {last_spoken}")
+        visible = [(tid, title) for tid, title in active if tid or title]
+        if len(visible) == 1:
+            tid, title = visible[0]
+            descriptor = f"{tid}: {title}" if tid else title
+            lines.append(f"Tugas berjalan: {descriptor}")
+        elif len(visible) > 1:
+            lines.append("Tugas berjalan:")
+            lines.extend(
+                f"- {tid}: {title}" if tid else f"- {title}"
+                for tid, title in visible
             )
+            lines.append(
+                "Jika rujukan ambigu, minta user menyebutkan id tugas; "
+                "jangan menebak."
+            )
+        if not lines:
+            return ""
+        return (
+            f"\n\n{_PROMPT_CONTEXT_MARKER}\n"
+            "Gunakan hanya fakta aman berikut; jangan menambah fakta baru.\n"
+            + "\n".join(lines)
+        )
 
 
 def _keeps_session(context: _ImmediateContext) -> bool:
@@ -411,6 +459,20 @@ def _safe_task(value: object) -> str:
 def _safe_spoken(value: object) -> str:
     text = " ".join(str(value or "").split())
     return _URL_OR_PATH.sub("", text).strip()
+
+
+def _remote_safe(value: object, limit: int) -> str:
+    """Remove remote-unsafe values from one bounded context descriptor."""
+    text = str(value or "").split(_PROMPT_CONTEXT_MARKER, 1)[0]
+    text = " ".join(text.split())
+    text = _BEARER_RE.sub("credential [REDACTED]", text)
+    text = _SECRET_ASSIGNMENT_RE.sub(
+        lambda match: f"{match.group(1)}=[REDACTED]", text
+    )
+    text = _SK_SECRET_RE.sub("[REDACTED]", text)
+    text = _PRIVATE_PATH_RE.sub("[private path]", text)
+    text = _REMOTE_URL_RE.sub("[url]", text)
+    return text.strip()[:max(1, int(limit))]
 
 
 STORE = ConversationContextStore()

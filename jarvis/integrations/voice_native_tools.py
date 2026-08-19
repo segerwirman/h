@@ -499,11 +499,16 @@ def install(legacy_module) -> None:
     if original_prompt is not None and not getattr(
             original_prompt, "_jarvis_native_tools", False):
         def _with_rules() -> str:
+            from jarvis.agent import conversation_context
+
             base = voice_tasks.apply_to_prompt(original_prompt())
             if "[KONTROL NATIVE CEPAT]" not in base:
                 base += _RULES
             base = voice_clarify.apply_to_prompt(base)
-            return voice_safety.apply_to_prompt(base)
+            base = voice_safety.apply_to_prompt(base)
+            return base + conversation_context.STORE.context_block(
+                conversation_context.AUDIO_CONVERSATION_ID
+            )
 
         _with_rules._jarvis_native_tools = True
         legacy_module._load_system_prompt = _with_rules
@@ -521,6 +526,7 @@ def install(legacy_module) -> None:
     if (callable(original_dispatch)
             and not getattr(original_dispatch, "_jarvis_voice_task_source", False)):
         def dispatch_native_agent(self, *args, **kwargs):
+            from jarvis.agent import conversation_context
             from jarvis.agent.dispatch import source_scope
 
             # The frozen callback still owns UI/memory/telemetry, while registry
@@ -530,7 +536,7 @@ def install(legacy_module) -> None:
             with source_scope(
                 "voice-native",
                 completion_owner="registry",
-                conversation_id="voice-live",
+                conversation_id=conversation_context.AUDIO_CONVERSATION_ID,
             ):
                 return original_dispatch(self, *args, **kwargs)
 
@@ -568,11 +574,12 @@ def install(legacy_module) -> None:
             )
 
         if name in voice_tasks.TASK_TOOL_NAMES:
-            from jarvis.agent import dispatch, registry
+            from jarvis.agent import conversation_context, dispatch, registry
 
             with dispatch.source_scope(
                 "voice-task-tool",
                 completion_owner="registry",
+                conversation_id=conversation_context.AUDIO_CONVERSATION_ID,
             ):
                 result = await registry.execute(name, args)
             return legacy_module.types.FunctionResponse(

@@ -274,3 +274,75 @@ def test_fail_tugas_terakhir_menjaga_konteks_aman():
     result = store.resolve("voice-live", "lanjutkan")
     assert result.kind == "recent"
     assert result.title == "periksa build proyek Orion"
+
+
+def test_context_block_membawa_satu_tugas_aktif_tanpa_hasil_mentah():
+    ctx = importlib.import_module("jarvis.agent.conversation_context")
+    store = ctx.ConversationContextStore()
+    store.begin_task(
+        "voice-live", task_id="T-a", task="riset framework AI",
+        source="voice-task-tool",
+    )
+
+    block = store.context_block("voice-live")
+    assert "T-a" in block
+    assert "riset framework AI" in block
+    assert "tugas berjalan" in block.casefold()
+    assert "hasil=" not in block.casefold()
+
+
+def test_context_block_multi_task_meminta_id_dan_tidak_menebak():
+    ctx = importlib.import_module("jarvis.agent.conversation_context")
+    store = ctx.ConversationContextStore()
+    store.begin_task("voice-live", task_id="T-a", task="riset framework AI")
+    store.begin_task("voice-live", task_id="T-b", task="ringkas dokumen PDF")
+
+    block = store.context_block("voice-live")
+    assert "T-a" in block and "riset framework AI" in block
+    assert "T-b" in block and "ringkas dokumen PDF" in block
+    assert "minta user" in block.casefold()
+    assert "jangan menebak" in block.casefold()
+
+
+def test_context_block_meredaksi_path_url_credential_dan_marker_lama():
+    ctx = importlib.import_module("jarvis.agent.conversation_context")
+    store = ctx.ConversationContextStore()
+    unsafe = (
+        "analisis https://private.example/report "
+        r"C:\Users\private\report.txt bearer abc.def.ghi "
+        "api_key=topsecret sk-abcdefghijk\n\n"
+        "[KONTEKS PERCAKAPAN LANGSUNG] raw-result=rahasia"
+    )
+    store.begin_task("voice-live", task_id="T-secret", task=unsafe)
+
+    block = store.context_block("voice-live")
+    assert "T-secret" in block
+    for secret in (
+        "private.example", "Users\\private", "abc.def.ghi", "topsecret",
+        "sk-abcdefghijk", "raw-result=rahasia",
+    ):
+        assert secret not in block
+    assert block.count("[KONTEKS PERCAKAPAN LANGSUNG]") == 1
+
+
+def test_end_task_hanya_menghapus_registry_id_yang_cocok():
+    ctx = importlib.import_module("jarvis.agent.conversation_context")
+    store = ctx.ConversationContextStore()
+    store.remember_success(
+        "voice-live", task="periksa build Orion",
+        delivery=ConversationDelivery(
+            display_text="Build selesai.",
+            speech_text="Build Orion selesai, sir.",
+            factual_anchors=("Orion",),
+        ),
+    )
+    store.begin_task("voice-live", task_id="T-a", task="riset framework AI")
+    store.begin_task("voice-live", task_id="T-b", task="ringkas dokumen PDF")
+
+    store.end_task("voice-live", "T-a")
+
+    assert {item["task_id"] for item in store.active_tasks("voice-live")} == {"T-b"}
+    block = store.context_block("voice-live")
+    assert "T-a" not in block
+    assert "T-b" in block
+    assert "Build Orion selesai, sir." in block
