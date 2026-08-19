@@ -116,8 +116,12 @@ class UIAdapter(Adapter):
                 # dan dibuang begitu hasil akhir tiba.
                 win._speak_line(
                     phrase, kind="progress", turn=self.task_id)
-        except Exception:                                    # noqa: BLE001
-            pass
+        except Exception as exc:                             # noqa: BLE001
+            from jarvis.core import quiet
+            quiet.swallowed(
+                "agent.adapter.ui.progress_narration_failed",
+                exc,
+            )
 
     async def ask(self, question: str,
                   options: list[str] | None = None) -> str | None:
