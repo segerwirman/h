@@ -219,8 +219,14 @@ def _notify_result(job: dict, ok: bool, text: str) -> None:
         status = "✅" if ok else "⚠️"
         tg.send_from_anywhere(
             f"{status} Cron '{job['name']}' selesai:\n{(text or '-')[:3500]}")
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                # noqa: BLE001
+        from jarvis.core import quiet
+        quiet.swallowed(
+            "agent.cron.telegram_notify_failed",
+            exc,
+            name=job["name"],
+            ok=ok,
+        )
     try:
         from jarvis.core.bus import BUS
         BUS.publish("agent.cron.done", name=job["name"], ok=ok,

@@ -87,6 +87,35 @@ def test_notify_result_bus_failure_is_recorded_without_changing_payload(monkeypa
     assert isinstance(events[0][1], OSError)
 
 
+def test_notify_result_telegram_failure_is_recorded_and_bus_continues(monkeypatch):
+    events = []
+    published = []
+
+    def send_failure(_message):
+        raise OSError("telegram unavailable")
+
+    def publish(*args, **kwargs):
+        published.append((args, kwargs))
+
+    monkeypatch.setattr(quiet, "swallowed", lambda event, exc=None, **context: events.append((event, exc, context)))
+    monkeypatch.setattr(
+        "jarvis.agent.adapters.telegram.send_from_anywhere",
+        send_failure,
+    )
+    monkeypatch.setattr(bus.BUS, "publish", publish)
+    monkeypatch.setattr(cron, "BUS", bus.BUS, raising=False)
+
+    cron._notify_result({"name": "daily", "internal": 0}, False, "failed")
+
+    assert published == [(
+        ("agent.cron.done",),
+        {"name": "daily", "ok": False, "text": "failed"},
+    )]
+    assert len(events) == 1
+    assert events[0][0] == "agent.cron.telegram_notify_failed"
+    assert isinstance(events[0][1], OSError)
+
+
 def test_run_now_uses_dispatch(monkeypatch):
     calls = {}
 
