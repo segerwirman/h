@@ -487,8 +487,12 @@ Be specific and actionable. If you see an error message, quote it exactly."""
 
         try:
             screenshot_path.unlink()
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            from jarvis.core import quiet
+            quiet.swallowed(
+                "actions.code_helper.screenshot_cleanup_failed",
+                exc,
+            )
 
         if file_path and file_content:
 
