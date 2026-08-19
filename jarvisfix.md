@@ -6816,3 +6816,25 @@ Gate aktual:
 Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada Gemini Live, provider nyata, network, credential/keyring, browser, screenshot/camera, microphone, speaker, audio session, atau hardware yang dijalankan.
 
 Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit dan otorisasi boundary baru; jangan otomatis memigrasikan error-path cleanup yang tersisa, residual `open_app.py`, provider/browser/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
+
+## Fase 35 slice 21 — fallback library Steam tidak lagi diam — 2026-08-20
+
+Slice ini diotorisasi secara eksplisit hanya untuk S110 pada `actions/game_updater.py:145-147`, yaitu kegagalan membaca `libraryfolders.vdf` saat discovery library Steam lokal. Tidak ada blok lain di `game_updater.py` yang diubah. Boundary Steam launch/update, subprocess, registry, GUI, pyautogui, pywinauto, network/store API, provider, browser, credential/keyring, voice/audio, camera/hardware, FROZEN, `.claude/`, dan path user-dirty tetap dikecualikan.
+
+RED-first sebelum instrumentasi menghasilkan **1 failed** pada test baru: fake `libraryfolders.vdf` read melempar `OSError`, fallback tetap mengembalikan `steamapps` default, tetapi event `actions.game_updater.libraryfolders_read_failed` belum tercatat (`events == 0`). Setelah perubahan satu blok, focused regression `tests/test_game_updater_quiet.py` + `tests/test_quiet.py` menghasilkan **15 passed**. Test hanya memakai `tmp_path`, fake file read, dan monkeypatch `quiet`; tidak ada Steam nyata, registry, subprocess, network, GUI, provider, atau hardware yang diakses.
+
+Perubahan mempertahankan fallback lama: jika VDF gagal dibaca, `_get_steam_libraries()` tetap mengembalikan `[steam_path / "steamapps"]`, sambil mencatat satu event bounded dengan path VDF dan exception asli.
+
+Raw Ruff authoritative (`--isolated --select S110,S112 --no-cache`) sebelum slice: **135 match / 39 berkas / 112 S110 / 23 S112**. Sesudah slice: **exit 1; 134 match / 39 berkas / 111 S110 / 23 S112**. Delta terukur tepat **-1 match / -1 S110 / 0 S112 / 0 berkas**, sesuai expected. Raw debt tetap nonzero; Fase 35 tidak disebut root-lint green atau selesai.
+
+Gate aktual:
+
+- Configured Ruff pada `actions/game_updater.py` dan `tests/test_game_updater_quiet.py`: **All checks passed!**
+- `scripts/verify_frozen.py`: **`FROZEN integrity: OK (10 files, baseline 094b696)`**.
+- Compile check source/test: **lulus**.
+- Slice-specific `git diff --check`: **lulus**; warning LF→CRLF pada test baru adalah normal Git Windows.
+- Source dan test di-commit selektif sebagai `dd3cc96` (`refactor(lint): instrument Steam library fallback`). Commit hanya memuat `actions/game_updater.py` dan `tests/test_game_updater_quiet.py`; perubahan user lain tidak di-stage atau dicampur.
+
+Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada Steam, subprocess nyata, registry, GUI, network, provider, credential/keyring, browser, microphone, speaker, audio session, camera, hardware, atau Gemini Live yang dijalankan.
+
+Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit dan otorisasi boundary baru; jangan otomatis memigrasikan residual `game_updater.py`, `code_helper.py`, `open_app.py`, browser/provider/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
