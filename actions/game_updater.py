@@ -142,8 +142,13 @@ def _get_steam_libraries(steam_path: Path) -> list[Path]:
             lib = Path(raw_path.replace("\\\\", "/")) / "steamapps"
             if lib.exists() and lib not in libraries:
                 libraries.append(lib)
-    except Exception:
-        pass
+    except Exception as exc:  # noqa: BLE001
+        from jarvis.core import quiet
+        quiet.swallowed(
+            "actions.game_updater.libraryfolders_read_failed",
+            exc,
+            path=str(vdf_path),
+        )
     return libraries
 
 
