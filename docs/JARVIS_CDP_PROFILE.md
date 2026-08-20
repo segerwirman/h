@@ -31,21 +31,31 @@ endpoint is reported as a timeout/failure; JARVIS does not force-kill Chrome and
 does not retry indefinitely. Shutdown callbacks do not create a browser merely
 to stop one.
 
+## P3-A operational observation
+
+One separately authorized empty-profile observation reached aggregate state
+`owned: true`, `ready: true`, and `state: accepting` on the dedicated loopback
+endpoint. The single bounded close then returned `closed: true`,
+`owned: false`, `ready: false`, and `state: stopped`. No page metadata or user
+browser data was inspected; this observation does not upgrade the `Profile 8`
+lane and does not establish provider, audio, hardware, or Gemini Live evidence.
+
 ## Evidence labels
 
-Offline fake tests can establish only:
+Implementation inspection and offline fake tests can establish only:
 
 - `source-present`
 - `configured`
 - `focused-tested`
-- `runtime-wired`
 - `fixture-accepted`
 - `not-run`
 
-A separately authorized local empty-profile observation may establish
-`endpoint-reachable` and `live-proven`, but only for that exact dedicated
-endpoint fact. A readiness failure is `endpoint-unreachable`; it is not evidence
-that the user's everyday Chrome lacks tabs or media.
+`runtime-wired` requires separate evidence that the intended runtime caller is
+connected to this owner; fake seams alone do not establish it. A separately
+authorized local empty-profile observation may establish `endpoint-reachable`
+and `live-proven`, but only for that exact dedicated endpoint fact. A readiness
+failure is `endpoint-unreachable`; it is not evidence that the user's everyday
+Chrome lacks tabs or media.
 
 Dedicated-profile evidence never upgrades the `Profile 8` lane. No Profile 8
 navigation, tab inspection, media control, or mutation is part of this contract.
