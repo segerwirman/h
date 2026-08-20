@@ -4538,6 +4538,21 @@ Fase 24 sendiri).
 
 **Selesai bila:** ada angka untuk rentang itu — bukan perbaikan.
 
+### Hasil Fase 42 — SEBAGIAN 2026-08-19
+
+**Bukti:** `measured`.
+
+Log runtime sekarang memuat lima emisi `latency.turn` untuk `voice_ack` dengan
+`dispatch_start_ms`/`total_ms` berikut: **9360 ms, 8937 ms, 6093 ms, 54719 ms,
+dan 14532 ms**. Pada kelima record, `speech_end_ms` tetap **0.0** dan
+`dispatch_start_ms == total_ms`; jadi angka yang terukur masih menunjukkan titik
+mulai dispatch/ACK, bukan batas akhir ucapan yang sudah tervalidasi.
+
+Instrumentasi telah menghasilkan angka dari runtime nyata, tetapi semantik
+`speech_end_ms` yang selalu nol masih harus dikarakterisasi sebelum rentang
+akhir-ucapan → ACK dapat dianggap tertutup. Fase ini karena itu tetap SEBAGIAN;
+angka dicatat apa adanya dan tidak dipakai untuk mengklaim perbaikan performa.
+
 ---
 
 ### Validasi live setelah migrasi `voice_notices` — SEBAGIAN/BLOCKED 2026-08-11
@@ -5155,6 +5170,18 @@ disposisi recovery — tanpa submit, tanpa slot, tanpa BUS event, tanpa cancel.
   menawarkan replay; tanpa verified cursor, Jarvis melaporkan interupsi jujur.
 - Komposisi WhatsApp `_TapQueue`, level meter, dan playback-level tetap diuji
   composition; tidak ada perubahan pada pipeline voice FROZEN.
+
+**Continuity audio terbaru — focused-tested + runtime-wired, bukan live-proven.**
+`AUDIO_CONVERSATION_ID` sekarang tunggal (`voice-live`) untuk jalur native dan
+voice-task-tool. `task_start` mengikat ID registry nyata dari dispatch source
+scope; prompt Live yang dibangun ulang membaca descriptor aktif yang bounded dan
+sudah diredaksi. Jika ada lebih dari satu task aktif, prompt mewajibkan user
+menyebutkan ID dan melarang tebakan. Event terminal `done`, `failed`, dan
+`cancelled` membersihkan hanya binding yang cocok. Record recovery ledger tetap
+visual/log-only dan tidak pernah masuk ke prompt atau di-replay. Fake/offline
+contract continuity menghasilkan **96 passed dalam 5,54 detik**; angka ini tidak
+menambah bukti `live-proven` untuk follow-up task audio setelah reconnect.
+
 ### Seam `voice_document`: path Live + penjelasan dokumen/video — 2026-08-16
 
 RED-first: dua kegagalan audit runtime diurai menjadi dua kontrak yang
@@ -5489,7 +5516,15 @@ dan typed bounded recovery melalui reconnect owner Gemini Live yang sudah ada.
 Semua RED tests memakai fake stream, fake clock, fake session, dan tidak membuka
 perangkat. Uji audio/Gemini Live nyata tetap memerlukan otorisasi terpisah.
 
-### Hasil Fase 46 — SELESAI DI KODE — 2026-08-17
+### Hasil Fase 46 — SELESAI DI KODE 2026-08-17
+
+**Bukti:** `source-present`, `focused-tested`, `runtime-wired`, dan `live-proven`
+secara terbatas untuk input/output/reconnect yang benar-benar terlihat pada log
+runtime. Log menunjukkan input owner generation 1, PCM playback, `APIError 1008`,
+reconnect bounded, lalu generation 2 dan PCM kembali terkirim. `live-proven` di
+sini tidak mencakup threshold hardware, stall exhaustion, atau keseluruhan
+46A–46C: seluruh kontrak tersebut tetap fake/offline dan tidak mengubah status
+`SELESAI DI KODE` menjadi klaim live penuh.
 
 ### Hasil 46A — satu physical input owner (fake/offline)
 
@@ -5661,6 +5696,59 @@ observasi tersebut. Tidak ada navigasi, URL, DOM, tab Profile 8, media,
 credential, provider, microphone, speaker, audio session, atau Gemini Live yang
 dijalankan. Evidence dedicated tidak menaikkan status Profile 8; lane user tetap
 memerlukan acceptance terpisah.
+
+---
+
+## Audit runtime terbaru — bukti terbatas dan batas operasional — 2026-08-19
+
+Audit ini menggabungkan log runtime yang sudah ada dengan hasil pengukuran offline
+current tree. Ia tidak membuka sesi baru dan tidak mengubah status fase yang
+memerlukan validasi operasional terpisah.
+
+### Chrome user: configured, tetapi tidak terjangkau melalui CDP
+
+Konfigurasi dan jalur `user_browser` tersedia, tetapi koneksi ke
+`127.0.0.1:9222` mengembalikan `ECONNREFUSED` pada percobaan user-browser
+([logs/jarvis.log:13676-13677](logs/jarvis.log#L13676-L13677)). Bukti ini berarti
+endpoint Chrome DevTools tidak reachable dari sesi tersebut; ini **bukan** bukti
+bahwa Chrome tidak sedang menampilkan video atau bahwa tidak ada media di tab.
+Menutup atau meluncurkan ulang Chrome user untuk menambahkan remote-debugging
+port tetap merupakan operasi terpisah yang memerlukan persetujuan eksplisit.
+
+### Semantic memory: warning legacy tidak sama dengan store mati
+
+Log memuat `memory.faiss_missing` ([logs/jarvis.log:12977](logs/jarvis.log#L12977)),
+namun proses yang sama tetap menjalankan `memory_store` dan menulis record
+semantic/procedural/reflective. Jadi warning tersebut dicatat sebagai status
+legacy/fallback yang perlu ditindaklanjuti, bukan sebagai bukti bahwa seluruh
+memori semantik tidak aktif.
+
+### Recovery ledger: enam record hanya visual/log-only
+
+Boot menghidrasi enam record recovery ([logs/jarvis.log:12982-12983](logs/jarvis.log#L12982-L12983)). Record tersebut tidak menjadi active task,
+tidak mengonsumsi slot, tidak membuat worker atau submission baru, tidak
+menghasilkan instruksi runnable, dan tidak direplay otomatis. Continuity prompt
+hanya membaca `ConversationContextStore`, sehingga recovery historis tidak bocor
+ke prompt audio.
+
+### Reconnect runtime: generation 1 → 2
+
+Log menunjukkan input owner generation 1 dan playback PCM
+([logs/jarvis.log:13015-13023](logs/jarvis.log#L13015-L13023)), lalu `APIError 1008`,
+reconnect terjadwal, attempt 2, dan reconnect restored
+([logs/jarvis.log:13486-13501](logs/jarvis.log#L13486-L13501)). Setelah itu input
+owner generation 2 dan PCM kembali terkirim
+([logs/jarvis.log:13502-13510](logs/jarvis.log#L13502-L13510)). Ini adalah bukti
+runtime terbatas untuk input/output/reconnect yang benar-benar terlihat; bukan
+bukti bahwa follow-up task audio, threshold hardware, atau bounded exhaustion
+sudah terbukti live.
+
+### Current raw debt Fase 35
+
+Pengukuran authoritative `ruff check --select S110,S112 --isolated --no-cache
+--output-format json .` menghasilkan **exit 1, 141 match pada 42 berkas,
+118 S110 dan 23 S112**. Fase 35 tetap **SEBAGIAN**; angka ini bukan root-lint
+green dan tidak membenarkan penghapusan guard atau perubahan FROZEN.
 
 ---
 
@@ -6219,11 +6307,11 @@ yang dijalankan.
 | 39 | Drift config jadi kegagalan uji (S-37) | SELESAI | — |
 | 40 | Pecah `jarvis/ui/window.py` (S-33) | SELESAI DI KODE | — |
 | 41 | Tabel status `live-proven` | SELESAI | — |
-| 42 | Ukur rentang yang masih gelap | — | — |
+| 42 | Ukur rentang yang masih gelap | SEBAGIAN | measured |
 | 43 | Empat keluhan runtime: satu jalur ucapan, satu owner, konteks multi-task, ledger recovery | SEBAGIAN | focused-tested, runtime-wired |
 | 44 | Analisis video bounded dan image-reference yang jujur — 2026-08-16 | SEBAGIAN | source-present, focused-tested, runtime-wired |
 | 45 | Kebenaran sumber interupsi dan guard playback — 2026-08-16 | SELESAI DI KODE | source-present, focused-tested, runtime-wired |
-| 46 | Satu pemilik input, heartbeat, dan recovery bounded | — | — |
+| 46 | Satu pemilik input, heartbeat, dan recovery bounded | SELESAI DI KODE | source-present, focused-tested, runtime-wired, live-proven |
 | 47 | Dedicated Jarvis Chrome CDP profile | SELESAI DI KODE | source-present, focused-tested, runtime-wired, endpoint-reachable, live-proven |
 
 ---
@@ -6540,6 +6628,39 @@ Preservasi sesudah gate menunjukkan perubahan slice hanya pada empat source
 terpilih dan `tests/test_slice13_quiet.py` serta bagian dokumentasi ini; path user
 lain tetap dipertahankan. `pyproject.toml` tidak diubah.
 
+## Fase 43 continuity audio — penutupan slice offline — 2026-08-19
+
+Slice continuity audio ini ditutup dengan commit `f04dc69` (`feat(voice): preserve
+audio task continuity across reconnects`). Perubahan yang di-commit terbatas pada
+empat source continuity dan empat test continuity; `jarvisfix.md` serta
+`tests/test_evidence_status.py` yang memiliki hunk lokal sebelumnya sengaja tidak
+ikut di-commit agar perubahan pengguna tidak tercampur.
+
+Bukti RED→GREEN dan gate aktual:
+
+- RED characterization: **11 failed, 53 passed dalam 3,42 detik**; failure hanya
+  pada kontrak continuity yang belum ada.
+- Focused continuity/evidence regression: **125 passed**.
+- Fake/offline continuity contract: **96 passed dalam 5,54 detik**.
+- Full offline pytest: **3148 passed, 0 failed, 1 skipped**. Tidak ada provider,
+  browser, network, credential/keyring, microphone, speaker, audio session,
+  camera, hardware, atau Gemini Live yang diakses.
+- Configured Ruff: **All checks passed!**; FROZEN verifier:
+  **`FROZEN integrity: OK (10 files, baseline 094b696)`**.
+- `git diff --check`: lulus; evidence renderer dan next-phase generator exit 0.
+- Raw authoritative S110/S112 tetap **exit 1; 141 match di 42 berkas; 118 S110;
+  23 S112**. Fase 35 tetap **SEBAGIAN** dan bukan root-lint green.
+
+Jalur berikutnya tetap operasional dan terpisah: validasi Chrome user memerlukan
+persetujuan untuk menutup/meluncurkan ulang Chrome dengan CDP; validasi follow-up
+audio setelah reconnect memerlukan sesi Gemini Live terotorisasi. Tidak ada klaim
+`live-proven` baru dari test fake/offline. Generated next-phase prompt tersedia di
+`lanjut.txt` dan merupakan output regenerable.
+
+Commit continuity tetap mempertahankan 23 modified dan 6 untracked path lain di
+working tree; tidak ada perubahan user yang di-reset, dihapus, atau dicampur.
+`main.py` dan seluruh berkas FROZEN tetap byte-identik.
+
 ## Fase 35 slice 14 — fallback `start` Windows berhenti diam — 2026-08-19
 
 Slice ini diotorisasi secara eksplisit hanya untuk satu boundary: blok S110 pada
@@ -6584,338 +6705,40 @@ Langkah berikutnya tetap memerlukan audit/otorisasi boundary baru. Jangan
 melanjutkan ke enam residual `open_app.py`, `computer_settings.py`, browser,
 provider, voice/audio, hardware, atau GUI/system-control tanpa keputusan terpisah.
 
-## Fase 35 slice 15 — fallback log player cuaca berhenti diam — 2026-08-19
-
-Slice ini diotorisasi secara eksplisit hanya untuk satu boundary: blok S110 pada
-`actions/weather_report.py:76-80`, yaitu fallback `player.write_log(...)` di
-`_log`. Tidak ada blok lain di `weather_report.py` yang dimigrasikan; S110 pada
-baris 68 (set_last_search session memory) tetap menjadi debt terpisah. Seluruh
-boundary lain — enam residual `open_app.py`, `computer_settings.py`, provider,
-browser, network/remote, credential/keyring, audio/voice, camera/hardware,
-GUI/system-control, callback/delivery, scheduler/Telegram/WhatsApp, FROZEN,
-`.claude/`, dan path user-dirty — tetap dikecualikan.
-
-Raw baseline sebelum slice (authoritative `--isolated --select S110,S112`):
-**141 match / 42 berkas / 118 S110 / 23 S112**. RED-first test di
-`tests/test_weather_report_quiet.py` gagal **1 test** sebelum instrumentasi
-hanya karena event telemetry belum ada (`assert 0 == 1`), membuktikan fallback
-sebelumnya gagal diam.
-
-Setelah perubahan, test tersebut serta regression `test_phase5_stage_home.py` dan
-`test_runtime_acceleration.py` menghasilkan **23 passed**. Perubahan source hanya
-menangkap exception sebagai `exc`, mencatat satu event
-`actions.weather_report.player_log_failed` melalui `quiet.swallowed(...)`, lalu
-mempertahankan return value, control flow, dan perilaku sukses `_log` lama. Tidak
-ada perubahan pada URL, `webbrowser.open`, cache, metrics, `BUS.publish`, atau
-session memory.
-
-Raw Ruff sesudah slice: **exit 1; 140 match / 42 berkas / 117 S110 / 23 S112**.
-Delta terukur tepat **-1 match / -1 S110 / 0 S112 / 0 berkas**, sesuai expected.
-Configured Ruff untuk target: **All checks passed!**; FROZEN verifier:
-**`FROZEN integrity: OK (10 files, baseline 094b696)`**; `git diff --check`:
-lulus. Tidak ada provider, browser, network, credential, keyring, audio session,
-microphone, speaker, camera, hardware, Gemini Live, atau live runtime yang
-diakses.
-
-Perubahan slice di-commit selektif sebagai `014ec29` (`refactor(lint):
-instrument weather report player log fallback`). Commit hanya memuat
-`actions/weather_report.py` dan `tests/test_weather_report_quiet.py`; perubahan
-user lain tidak di-stage atau dicampur. Fase 35 tetap **SEBAGIAN** dengan
-evidence **focused-tested** dan **runtime-wired**, bukan `live-proven`.
-
-Langkah berikutnya tetap memerlukan audit/otorisasi boundary baru. Jangan
-melanjutkan ke enam residual `open_app.py`, `computer_settings.py`, browser,
-provider, voice/audio, hardware, atau GUI/system-control tanpa keputusan terpisah.
-
-## Fase 35 slice 16 — fallback session memory cuaca berhenti diam — 2026-08-19
-
-Slice ini diotorisasi secara eksplisit hanya untuk satu boundary: blok S110 pada
-`actions/weather_report.py:65-69`, yaitu fallback
-`session_memory.set_last_search(...)`. Tidak ada blok lain di `weather_report.py`
-yang dimigrasikan; `actions/system_monitor.py:56` (S112 pada loop NVML/hardware)
-tidak dipilih karena boundary hardware yang dikecualikan. Seluruh boundary lain —
-enam residual `open_app.py`, `computer_settings.py`, provider, browser,
-network/remote, credential/keyring, audio/voice, camera/hardware,
-GUI/system-control, callback/delivery, scheduler/Telegram/WhatsApp, FROZEN,
-`.claude/`, dan path user-dirty — tetap dikecualikan.
-
-Raw baseline sebelum slice (authoritative `--isolated --select S110,S112`):
-**140 match / 42 berkas / 117 S110 / 23 S112**. RED-first test gagal **1 test**
-sebelum instrumentasi karena event telemetry belum ada (`assert 0 == 1`). Fixture
-kemudian dibuat deterministik dengan cache, metrics, locale, BUS, dan
-`webbrowser.open` yang dipalsukan; tidak ada browser/network yang dipanggil.
-
-Setelah perubahan, focused weather tests dan regression menghasilkan **25 passed**.
-Perubahan source hanya menangkap exception sebagai `exc`, mencatat satu event
-`actions.weather_report.session_memory_failed` melalui `quiet.swallowed(...)`,
-dan mempertahankan pesan return serta control flow lama. Test juga memverifikasi
-jalur sukses tetap menyimpan query/respons yang sama.
-
-Raw Ruff sesudah slice: **exit 1; 139 match / 41 berkas / 116 S110 / 23 S112**.
-Delta terukur tepat **-1 match / -1 berkas / -1 S110 / 0 S112**; `weather_report.py`
-tidak lagi muncul di raw inventory. Configured Ruff target: **All checks passed!**;
-FROZEN verifier: **`FROZEN integrity: OK (10 files, baseline 094b696)`**;
-compile check lulus; staged `git diff --cached --check` lulus setelah menghapus
-blank line EOF. Tidak ada provider, browser, network, credential, keyring, audio
-session, microphone, speaker, camera, hardware, Gemini Live, atau live runtime
-yang diakses.
-
-Perubahan slice di-commit selektif sebagai `5cab25b` (`refactor(lint): instrument
-weather session memory fallback`). Commit hanya memuat `actions/weather_report.py`
-dan `tests/test_weather_report_quiet.py`; perubahan user lain tidak di-stage atau
-dicampur. Fase 35 tetap **SEBAGIAN** dengan evidence **focused-tested** dan
-**runtime-wired**, bukan `live-proven`.
-
-Langkah berikutnya tetap memerlukan audit/otorisasi boundary baru. Jangan
-melanjutkan ke enam residual `open_app.py`, `actions/computer_settings.py`,
-browser, provider, voice/audio, hardware, atau GUI/system-control tanpa keputusan
-terpisah.
-
-## Fase 35 slice 17 — fallback telemetry BUS cron berhenti diam — 2026-08-19
-
-Slice ini diotorisasi secara eksplisit hanya untuk satu boundary: blok S110 pada
-`jarvis/agent/cron.py:224-229`, yaitu fallback local
-`BUS.publish("agent.cron.done", ...)` dalam `_notify_result`. Blok Telegram pada
-baris 222 tetap dikecualikan karena remote/delivery. Seluruh boundary lain — enam
-residual `open_app.py`, `computer_settings.py`, provider, browser,
-network/remote, credential/keyring, audio/voice, camera/hardware,
-GUI/system-control, callback/delivery lain, FROZEN, `.claude/`, dan path user-dirty
-— tetap dikecualikan.
-
-Raw baseline sebelum slice (authoritative `--isolated --select S110,S112`):
-**139 match / 41 berkas / 116 S110 / 23 S112**. RED-first test gagal **1 test**
-sebelum instrumentasi karena `events` tetap kosong sementara payload BUS sudah
-terkirim, membuktikan exception pada local telemetry masih gagal diam.
-
-Setelah perubahan, focused `tests/test_agent_cron.py` menghasilkan **9 passed**.
-Test memverifikasi Telegram tidak dipanggil secara remote, payload BUS tetap
-berisi `name`, `ok`, dan text terpotong yang sama, exception `OSError` tidak
-keluar, dan satu event `agent.cron.bus_publish_failed` tercatat. Perubahan source
-hanya menangkap exception sebagai `exc`, memanggil `quiet.swallowed(...)`, dan
-mempertahankan ordering, payload, serta fallback cron.
-
-Raw Ruff sesudah slice: **exit 1; 138 match / 41 berkas / 115 S110 / 23 S112**.
-Delta terukur tepat **-1 match / -1 S110 / 0 S112 / 0 berkas**, sesuai expected.
-`cron.py` masih memiliki S110 Telegram yang sengaja dikecualikan. Configured Ruff
-target: **All checks passed!**; FROZEN verifier: **`FROZEN integrity: OK (10
-files, baseline 094b696)`**; compile check dan `git diff --check` lulus. Tidak ada
-provider, browser, network, credential, keyring, audio session, microphone,
-speaker, camera, hardware, Gemini Live, atau live runtime yang diakses.
-
-Perubahan slice di-commit selektif sebagai `2e75a8a` (`refactor(lint): instrument
-cron bus telemetry fallback`). Commit hanya memuat `jarvis/agent/cron.py` dan
-`tests/test_agent_cron.py`; perubahan user lain tidak di-stage atau dicampur.
-Fase 35 tetap **SEBAGIAN** dengan evidence **focused-tested** dan
-**runtime-wired**, bukan `live-proven`.
-
-Langkah berikutnya tetap memerlukan audit/otorisasi boundary baru. Jangan
-melanjutkan ke enam residual `open_app.py`, `actions/computer_settings.py`,
-browser, provider, voice/audio, hardware, atau GUI/system-control tanpa keputusan
-terpisah.
-
-## Fase 35 slice 18 — fallback discovery capability berhenti diam — 2026-08-19
-
-Slice ini diotorisasi secara eksplisit hanya untuk satu boundary pada path
-user-dirty `jarvis/agent/capabilities.py:35-57`, yaitu fallback S110 ketika
-`registry.all_tools()` gagal. Hanya blok fallback yang diubah; dua descriptor
-user-dirty `video.video_analyze` dan `video.video_clip` tetap dipertahankan byte-
-for-byte dalam working tree dan tidak masuk commit. Seluruh boundary lain —
-`cron.py:222` Telegram, enam residual `open_app.py`, `computer_settings.py`,
-provider, browser, network/remote, credential/keyring, audio/voice,
-camera/hardware, GUI/system-control, FROZEN, `.claude/`, dan path user-dirty lain
-— tetap dikecualikan.
-
-Sebelum edit, diff user-dirty `capabilities.py` dicadangkan ke temp sebagai
-898 bytes dan berisi hanya empat baris descriptor video. Raw baseline
-authoritative: **138 match / 41 berkas / 115 S110 / 23 S112**.
-
-RED-first test gagal **1 test** sebelum instrumentasi karena `events` tetap kosong
-saat fallback registry gagal. Setelah perubahan, capability dan remote-policy
-regression menghasilkan **16 passed**. Test memastikan explicit descriptor tetap
-tersedia, exception `OSError` tidak keluar, dan event
-`agent.capabilities.discovery_failed` tercatat. Tidak ada provider, network,
-keyring, browser, audio, camera, hardware, atau Gemini Live yang diakses.
-
-Raw Ruff sesudah slice: **exit 1; 137 match / 40 berkas / 114 S110 / 23 S112**.
-Delta terukur tepat **-1 match / -1 berkas / -1 S110 / 0 S112**, sesuai expected.
-Configured Ruff target: **All checks passed!**; FROZEN verifier:
-**`FROZEN integrity: OK (10 files, baseline 094b696)`**; compile check dan
-`git diff --check` lulus.
-
-Preservation review menunjukkan working-tree diff user-dirty descriptor video tetap
-ada dan tidak tercampur. Staging memakai index blob yang hanya memuat fallback
-instrumentasi dan test eksplisit. Perubahan slice di-commit sebagai `a8cc8f9`
-(`refactor(lint): instrument capability discovery fallback`); commit hanya memuat
-`jarvis/agent/capabilities.py` fallback dan `tests/test_capabilities.py`, bukan
-dua descriptor user-dirty. Fase 35 tetap **SEBAGIAN** dengan evidence
-**focused-tested** dan **runtime-wired**, bukan `live-proven`.
-
-Langkah berikutnya tetap memerlukan audit/otorisasi boundary baru. Jangan
-melanjutkan ke `cron.py:222` Telegram, enam residual `open_app.py`,
-`computer_settings.py`, browser, provider, voice/audio, hardware, atau
-GUI/system-control tanpa keputusan terpisah.
-
-## Fase 35 slice 19 — fallback Telegram cron berhenti diam — 2026-08-19
-
-Slice ini diotorisasi secara eksplisit hanya untuk satu boundary remote/delivery:
-`jarvis/agent/cron.py:217-223`, fallback S110 di sekitar
-`telegram.send_from_anywhere(...)`. Blok BUS local telemetry pada baris 224-235
-sudah selesai pada Slice 17 dan tidak diubah. Tidak ada perubahan pada
-`telegram.py` atau delivery boundary lain. Seluruh boundary lain — enam residual
-`open_app.py`, `computer_settings.py`, provider, browser, credential/keyring,
-voice/audio, camera/hardware, GUI/system-control, FROZEN, `.claude/`, dan path
-user-dirty — tetap dikecualikan.
-
-Raw baseline sebelum slice (authoritative `--isolated --select S110,S112`):
-**137 match / 40 berkas / 114 S110 / 23 S112**.
-
-RED-first test gagal **1 test** sebelum instrumentasi: Telegram failure sudah
-membiarkan BUS lanjut dan payload tetap benar, tetapi event telemetry belum ada
-(`events == 0`). Setelah perubahan, focused `tests/test_agent_cron.py`
-menghasilkan **10 passed**. Test berjalan offline dengan Telegram sender palsu
-yang melempar, BUS palsu yang merekam payload, dan memastikan satu event
-`agent.cron.telegram_notify_failed` tercatat tanpa network/Telegram nyata.
-Urutan Telegram lalu BUS, payload text terpotong 400 karakter, serta fallback
-scheduler tetap dipertahankan.
-
-Raw Ruff sesudah slice: **exit 1; 136 match / 39 berkas / 113 S110 / 23 S112**.
-Delta terukur tepat **-1 match / -1 berkas / -1 S110 / 0 S112**, sesuai expected.
-Configured Ruff target: **All checks passed!**; FROZEN verifier:
-**`FROZEN integrity: OK (10 files, baseline 094b696)`**; compile check dan
-`git diff --check` lulus. Tidak ada provider, credential, keyring, browser,
-audio session, microphone, speaker, camera, hardware, Gemini Live, atau live
-runtime yang diakses.
-
-Perubahan slice di-commit selektif sebagai `e554dd4` (`refactor(lint): instrument
-cron telegram fallback`). Commit hanya memuat `jarvis/agent/cron.py` dan
-`tests/test_agent_cron.py`; perubahan user lain tidak di-stage atau dicampur.
-Fase 35 tetap **SEBAGIAN** dengan evidence **focused-tested** dan
-**runtime-wired**, bukan `live-proven`.
-
-Langkah berikutnya tetap memerlukan audit/otorisasi boundary baru. Jangan
-melanjutkan ke enam residual `open_app.py`, `actions/computer_settings.py`,
-browser, provider, voice/audio, hardware, atau GUI/system-control tanpa keputusan
-terpisah.
-
-## Fase 35 slice 20 — cleanup screenshot-analysis tidak lagi diam — 2026-08-20
-
-Slice ini diotorisasi secara eksplisit hanya untuk cleanup sukses setelah analisis screenshot pada `actions/code_helper.py:488-491`. Error-path cleanup yang berdekatan tetap tidak diubah. Boundary provider/Gemini, screenshot nyata, camera/hardware, browser, network, credential/keyring, audio/voice, GUI/system-control, FROZEN, `.claude/`, dan seluruh path user-dirty tetap dikecualikan.
-
-RED-first sebelum instrumentasi menghasilkan **1 failed** pada test baru: fake analysis berhasil dan cleanup fake melempar `OSError`, tetapi event `actions.code_helper.screenshot_cleanup_failed` belum tercatat (`events == 0`). Setelah perubahan satu blok, focused code-helper regression menghasilkan **4 passed**. Test memakai fake screenshot, fake `google.genai` module/client/response, placeholder key getter, dan monkeypatch offline; tidak ada provider constructor nyata, network, keyring, screenshot/camera, audio, atau browser yang diakses. Return analysis tetap `analysis result`, dan kegagalan cleanup tidak mengubah hasil analisis.
-
-Raw Ruff authoritative (`--isolated --select S110,S112 --no-cache`) sebelum slice: **136 match / 39 berkas / 113 S110 / 23 S112**. Sesudah slice: **exit 1; 135 match / 39 berkas / 112 S110 / 23 S112**. Delta terukur tepat **-1 match / -1 S110 / 0 S112 / 0 berkas**, sesuai expected. Raw debt tetap nonzero; Fase 35 tidak disebut root-lint green atau selesai.
-
-Gate aktual:
-
-- Configured Ruff pada `actions/code_helper.py` dan `tests/test_code_helper_quiet.py`: **All checks passed!**
-- `scripts/verify_frozen.py`: **`FROZEN integrity: OK (10 files, baseline 094b696)`**.
-- Compile check untuk source/test slice: **lulus**.
-- Slice-specific `git diff --check`: **lulus**; warning LF→CRLF pada test baru adalah normal Git Windows.
-- Source dan test di-commit selektif sebagai `e40b7e6` (`refactor(lint): instrument code helper screenshot cleanup`). Commit hanya memuat `actions/code_helper.py` dan `tests/test_code_helper_quiet.py`; perubahan user lain tidak di-stage atau dicampur.
-
-Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada Gemini Live, provider nyata, network, credential/keyring, browser, screenshot/camera, microphone, speaker, audio session, atau hardware yang dijalankan.
-
-Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit dan otorisasi boundary baru; jangan otomatis memigrasikan error-path cleanup yang tersisa, residual `open_app.py`, provider/browser/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
-
-## Fase 35 slice 21 — fallback library Steam tidak lagi diam — 2026-08-20
-
-Slice ini diotorisasi secara eksplisit hanya untuk S110 pada `actions/game_updater.py:145-147`, yaitu kegagalan membaca `libraryfolders.vdf` saat discovery library Steam lokal. Tidak ada blok lain di `game_updater.py` yang diubah. Boundary Steam launch/update, subprocess, registry, GUI, pyautogui, pywinauto, network/store API, provider, browser, credential/keyring, voice/audio, camera/hardware, FROZEN, `.claude/`, dan path user-dirty tetap dikecualikan.
-
-RED-first sebelum instrumentasi menghasilkan **1 failed** pada test baru: fake `libraryfolders.vdf` read melempar `OSError`, fallback tetap mengembalikan `steamapps` default, tetapi event `actions.game_updater.libraryfolders_read_failed` belum tercatat (`events == 0`). Setelah perubahan satu blok, focused regression `tests/test_game_updater_quiet.py` + `tests/test_quiet.py` menghasilkan **15 passed**. Test hanya memakai `tmp_path`, fake file read, dan monkeypatch `quiet`; tidak ada Steam nyata, registry, subprocess, network, GUI, provider, atau hardware yang diakses.
-
-Perubahan mempertahankan fallback lama: jika VDF gagal dibaca, `_get_steam_libraries()` tetap mengembalikan `[steam_path / "steamapps"]`, sambil mencatat satu event bounded dengan path VDF dan exception asli.
-
-Raw Ruff authoritative (`--isolated --select S110,S112 --no-cache`) sebelum slice: **135 match / 39 berkas / 112 S110 / 23 S112**. Sesudah slice: **exit 1; 134 match / 39 berkas / 111 S110 / 23 S112**. Delta terukur tepat **-1 match / -1 S110 / 0 S112 / 0 berkas**, sesuai expected. Raw debt tetap nonzero; Fase 35 tidak disebut root-lint green atau selesai.
-
-Gate aktual:
-
-- Configured Ruff pada `actions/game_updater.py` dan `tests/test_game_updater_quiet.py`: **All checks passed!**
-- `scripts/verify_frozen.py`: **`FROZEN integrity: OK (10 files, baseline 094b696)`**.
-- Compile check source/test: **lulus**.
-- Slice-specific `git diff --check`: **lulus**; warning LF→CRLF pada test baru adalah normal Git Windows.
-- Source dan test di-commit selektif sebagai `dd3cc96` (`refactor(lint): instrument Steam library fallback`). Commit hanya memuat `actions/game_updater.py` dan `tests/test_game_updater_quiet.py`; perubahan user lain tidak di-stage atau dicampur.
-
-Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada Steam, subprocess nyata, registry, GUI, network, provider, credential/keyring, browser, microphone, speaker, audio session, camera, hardware, atau Gemini Live yang dijalankan.
-
-Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit dan otorisasi boundary baru; jangan otomatis memigrasikan residual `game_updater.py`, `code_helper.py`, `open_app.py`, browser/provider/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
-
-## Fase 35 slice 22 — narasi progres UI tidak lagi diam — 2026-08-20
-
-Slice ini diotorisasi secara eksplisit hanya untuk S110 pada `jarvis/agent/adapters/ui.py:119-120`, yaitu fallback narasi progres di `UIAdapter.progress()`. Dua S110 lain pada file yang sama (`ask()` dan `send_image()`) tetap tidak diubah. Tidak ada perubahan pada boundary UI/speech lain, speech ownership, queue, provider, browser, network, credential/keyring, voice/audio session, camera/hardware, GUI/system-control, FROZEN, `.claude/`, atau path user-dirty.
-
-RED-first sebelum instrumentasi menghasilkan **1 failed** pada test baru setelah fixture diperbaiki: `SYS: still working` tetap ditulis, fake `_speak_line` melempar `OSError`, tetapi event `agent.adapter.ui.progress_narration_failed` belum tercatat (`events == 0`). Kegagalan awal fixture yang salah (`ui_adapter.quiet` belum ada) diperbaiki sebelum menyimpulkan RED. Setelah perubahan satu blok, focused UIAdapter regression menghasilkan **46 passed** (`tests/test_ui_adapter_quiet.py`, speech scoping, dan voice confirmation). Test sepenuhnya offline dengan fake window/narrator dan monkeypatch; tidak ada Qt window nyata, speaker, audio session, provider, network, browser, credential, atau hardware yang diakses.
-
-Control flow dipertahankan: `win.write_log("SYS: ...")` tetap berjalan, exception narasi tetap fail-open, dan hanya telemetry `quiet.swallowed("agent.adapter.ui.progress_narration_failed", exc)` yang ditambahkan.
-
-Raw Ruff authoritative (`--isolated --select S110,S112 --no-cache`) sebelum slice: **134 match / 39 berkas / 111 S110 / 23 S112**. Sesudah slice: **exit 1; 133 match / 39 berkas / 110 S110 / 23 S112**. Delta terukur tepat **-1 match / -1 S110 / 0 S112 / 0 berkas**, sesuai expected. Raw debt tetap nonzero; Fase 35 tidak disebut root-lint green atau selesai.
-
-Gate aktual:
-
-- Test baru `tests/test_ui_adapter_quiet.py`: **All checks passed**.
-- Configured Ruff pada source target tetap exit 1 hanya karena dua S110 berdekatan yang tidak diotorisasi pada `jarvis/agent/adapters/ui.py:153` dan `:183`; keduanya tidak disentuh. Residual tersebut bukan failure baru dari Slice 22.
-- `scripts/verify_frozen.py`: **`FROZEN integrity: OK (10 files, baseline 094b696)`**.
-- Compile check source/test: **lulus**.
-- Slice-specific `git diff --check`: **lulus**; warning LF→CRLF pada test baru adalah normal Git Windows.
-- Source dan test di-commit selektif sebagai `af9510a` (`refactor(lint): instrument UI progress narration fallback`). Commit hanya memuat `jarvis/agent/adapters/ui.py` dan `tests/test_ui_adapter_quiet.py`; perubahan user lain tidak di-stage atau dicampur.
-
-Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada speaker, microphone, audio session, Gemini Live, provider nyata, network, browser, credential/keyring, camera, atau hardware yang dijalankan.
-
-Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit dan otorisasi boundary baru; jangan otomatis memigrasikan dua residual S110 UIAdapter, residual `game_updater.py`, `code_helper.py`, `open_app.py`, browser/provider/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
-
-## Fase 35 slice 23 — callback ACK Hermes tidak lagi diam — 2026-08-20
-
-Slice ini diotorisasi secara eksplisit hanya untuk S110 pada `jarvis/integrations/hermes/async_dispatch.py:69-70`, yaitu callback `on_ack(ack)` dalam dispatcher Hermes deprecated. Tidak ada perubahan pada Hermes bridge, worker body, BUS, active-task cleanup, provider, network, audio, voice, browser, credential/keyring, camera/hardware, GUI/system-control, FROZEN, `.claude/`, atau path user-dirty.
-
-RED-first sebelum instrumentasi menghasilkan **1 failed**: fake `on_ack` melempar `OSError`, `dispatch_async()` tetap fail-open, worker menyelesaikan task dan `_active` kembali kosong, tetapi event `integrations.hermes.async_dispatch.ack_callback_failed` belum tercatat (`events == 0`). Setelah perubahan satu blok, test baru menjadi **1 passed**. Focused Hermes/speech regression menghasilkan **51 passed**. Semua test memakai fake bridge, fake callback, BUS monkeypatch, dan waktu lokal; tidak ada Hermes nyata, provider, network, speaker, microphone, audio session, browser, credential, atau hardware yang diakses.
-
-Control flow dipertahankan: ACK failure tidak dilempar ulang, `BUS.publish("hermes.task.started", ...)` tetap berjalan, background worker tetap berjalan, dan `_active` tetap dibersihkan.
-
-Raw Ruff authoritative (`--isolated --select S110,S112 --no-cache`) sebelum slice: **133 match / 39 berkas / 110 S110 / 23 S112**. Sesudah slice: **exit 1; 132 match / 38 berkas / 109 S110 / 23 S112**. Delta terukur tepat **-1 match / -1 S110 / 0 S112 / -1 berkas**, sesuai expected. Raw debt tetap nonzero; Fase 35 tidak disebut root-lint green atau selesai.
-
-Gate aktual:
-
-- Configured Ruff pada source/test Slice 23: **exit 0**.
-- `scripts/verify_frozen.py`: **`FROZEN integrity: OK (10 files, baseline 094b696)`**.
-- Compile check source/test: **lulus**.
-- Slice-specific `git diff --check`: **lulus**; warning LF→CRLF pada test baru adalah normal Git Windows.
-- Source dan test di-commit selektif sebagai `5a86b2c` (`refactor(lint): instrument Hermes ACK fallback`). Commit hanya memuat `jarvis/integrations/hermes/async_dispatch.py` dan `tests/test_hermes_async_dispatch_quiet.py`; perubahan user lain tidak di-stage atau dicampur.
-
-Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada Hermes nyata, provider, network, credential/keyring, browser, microphone, speaker, audio session, camera, hardware, atau Gemini Live yang dijalankan.
-
-Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit dan otorisasi boundary baru; jangan otomatis memigrasikan dua residual UIAdapter, residual `game_updater.py`, `code_helper.py`, `open_app.py`, provider/browser/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
-
-## Fase 35 slice 24 — fallback flush telemetry tidak lagi diam — 2026-08-20
-
-Slice ini diotorisasi secara eksplisit hanya untuk blok S110 pada `jarvis/core/quiet.py:117` (header `except`; `pass` berada pada baris fisik 119), yaitu fallback internal `quiet.flush()` ketika emit telemetry gagal. Guard S110 pada `quiet.swallowed()` sendiri di baris 101 tetap tidak diubah karena merupakan self-guard yang mencegah rekursi telemetry. Tidak ada perubahan pada UIAdapter, `game_updater.py`, provider, browser, network, remote delivery, credential/keyring, voice/audio, camera/hardware, GUI/system-control, FROZEN, `.claude/`, atau path user-dirty.
-
-RED-first menghasilkan **1 failed**: pending suppression berhasil disiapkan dan fake logger `info()` melempar `OSError`, `quiet.flush()` tetap fail-open tetapi event `quiet.flush_emit_failed` belum tercatat (`events == 0`). Setelah perubahan satu blok, test baru menjadi **1 passed**. Focused quiet/system-monitor regression menghasilkan **18 passed**; focused quiet-related regression menghasilkan **104 passed**. Semua test offline memakai monkeypatch dan exception lokal; tidak ada provider, network, browser, keyring, audio, camera, hardware, atau Gemini Live yang diakses.
-
-Control flow dipertahankan: `quiet.flush()` tetap tidak melempar ketika logger gagal, pending suppression tetap di-reset sebelum emit, dan helper `quiet.swallowed()` tetap menjadi bounded self-guard untuk kegagalan logging internalnya sendiri.
-
-Raw Ruff authoritative (`--isolated --select S110,S112 --no-cache`) sesudah slice: **exit 1; 131 match / 38 berkas / 108 S110 / 23 S112**. Delta dari baseline Slice 23 tepat **-1 match / -1 S110 / 0 S112 / 0 berkas**, sesuai expected. Raw debt tetap nonzero; Fase 35 tidak disebut root-lint green atau selesai.
-
-Gate aktual:
-
-- RED-first: **1 failed**, tepat karena telemetry belum ada.
-- GREEN test baru: **1 passed**.
-- Focused quiet/system-monitor regression: **18 passed**.
-- Focused quiet-related regression: **104 passed**.
-- Configured Ruff pada source/test Slice 24: **exit 0**.
-- `scripts/verify_frozen.py`: **`FROZEN integrity: OK (10 files, baseline 094b696)`**.
-- Compile check source/test: **lulus**.
-- Slice-specific `git diff --check`: **lulus**.
-- Source dan test di-commit selektif sebagai `6a0b0b0` (`refactor(lint): instrument quiet flush fallback`). Commit hanya memuat `jarvis/core/quiet.py` dan `tests/test_quiet.py`; perubahan user lain tidak di-stage atau dicampur.
-
-Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada provider, network, credential/keyring, browser, microphone, speaker, audio session, camera, hardware, atau Gemini Live yang dijalankan.
-
-Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit read-only dan otorisasi boundary baru; jangan otomatis memigrasikan S110 self-guard `quiet.swallowed()`, dua residual UIAdapter, residual `game_updater.py`, `code_helper.py`, `open_app.py`, provider/browser/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
-
-## Fase 35 — ditutup sementara sebagai SEBAGIAN — 2026-08-20
-
-Audit read-only Slice 25 mengukur raw Ruff authoritative pada **131 finding / 38 berkas / 108 S110 / 23 S112**; exit 1 tetap expected karena debt masih ada. Seluruh residual tercakup exclusion boundary yang telah disepakati: self-guard `quiet.swallowed()` (1), dua residual UIAdapter (2), `actions/game_updater.py` (16), FROZEN (12), path user-dirty (8), provider/browser/network/remote (46), credential/keyring/MCP/OAuth (7), Telegram/WhatsApp (20), voice/audio (3), camera/hardware (6), dan GUI/system-control (10). `.claude/` tidak memiliki raw finding.
-
-Atas keputusan eksplisit pengguna, Fase 35 **ditutup sementara sebagai SEBAGIAN**. Tidak ada Slice 25 source edit, test edit, RED-first run, migrasi otomatis, atau runtime/provider/network/audio/browser/keyring/hardware work. Tidak ada kandidat tracked-clean, non-FROZEN, offline-testable yang tersisa di luar exclusion boundary; karena itu tidak ada otorisasi boundary baru yang diajukan.
-
-Baseline terakhir tetap commit source/test `6a0b0b0` dan documentation handoff `6085657` dari Slice 24. Evidence Fase 35 tetap terbatas pada focused-tested dan runtime-wired dari slice yang telah selesai; tidak ada klaim root-lint green atau live-proven. FROZEN verifier terakhir tetap `FROZEN integrity: OK (10 files, baseline 094b696)`.
-
-Fase 35 hanya dapat dibuka kembali melalui keputusan eksplisit yang menetapkan satu boundary file/baris/event dan scope RED-first. Jangan menyentuh self-guard `quiet.swallowed()`, dua residual UIAdapter, `game_updater.py`, provider/browser/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, `.claude/`, atau path user-dirty tanpa otorisasi terpisah.
+## P1-C — native task lifecycle acceptance — closure 2026-08-20
+
+P1-C ditutup pada boundary offline typed input → `_run_agent_native` →
+`interactive_dispatch` → `dispatch_async` → `TaskRegistry`. Commit acceptance
+adalah `c5fadc5` (`test(p1-c): close native task lifecycle acceptance`) dan hanya
+memuat tiga test berikut:
+
+- `tests/test_typed_native_lifecycle_acceptance.py`
+- `tests/test_phase2_dispatch.py`
+- `tests/test_task_speech_ownership_characterization.py`
+
+Acceptance focused dan related menghasilkan **62 passed**. Kontrak yang terbukti
+meliputi satu registry task, satu ACK sebelum worker, satu terminal callback,
+satu `task.finished`, `completion_owner=caller` untuk typed callback, penolakan
+duplicate active task tanpa worker/task kedua, serta cleanup `REGISTRY.finish()`
+yang tidak menimpa result, error, atau ownership terminal yang sudah diklaim.
+
+Failure order-dependent pada seam-bind → Phase 2 direproduksi dan terbukti sebagai
+leakage fixture: worker daemon sebelumnya belum idle ketika seam monkeypatch
+berikutnya dipasang. Characterization test dan isolation fixture sekarang
+menunggu terminal/worker selesai, menunggu `dispatch.active_count() == 0`, lalu
+membersihkan `REGISTRY` dan `dispatch._active`. Tidak ada RED yang membuktikan
+defect production dispatch; `jarvis/agent/dispatch.py` tidak diubah.
+
+Bukti tambahan: compile check dan `git diff --check` lulus. Slice ini
+`focused-tested` dan `fixture-accepted`, bukan `live-proven`. Tidak ada provider,
+network, browser, credential/keyring, microphone, speaker, audio session,
+camera, hardware, atau Gemini Live yang diakses. Semua perubahan lokal dan
+untracked path lain tetap dipertahankan serta tidak dicampur.
+
+P1-D belum dimulai. Closure dokumentasi ini berhenti pada phase log; staging atau
+commit dokumentasi memerlukan otorisasi terpisah, begitu pula dimulainya P1-D.
+
+Langkah rekomendasi aman berikutnya: tinjau diff `jarvisfix.md` ini, lalu minta
+otorisasi eksplisit sebelum selective staging/commit dokumentasi dan sebelum
+memulai P1-D. Jangan mengubah production source atau menyentuh perubahan lokal
+lain.
