@@ -169,6 +169,30 @@ def test_it_never_raises_when_logging_itself_fails(monkeypatch):
     quiet.swallowed("apa.saja", ValueError("v"))
 
 
+def test_flush_failure_records_event_and_stays_fail_open(monkeypatch):
+    """Flush telemetry failures remain observable without escaping."""
+    quiet.reset()
+    quiet.swallowed("flush.pending")
+    quiet.swallowed("flush.pending")
+    events = []
+
+    def boom(*_args, **_kwargs):
+        raise OSError("flush logger unavailable")
+
+    monkeypatch.setattr(quiet._logger, "info", boom)
+    monkeypatch.setattr(
+        quiet,
+        "swallowed",
+        lambda event, exc=None, **context: events.append((event, exc, context)),
+    )
+
+    quiet.flush()
+
+    assert len(events) == 1
+    assert events[0][0] == "quiet.flush_emit_failed"
+    assert isinstance(events[0][1], OSError)
+
+
 def test_control_flow_is_unchanged():
     """Batas keras fase ini: blok yang menelan tetap menelan."""
     reached = []

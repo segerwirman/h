@@ -114,8 +114,11 @@ def flush() -> None:
                 _seen[name][1] = 0
         for name, suppressed in pending:
             _logger.info(name, suppressed=suppressed)
-    except Exception:                                        # noqa: BLE001
-        pass
+    except Exception as exc:                                # noqa: BLE001
+        swallowed(
+            "quiet.flush_emit_failed",
+            exc,
+        )
 
 
 def tracked() -> int:
