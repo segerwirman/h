@@ -6861,3 +6861,25 @@ Gate aktual:
 Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada speaker, microphone, audio session, Gemini Live, provider nyata, network, browser, credential/keyring, camera, atau hardware yang dijalankan.
 
 Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit dan otorisasi boundary baru; jangan otomatis memigrasikan dua residual S110 UIAdapter, residual `game_updater.py`, `code_helper.py`, `open_app.py`, browser/provider/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
+
+## Fase 35 slice 23 — callback ACK Hermes tidak lagi diam — 2026-08-20
+
+Slice ini diotorisasi secara eksplisit hanya untuk S110 pada `jarvis/integrations/hermes/async_dispatch.py:69-70`, yaitu callback `on_ack(ack)` dalam dispatcher Hermes deprecated. Tidak ada perubahan pada Hermes bridge, worker body, BUS, active-task cleanup, provider, network, audio, voice, browser, credential/keyring, camera/hardware, GUI/system-control, FROZEN, `.claude/`, atau path user-dirty.
+
+RED-first sebelum instrumentasi menghasilkan **1 failed**: fake `on_ack` melempar `OSError`, `dispatch_async()` tetap fail-open, worker menyelesaikan task dan `_active` kembali kosong, tetapi event `integrations.hermes.async_dispatch.ack_callback_failed` belum tercatat (`events == 0`). Setelah perubahan satu blok, test baru menjadi **1 passed**. Focused Hermes/speech regression menghasilkan **51 passed**. Semua test memakai fake bridge, fake callback, BUS monkeypatch, dan waktu lokal; tidak ada Hermes nyata, provider, network, speaker, microphone, audio session, browser, credential, atau hardware yang diakses.
+
+Control flow dipertahankan: ACK failure tidak dilempar ulang, `BUS.publish("hermes.task.started", ...)` tetap berjalan, background worker tetap berjalan, dan `_active` tetap dibersihkan.
+
+Raw Ruff authoritative (`--isolated --select S110,S112 --no-cache`) sebelum slice: **133 match / 39 berkas / 110 S110 / 23 S112**. Sesudah slice: **exit 1; 132 match / 38 berkas / 109 S110 / 23 S112**. Delta terukur tepat **-1 match / -1 S110 / 0 S112 / -1 berkas**, sesuai expected. Raw debt tetap nonzero; Fase 35 tidak disebut root-lint green atau selesai.
+
+Gate aktual:
+
+- Configured Ruff pada source/test Slice 23: **exit 0**.
+- `scripts/verify_frozen.py`: **`FROZEN integrity: OK (10 files, baseline 094b696)`**.
+- Compile check source/test: **lulus**.
+- Slice-specific `git diff --check`: **lulus**; warning LF→CRLF pada test baru adalah normal Git Windows.
+- Source dan test di-commit selektif sebagai `5a86b2c` (`refactor(lint): instrument Hermes ACK fallback`). Commit hanya memuat `jarvis/integrations/hermes/async_dispatch.py` dan `tests/test_hermes_async_dispatch_quiet.py`; perubahan user lain tidak di-stage atau dicampur.
+
+Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada Hermes nyata, provider, network, credential/keyring, browser, microphone, speaker, audio session, camera, hardware, atau Gemini Live yang dijalankan.
+
+Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit dan otorisasi boundary baru; jangan otomatis memigrasikan dua residual UIAdapter, residual `game_updater.py`, `code_helper.py`, `open_app.py`, provider/browser/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
