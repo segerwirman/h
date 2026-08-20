@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import inspect
 import threading
+import time
 import types
 
 from jarvis.agent import dispatch
@@ -924,3 +925,13 @@ def test_dispatch_binds_registry_id_via_ingress_conversation_scope(monkeypatch):
     assert any(a["task_id"] == tid for a in active)
     assert any(a["source"] == "voice-native" for a in active)
     assert dispatch.current_source_scope() is None
+
+    # This characterization dispatches through a daemon worker. Drain its
+    # active handle before the next test may replace the loop seam.
+    deadline = time.monotonic() + 2.0
+    while dispatch.active_count() and time.monotonic() < deadline:
+        time.sleep(0.005)
+    assert dispatch.active_count() == 0
+    REGISTRY.clear()
+    with dispatch._active_lock:
+        dispatch._active.clear()

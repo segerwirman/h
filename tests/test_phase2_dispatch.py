@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import threading
+import time
+
+import pytest
 
 from jarvis.agent import dispatch
 from jarvis.agent.base import ToolResult
@@ -20,8 +23,33 @@ def _isolate(monkeypatch) -> None:
     monkeypatch.setattr(dispatch, "available", lambda: True)
     monkeypatch.setattr(dispatch, "render_ack", lambda _task: "ACK")
     monkeypatch.setattr(dispatch.BUS, "publish", lambda *a, **k: None)
+    from jarvis.agent.tasks import REGISTRY
+    REGISTRY.clear()
     with dispatch._active_lock:
         dispatch._active.clear()
+
+
+def _wait_dispatch_idle(timeout: float = 2.0) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if dispatch.active_count() == 0:
+            return
+        time.sleep(0.005)
+    pytest.fail("dispatch worker tidak idle setelah terminal callback")
+
+
+def _finish_dispatch_isolation() -> None:
+    from jarvis.agent.tasks import REGISTRY
+    _wait_dispatch_idle()
+    REGISTRY.clear()
+    with dispatch._active_lock:
+        dispatch._active.clear()
+
+
+@pytest.fixture(autouse=True)
+def _clean_dispatch_state():
+    yield
+    _finish_dispatch_isolation()
 
 
 def test_native_ack_happens_before_worker_and_report_after(monkeypatch):
@@ -49,7 +77,57 @@ def test_native_ack_happens_before_worker_and_report_after(monkeypatch):
     assert events == ["ack", "work", "report"]
 
 
+def test_seam_bind_cleanup_is_required_before_following_phase2_dispatch(
+        monkeypatch):
+    """Characterize the seam-bind → phase2 ordering boundary.
+
+    Waiting only for ``dispatch_async`` to return is insufficient: it returns
+    before the worker starts. The terminal callback is the synchronization
+    point, followed by the active-handle drain and registry cleanup.
+    """
+    from jarvis.agent import loop as agent_loop
+    from jarvis.agent.tasks import REGISTRY
+
+    _isolate(monkeypatch)
+    events: list[str] = []
+    seam_done = threading.Event()
+    phase_done = threading.Event()
+
+    async def seam_run(_task, **_kwargs):
+        return RunResult(ok=True, text="seam selesai", session_id="seam-bind")
+
+    monkeypatch.setattr(agent_loop, "run", seam_run)
+    with dispatch.source_scope(
+        "voice-native", completion_owner="registry", conversation_id="voice-live"
+    ):
+        assert dispatch.dispatch_async(
+            "seam bind task", on_done=lambda _result: seam_done.set()
+        ) is True
+
+    _wait(seam_done)
+    _wait_dispatch_idle()
+    assert len(REGISTRY.snapshot()) == 1
+
+    REGISTRY.clear()
+    with dispatch._active_lock:
+        dispatch._active.clear()
+
+    async def phase2_run(_task, **_kwargs):
+        events.append("work")
+        return RunResult(ok=True, text="fase dua selesai", session_id="phase2")
+
+    monkeypatch.setattr(agent_loop, "run", phase2_run)
+    assert dispatch.dispatch_async(
+        "tolong riset dan buat laporan",
+        on_ack=lambda _ack: events.append("ack"),
+        on_done=lambda _result: (events.append("report"), phase_done.set()),
+    ) is True
+    _wait(phase_done)
+    assert events == ["ack", "work", "report"]
+
+
 def test_unavailable_native_agent_does_not_emit_false_ack(monkeypatch):
+    _isolate(monkeypatch)
     monkeypatch.setattr(dispatch, "available", lambda: False)
     events: list[str] = []
 
