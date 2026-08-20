@@ -6909,3 +6909,13 @@ Gate aktual:
 Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada provider, network, credential/keyring, browser, microphone, speaker, audio session, camera, hardware, atau Gemini Live yang dijalankan.
 
 Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit read-only dan otorisasi boundary baru; jangan otomatis memigrasikan S110 self-guard `quiet.swallowed()`, dua residual UIAdapter, residual `game_updater.py`, `code_helper.py`, `open_app.py`, provider/browser/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
+
+## Fase 35 — ditutup sementara sebagai SEBAGIAN — 2026-08-20
+
+Audit read-only Slice 25 mengukur raw Ruff authoritative pada **131 finding / 38 berkas / 108 S110 / 23 S112**; exit 1 tetap expected karena debt masih ada. Seluruh residual tercakup exclusion boundary yang telah disepakati: self-guard `quiet.swallowed()` (1), dua residual UIAdapter (2), `actions/game_updater.py` (16), FROZEN (12), path user-dirty (8), provider/browser/network/remote (46), credential/keyring/MCP/OAuth (7), Telegram/WhatsApp (20), voice/audio (3), camera/hardware (6), dan GUI/system-control (10). `.claude/` tidak memiliki raw finding.
+
+Atas keputusan eksplisit pengguna, Fase 35 **ditutup sementara sebagai SEBAGIAN**. Tidak ada Slice 25 source edit, test edit, RED-first run, migrasi otomatis, atau runtime/provider/network/audio/browser/keyring/hardware work. Tidak ada kandidat tracked-clean, non-FROZEN, offline-testable yang tersisa di luar exclusion boundary; karena itu tidak ada otorisasi boundary baru yang diajukan.
+
+Baseline terakhir tetap commit source/test `6a0b0b0` dan documentation handoff `6085657` dari Slice 24. Evidence Fase 35 tetap terbatas pada focused-tested dan runtime-wired dari slice yang telah selesai; tidak ada klaim root-lint green atau live-proven. FROZEN verifier terakhir tetap `FROZEN integrity: OK (10 files, baseline 094b696)`.
+
+Fase 35 hanya dapat dibuka kembali melalui keputusan eksplisit yang menetapkan satu boundary file/baris/event dan scope RED-first. Jangan menyentuh self-guard `quiet.swallowed()`, dua residual UIAdapter, `game_updater.py`, provider/browser/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, `.claude/`, atau path user-dirty tanpa otorisasi terpisah.
