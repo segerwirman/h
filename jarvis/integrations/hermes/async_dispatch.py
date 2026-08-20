@@ -66,8 +66,12 @@ def dispatch_async(task: str,
     if on_ack:
         try:
             on_ack(ack)
-        except Exception:                                    # noqa: BLE001
-            pass
+        except Exception as exc:                             # noqa: BLE001
+            from jarvis.core import quiet
+            quiet.swallowed(
+                "integrations.hermes.async_dispatch.ack_callback_failed",
+                exc,
+            )
     BUS.publish("hermes.task.started", task=task)
 
     def _worker():
