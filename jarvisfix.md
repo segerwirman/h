@@ -6883,3 +6883,29 @@ Gate aktual:
 Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada Hermes nyata, provider, network, credential/keyring, browser, microphone, speaker, audio session, camera, hardware, atau Gemini Live yang dijalankan.
 
 Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit dan otorisasi boundary baru; jangan otomatis memigrasikan dua residual UIAdapter, residual `game_updater.py`, `code_helper.py`, `open_app.py`, provider/browser/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
+
+## Fase 35 slice 24 — fallback flush telemetry tidak lagi diam — 2026-08-20
+
+Slice ini diotorisasi secara eksplisit hanya untuk blok S110 pada `jarvis/core/quiet.py:117` (header `except`; `pass` berada pada baris fisik 119), yaitu fallback internal `quiet.flush()` ketika emit telemetry gagal. Guard S110 pada `quiet.swallowed()` sendiri di baris 101 tetap tidak diubah karena merupakan self-guard yang mencegah rekursi telemetry. Tidak ada perubahan pada UIAdapter, `game_updater.py`, provider, browser, network, remote delivery, credential/keyring, voice/audio, camera/hardware, GUI/system-control, FROZEN, `.claude/`, atau path user-dirty.
+
+RED-first menghasilkan **1 failed**: pending suppression berhasil disiapkan dan fake logger `info()` melempar `OSError`, `quiet.flush()` tetap fail-open tetapi event `quiet.flush_emit_failed` belum tercatat (`events == 0`). Setelah perubahan satu blok, test baru menjadi **1 passed**. Focused quiet/system-monitor regression menghasilkan **18 passed**; focused quiet-related regression menghasilkan **104 passed**. Semua test offline memakai monkeypatch dan exception lokal; tidak ada provider, network, browser, keyring, audio, camera, hardware, atau Gemini Live yang diakses.
+
+Control flow dipertahankan: `quiet.flush()` tetap tidak melempar ketika logger gagal, pending suppression tetap di-reset sebelum emit, dan helper `quiet.swallowed()` tetap menjadi bounded self-guard untuk kegagalan logging internalnya sendiri.
+
+Raw Ruff authoritative (`--isolated --select S110,S112 --no-cache`) sesudah slice: **exit 1; 131 match / 38 berkas / 108 S110 / 23 S112**. Delta dari baseline Slice 23 tepat **-1 match / -1 S110 / 0 S112 / 0 berkas**, sesuai expected. Raw debt tetap nonzero; Fase 35 tidak disebut root-lint green atau selesai.
+
+Gate aktual:
+
+- RED-first: **1 failed**, tepat karena telemetry belum ada.
+- GREEN test baru: **1 passed**.
+- Focused quiet/system-monitor regression: **18 passed**.
+- Focused quiet-related regression: **104 passed**.
+- Configured Ruff pada source/test Slice 24: **exit 0**.
+- `scripts/verify_frozen.py`: **`FROZEN integrity: OK (10 files, baseline 094b696)`**.
+- Compile check source/test: **lulus**.
+- Slice-specific `git diff --check`: **lulus**.
+- Source dan test di-commit selektif sebagai `6a0b0b0` (`refactor(lint): instrument quiet flush fallback`). Commit hanya memuat `jarvis/core/quiet.py` dan `tests/test_quiet.py`; perubahan user lain tidak di-stage atau dicampur.
+
+Evidence slice ini terbatas pada **focused-tested** dan **runtime-wired**, bukan **live-proven**. Tidak ada provider, network, credential/keyring, browser, microphone, speaker, audio session, camera, hardware, atau Gemini Live yang dijalankan.
+
+Fase 35 tetap **SEBAGIAN**. Langkah berikutnya memerlukan audit read-only dan otorisasi boundary baru; jangan otomatis memigrasikan S110 self-guard `quiet.swallowed()`, dua residual UIAdapter, residual `game_updater.py`, `code_helper.py`, `open_app.py`, provider/browser/network/remote, credential/keyring, voice/audio, camera/hardware, GUI/system-control, Telegram/WhatsApp, FROZEN, atau path user-dirty.
