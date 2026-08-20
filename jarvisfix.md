@@ -6742,3 +6742,34 @@ Langkah rekomendasi aman berikutnya: tinjau diff `jarvisfix.md` ini, lalu minta
 otorisasi eksplisit sebelum selective staging/commit dokumentasi dan sebelum
 memulai P1-D. Jangan mengubah production source atau menyentuh perubahan lokal
 lain.
+
+## P1-D — typed native failure/cancellation lifecycle acceptance — closure 2026-08-20
+
+P1-D offline/fake-only acceptance ditinjau pada tiga test lifecycle yang telah
+diotorisasi:
+
+- `tests/test_typed_native_lifecycle_acceptance.py`
+- `tests/test_phase2_dispatch.py`
+- `tests/test_task_speech_ownership_characterization.py`
+
+Focused P1-D menghasilkan **39 passed**. Boundary yang dicakup tetap failure
+path typed native task, cancellation/terminal cleanup, duplicate-task rejection,
+ACK ordering, terminal ownership, serta uniqueness speech/task-result. Tidak ada
+RED; tidak ada defect production yang terbukti, sehingga tidak ada perubahan
+pada `jarvis/agent/dispatch.py` atau production source lain. Tidak ada perubahan
+baru pada ketiga test tersebut selama acceptance ini.
+
+`python -m compileall -q jarvis tests` dan `git diff --check` lulus. Basetemp
+berada di luar repository. Evidence slice ini **focused-tested**, bukan
+`live-proven`. Tidak ada provider, network, browser, credential/keyring,
+microphone, speaker, audio session, camera, hardware, atau Gemini Live yang
+diakses. P1-D tidak meluas ke P2, browser/CDP, voice/audio, provider, GUI, atau
+runtime live; seluruh perubahan lokal dan untracked path lain tetap dipertahankan.
+
+Closure ini hanya dicatat pada phase log. Staging/commit dokumentasi belum
+dilakukan dan memerlukan otorisasi terpisah. P2 juga belum dimulai dan tetap
+memerlukan boundary serta otorisasi baru.
+
+Langkah rekomendasi aman berikutnya: tinjau diff P1-D pada `jarvisfix.md`, lalu
+minta otorisasi terpisah sebelum selective staging/commit dokumentasi. Setelah
+itu berhenti lagi sebelum memulai P2 atau mengubah production source.
