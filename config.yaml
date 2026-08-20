@@ -38,6 +38,11 @@ motion:
   tick_ms: 16
 
 ui:
+  # P6 — presentation adapter seam (GUI_EVOLUTION_PLAN GUI-1 / roadmap P6).
+  # Default off: JarvisUI.adapter adalah None dan perilaku facade identik
+  # dengan legacy shell. Rollback = biarkan false; tidak ada owner kedua.
+  presentation_adapter:
+    enabled: false
   # Boot default: hanya orb pada ContentStage kosong. Isi panel hanya bila
   # pengguna memilih nama panel stage secara eksplisit (mis. "vision").
   startup:

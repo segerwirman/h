@@ -402,12 +402,19 @@ class JarvisUI:
     def __init__(self, face_path: str = "", size=None,
                  services: dict | None = None):
         import sys as _sys
+        from jarvis.core import config
         from jarvis.ui import qt_webengine
         qt_webengine.enable_shared_gl()
         self._app = QApplication.instance() or QApplication(_sys.argv or ["jarvis"])
         self._app.setStyle("Fusion")
         self._win = MainWindow(services)
         self._win.show()
+        # P6-A/B: optional presentation adapter shim around the facade surface
+        if config.get("ui.presentation_adapter.enabled", False):
+            from jarvis.ui.presentation_adapter import FacadeShim
+            self.adapter = FacadeShim(self)   # wrap self (the facade itself)
+        else:
+            self.adapter = None
         self.root = _RootShim(self._app)
         self._mic_meter_stop = threading.Event()
         import os
