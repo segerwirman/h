@@ -296,7 +296,10 @@ def lifecycle_for_path(path: str, *, source: str = "") -> DocumentLifecycle | No
     if lifecycle is not None:
         return lifecycle
     from jarvis.nlp.document import read_document
-    text = read_document(str(path))
+    try:
+        text = read_document(str(path))
+    except Exception:  # noqa: BLE001 - failed reads have no lifecycle owner
+        return None
     if not text.strip():
         return None
     return COORDINATOR.open_text(fp, text, source=source)
