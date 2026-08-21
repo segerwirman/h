@@ -30,10 +30,10 @@ zones:
   input_height: 56
 
 motion:
-  transition_min_ms: 200
-  transition_max_ms: 350
-  dock_ms: 400
-  crossfade_ms: 250
+  transition_min_ms: 160      # P8-C: -20% (was 200), responsive feel
+  transition_max_ms: 280      # P8-C: -20% (was 350), responsive feel
+  dock_ms: 320                # P8-C: -20% (was 400), faster panel docking
+  crossfade_ms: 200           # P8-C: -20% (was 250), snappier stage transitions
   orb_fade_in_ms: 800
   tick_ms: 16
 
