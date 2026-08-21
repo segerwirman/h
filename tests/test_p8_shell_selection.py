@@ -11,11 +11,12 @@ provider/network/audio/camera/browser calls. Uses config override and BUS
 subscriber snapshots as P5-B/C/D/E/P6-C do.
 
 Gates verified:
-- LEGACY SHELL (ui.shell=legacy): default value preserved; MainWindow
+- LEGACY SHELL (ui.shell=legacy): explicitly selectable rollback; MainWindow
   construction adds exactly +1 UI subscriber per task topic (single
   task_wiring owner), identical to P6-C baseline
-- MODERN SHELL (ui.shell=modern): first visual slice only (geometry, header,
-  command rail, stage host, task summary, notifications); reuses existing
+- MODERN SHELL (ui.shell=modern): default since P10 promotion; first visual
+  slice only (geometry, header, command rail, stage host, task summary,
+  notifications); reuses existing
   ContentStage/CommandBar/NotificationBlipStack/TaskHaloOrb widgets
 - NO SECOND OWNER: modern initialization adds zero extra BUS subscribers and
   is idempotent; modern failure falls back to legacy per
@@ -23,7 +24,8 @@ Gates verified:
 - FROZEN integrity OK (no FROZEN file modified)
 
 Evidence label: focused-tested. No runtime-wired, endpoint-reachable, or
-live-proven claim; legacy shell remains the only deployed shell.
+live-proven claim; the modern shell is the promoted default but visual
+quality remains separately authorized.
 """
 from __future__ import annotations
 
@@ -65,20 +67,25 @@ _TOPICS = ("task.submitted", "task.updated", "task.finished")
 # ── Shell selection: default safety and opt-in ───────────────────────────────
 
 
-def test_shell_select_legacy_by_default():
-    """Default config value is 'legacy', not 'modern'."""
+def test_shell_select_modern_by_default():
+    """P10 promotion: default config value is 'modern'; fallback stays True."""
     shell_type = config.get("ui.shell", "legacy")
-    assert shell_type == "legacy", \
-        f"Default ui.shell must be 'legacy', got '{shell_type!r}'"
+    assert shell_type == "modern", \
+        f"Default ui.shell must be 'modern' after P10 promotion, got '{shell_type!r}'"
 
     fallback = config.get("ui.modern_shell.fallback_to_legacy", True)
-    assert fallback is True, "Fallback to legacy must default to True"
+    assert fallback is True, "Fallback to legacy must remain True (rollback safety)"
 
 
 def test_shell_select_and_install_is_noop_on_legacy(monkeypatch):
-    """With legacy selected, select_and_install_shell performs no install."""
+    """With legacy explicitly selected, select_and_install_shell performs no install."""
     _app()
     from jarvis.ui import modern_shell
+
+    real_get = config.get
+    monkeypatch.setattr(
+        config, "get",
+        lambda k, d=None: "legacy" if k == "ui.shell" else real_get(k, d))
 
     installed = []
 
@@ -269,6 +276,11 @@ def test_modern_initialization_skips_when_flag_legacy(monkeypatch):
     """When ui.shell=legacy, initialize() installs nothing."""
     _app()
     from jarvis.ui.modern_shell import ModernShellInitialization
+
+    real_get = config.get
+    monkeypatch.setattr(
+        config, "get",
+        lambda k, d=None: "legacy" if k == "ui.shell" else real_get(k, d))
 
     win = QMainWindow()
     init = ModernShellInitialization(win)
