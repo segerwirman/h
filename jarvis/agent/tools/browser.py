@@ -1342,7 +1342,7 @@ class BrowserPress(Tool):
 
 class _ScrollParams(BaseModel):
     direction: str = Field("down", description="up | down")
-    amount: int = Field(600, description="Piksel")
+    amount: int = Field(1000, description="Piksel")
 
 
 class BrowserScroll(Tool):
