@@ -6,15 +6,15 @@
 theme:
   base:       "#050810"
   panel:      "#0a1018"
-  accent:     "#00e5ff"
-  accent_dim: "#0891b2"
+  accent:     "#00d4ff"       # P8-A Option A: subtle desaturation (-5%)
+  accent_dim: "#00a8cc"       # Match new primary
   secondary:  "#7dd3fc"
   alert:      "#ff4444"
   success:    "#4ade80"
   text:       "#c8e6f5"
-  text_dim:   "#5a7a8a"
+  text_dim:   "#587686"       # P8-A Option A: adjusted for contrast vs accent
   header_font: "Rajdhani"          # falls back to Segoe UI Light if absent
-  header_font_fallback: "Segoe UI Light"
+  header_font_fallback: "Segoe UI Semilight"   # P8-A Option A: heavier for readability
   mono_font:  "JetBrains Mono"
   mono_font_fallback: "Consolas"
 
@@ -166,13 +166,13 @@ ui:
       cyan_gold:
         background:   "#050810"
         panel:        "#0a1018"
-        accent:       "#00e5ff"
-        accent_dim:   "#0891b2"
+        accent:       "#00d4ff"    # P8-A Option A: subtle desaturation (-5%)
+        accent_dim:   "#00a8cc"    # Match new primary
         secondary:    "#7dd3fc"
         alert:        "#ff4444"
         success:      "#4ade80"
         text:         "#c8e6f5"
-        text_dim:     "#5a7a8a"
+        text_dim:     "#587686"    # P8-A Option A: adjusted for contrast
         orb_core:     "#eafcff"
         glow:         "#00e5ff"
         halo:         "#7dd3fc"
