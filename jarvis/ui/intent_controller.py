@@ -464,10 +464,22 @@ class IntentController:
 
 # ── Convenience Factory ────────────────────────────────────────────────────
 
+_CONTROLLER: IntentController | None = None
+_CONTROLLER_LOCK = threading.Lock()
+
 
 def get_intent_controller() -> IntentController:
-    """Singleton factory for intent controller."""
-    return IntentController()
+    """Singleton factory for intent controller.
+
+    All shell installations register their seams on the SAME instance so a
+    later reader (renderer, tests) observes the wired owners exactly once.
+    """
+    global _CONTROLLER
+    if _CONTROLLER is None:
+        with _CONTROLLER_LOCK:
+            if _CONTROLLER is None:
+                _CONTROLLER = IntentController()
+    return _CONTROLLER
 
 
 # ── FROZEN integrity marker ────────────────────────────────────────────────
