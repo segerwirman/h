@@ -10,7 +10,7 @@ import threading
 import weakref
 from concurrent.futures import Future
 
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 from jarvis.core.bus import BUS
 from jarvis.agent.adapters.base import Adapter
 
@@ -117,7 +117,6 @@ class UIAdapter(Adapter):
                 win._speak_line(
                     phrase, kind="progress", turn=self.task_id)
         except Exception as exc:                             # noqa: BLE001
-            from jarvis.core import quiet
             quiet.swallowed(
                 "agent.adapter.ui.progress_narration_failed",
                 exc,
@@ -150,8 +149,8 @@ class UIAdapter(Adapter):
                 # jawaban yang tidak pernah diminta.
                 win._speak_line(" ".join(str(question or "").split())[:300],
                                 kind="confirm", turn=getattr(self, "task_id", ""))
-            except Exception:                                # noqa: BLE001
-                pass
+            except Exception as exc:                         # noqa: BLE001
+                quiet.swallowed("agent.adapter.ui.confirm_speech_failed", exc)
 
         import asyncio
         timeout = float(config.get("agent.confirm_timeout_s", 300))
@@ -180,8 +179,8 @@ class UIAdapter(Adapter):
                 "typed-desktop", path=clean, kind=kind)
             conversation_context.STORE.remember_artifact(
                 "voice", path=clean, kind=kind)
-        except Exception:                                    # noqa: BLE001
-            pass
+        except Exception as exc:                             # noqa: BLE001
+            quiet.swallowed("agent.adapter.ui.artifact_remember_failed", exc)
         # Tampilkan gambar di ContentStage bila API tersedia; selalu log path.
         shown = False
         show = getattr(win, "show_image", None)
