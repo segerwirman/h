@@ -26,8 +26,8 @@ window:
   title: "J.A.R.V.I.S — MARK XLIX"
 
 zones:
-  header_height: 48
-  input_height: 56
+  header_height: 40            # P8-B: -8px (-17%), more content space
+  input_height: 48             # P8-B: -8px (-14%), tighter command rail
 
 motion:
   transition_min_ms: 160      # P8-C: -20% (was 200), responsive feel
