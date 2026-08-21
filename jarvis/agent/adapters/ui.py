@@ -74,10 +74,13 @@ class UIAdapter(Adapter):
         self.source = str(source or "ui")
         from jarvis.agent.progress_narrator import ProgressNarrator
         from jarvis.core import config as _config
+        # P8E: speaker_enabled dibaca dari interaction.speaker_enabled (flat key)
+        # Bila disabled, max_spoken dipaksa 0 (diam total), bukan sekadar threshold
+        speaker_enabled = bool(_config.get("agent.interaction.speaker_enabled", True))
         self._narrator = ProgressNarrator(
             min_interval_s=float(_config.get(
                 "agent.interaction.progress_min_interval_s", 12.0)),
-            max_spoken=int(_config.get(
+            max_spoken=0 if not speaker_enabled else int(_config.get(
                 "agent.interaction.progress_max_spoken", 4)),
         )
 
