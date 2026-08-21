@@ -38,6 +38,14 @@ motion:
   tick_ms: 16
 
 ui:
+  # P8 — modern GUI shell behind feature flag (roadmap P8).
+  # Legacy shell remains the default and should look unchanged.
+  # Modern shell construction failure logs bounded diagnostic, falls back
+  # to legacy shell; worker and voice initialization not repeated; no second
+  # browser, task, or audio owner created; changing flag restores legacy.
+  shell: legacy          # legacy | modern
+  modern_shell:
+    fallback_to_legacy: true
   # P6 — presentation adapter seam (GUI_EVOLUTION_PLAN GUI-1 / roadmap P6).
   # Default off: JarvisUI.adapter adalah None dan perilaku facade identik
   # dengan legacy shell. Rollback = biarkan false; tidak ada owner kedua.

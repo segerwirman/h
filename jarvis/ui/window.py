@@ -404,10 +404,13 @@ class JarvisUI:
         import sys as _sys
         from jarvis.core import config
         from jarvis.ui import qt_webengine
+        from jarvis.ui import modern_shell  # P8 shell selection factory
         qt_webengine.enable_shared_gl()
         self._app = QApplication.instance() or QApplication(_sys.argv or ["jarvis"])
         self._app.setStyle("Fusion")
+        # P8: select shell based on feature flag before constructing MainWindow
         self._win = MainWindow(services)
+        modern_shell.select_and_install_shell(self._win)
         self._win.show()
         # P6-A/B: optional presentation adapter shim around the facade surface
         if config.get("ui.presentation_adapter.enabled", False):
