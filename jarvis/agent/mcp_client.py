@@ -24,7 +24,7 @@ import subprocess
 import threading
 import time
 
-from jarvis.core import config, log
+from jarvis.core import config, log, quiet
 
 _logger = log.get("agent.mcp")
 
@@ -170,8 +170,8 @@ class MCPServer:
         if proc is not None:
             try:
                 proc.kill()
-            except Exception:                                # noqa: BLE001
-                pass
+            except Exception as exc:                         # noqa: BLE001
+                quiet.swallowed("mcp.close_kill_failed", exc)
 
 
 class MCPError(RuntimeError):
