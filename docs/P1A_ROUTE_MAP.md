@@ -245,7 +245,7 @@ No cross-thread mutation: all deliveries use signals/BUS/queue, not shared mutab
 
 ## 5. Known Gaps (to be addressed in P1-B characterization)
 
-1. **Duplicate route possibility**: If `classifier` override returns tier>=AGENT while legacy intent also hits SEARCH_WEB, could there be two executions? Test needed: submit same text under override vs non-override, measure task IDs emitted.
+1. **Duplicate route possibility**: RESOLVED by P1-B. The guard `_active` dict + `_active_lock` in `dispatch_async` (dispatch.py:573-581) already prevents unguarded double-call. Three characterization tests in `test_gui_p1b_route_dedup.py` prove one input → one task submission, with concurrent races failing on the second dispatch.
 2. **Speech duplication**: Confirm that `write_log` + `_speak_line` never duplicate across lanes (agent native vs chat).
 3. **Worker starvation**: Multiple rapid parallel submissions; verify thread pool capacity and queue ordering (should be FIFO, bounded).
 4. **Error isolation**: If `_run_google_light()` fails hard, ensure `_chat()` can still run later in same session (thread crash propagation test).
