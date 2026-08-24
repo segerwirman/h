@@ -315,6 +315,7 @@ class MainWindow(
         self.action_panel.focus_mode_clicked.connect(self._toggle_focus_mode)
         self.action_panel.palette_clicked.connect(self._toggle_command_palette)
         self.action_panel.timeline_clicked.connect(self._toggle_timeline)
+        self.action_panel.cancel_clicked.connect(self._on_cancel_tasks_clicked)
 
         self.on_text_command = None
         self.on_remote_clicked = None

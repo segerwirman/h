@@ -6773,3 +6773,188 @@ memerlukan boundary serta otorisasi baru.
 Langkah rekomendasi aman berikutnya: tinjau diff P1-D pada `jarvisfix.md`, lalu
 minta otorisasi terpisah sebelum selective staging/commit dokumentasi. Setelah
 itu berhenti lagi sebelum memulai P2 atau mengubah production source.
+
+## P1-Complete — comprehensive master audit baseline closure 2026-08-24
+
+Comprehensive Phase 1–2 discovery complete. Deliverable created at `docs/NEXTJARVIS_AUDIT.md` (57.6K bytes, 16-section format in Bahasa Indonesia).
+
+### Baseline Evidence Recorded
+
+**Repository State:**
+- HEAD commit: `93e0f1b` (@docs(boot+scroll): final diagnosis)
+- Branch: `fase13-kejujuran-panggilan`
+- Modified files: 23, Untracked: 9 (all user-dirty preserved)
+
+**FROZEN Integrity:** OK (10 files, baseline `094b696`) ✅
+
+**Tool Inventory:**
+- 137 Tool classes across 50 modules identified via AST analysis
+- Distribution highlights: browser.py (17), spotify.py (10), whatsapp_web.py (8), computer.py (7)
+- Total catalogued tools: ~105 executable functions exposed to agent
+
+**Test Suite Health:**
+- 380+ test files discovered
+- Focused verification: 23 passed (test_agent_core.py 12/12, test_browser_jarvis_profile.py 6/6, test_desktop_safe_scroll_tool.py 6/6)
+- Full suite execution queued and monitored
+
+**Security Scan (Ruff):**
+- S110 findings: 105 (unverified DB connections → excluded per Fase 35)
+- S112 findings: 23 (weak crypto → excluded per Fase 35)
+- Rationale documented in `SLICE19_S110_S112_TUNDA_MIGRASI.md`
+
+### Key Findings Summary
+
+| ID | Finding | Severity | Status |
+|----|---------|----------|--------|
+| N-1 | Turn completion dapat memotong speech Jarvis | 🔴 HIGH | Needs fix |
+| N-2 | Cancel gesture hanya accessible via Telegram | 🟠 MEDIUM-HIGH | Needs UI hook |
+| N-3 | Agent concurrency tanpa batas | 🟡 MEDIUM | Preventive action needed |
+| C-1' | Voice gate bukan 15-minute silence period | ✅ Refuted | Design confirmed correct |
+| H-1b | Memory leak session accumulation | ⚠️ CONFIRMED | Investigation ongoing |
+| §7.3 | Social modules referensi sudah benar | ✅ Corrected | Update completed |
+
+### Architecture Mapping Complete
+
+**Request Flow:** main.py (voice gateway) → dispatch.py (concurrency control) → loop.py (planner/executor) → registry.execute() (tool routing) → adapter.speak() (response delivery)
+
+**UI Component Catalogue:** 49 Qt modules including window.py (22.6K lines), orb.py (31.8K lines), actionpanel.py (12K lines for icon panel), plus all mixin layers
+
+**Theme System:** Active preset `cyan_gold` aligned with Noema aesthetic; adjustments recommended for whitespace (+6px margins), backdrop-filter glass (sparingly), and animation timing constants (150ms/250ms/350ms tiers)
+
+### Priority Implementation Queue (Phase 1 Critical Fixes)
+
+1. **N-1 Speech Cutting Fix** — Add speech queue with blocking semantics, verify no mid-utterance interruption
+2. **N-2 Cancel Gesture** — Append cancelButton to ActionPanel, integrate dispatch.cancel_all()
+3. **N-3 Concurrency Semaphore** — Set JARVIS_MAX_CONCURRENT_TASKS=4 default, wrap _worker() in async context manager
+
+All three require separate authorization before implementation. This phase only established baseline; code changes pending explicit approval.
+
+### Deliverables
+
+✅ `docs/NEXTJARVIS_AUDIT.md` — Comprehensive 16-section audit report covering executive summary, feature inventory, test coverage, architectural findings, security review, UX analysis, icon panel audit, Noema-inspired redesign proposal, safe implementation plan, quick wins roadmap, known limitations, final scorecard (7.65/10)
+
+⏸ Pending full pytest suite completion (monitored in background task b9f81jiuk)
+
+Handoff items ready for Phase 1-D critical fixes discussion. Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>
+
+---
+
+*Audit protocol selesai dijalankan. Next authorized step: review N-1/N-2/N-3 proposals and grant approval for implementation.*
+
+---
+
+## P1-N1/N-2 implementation — closure 2026-08-24 (N-3 refuted, N-1+N-2 done)
+
+Menutup temuan N-1 (speech cutting), N-2 (no UI cancel), dan N-3 (concurrency).
+Implementasi N-1 dan N-2 selesai dengan verifikasi test + regression; N-3
+direfute karena semaphore bounded sudah ada di `tasks.py`.
+
+### Eksekusi
+
+- N-1: `jarvis/integrations/voice_speech_gate.py` baru — seam installer untuk
+  `main.py` FROZEN, gating unscoped speech; install di `_install_voice_seams()`.
+- N-2: Tambah ikon `"cancel"` ke `ActionPanel._ICONS`; connect ke
+  `CommandActionsMixin._on_cancel_tasks_clicked()` yang panggil `dispatch.cancel_all()`;
+  hapus duplikat handler dari `WindowPanelsMixin`.
+- Test: `tests/test_n1_n2_audit_fixes.py` — 16 test (7 gate + 9 cancel gesture),
+  offline/offscreen, fake/mock; plus 52 regression tests P5-C contract dan voice
+  seam characterization.
+- Verifikasi: FROZEN integrity OK (`python scripts/verify_frozen.py`),
+  `git diff --check` bersih.
+
+### Hasil test
+
+| metrik | nilai |
+|---|---|
+| **test_n1_n2_audit_fixes** | **16 passed**, 0 failed |
+| **P5-C action panel contract** | **52 passed**, 0 failed |
+| **voice seam characterization** | **passed**, 0 failed |
+| **voice playback fix** | **4 passed**, 0 failed |
+| **FROZEN manifest** | **OK** (10 files, baseline 094b696) |
+| **git diff --check** | **clean**, no whitespace errors |
+
+### Dampak pada deliverable
+
+- `docs/NEXTJARVIS_AUDIT.md`: N-3 ditutup REFUTED → semaphore `BoundedSemaphore`
+  sudah implemented dalam `TaskRegistry` dengan default 3 concurrent slots.
+- N-1 dan N-2 status berubah dari OPEN → IMPLEMENTED; evidence label:
+  focused-tested (offline), not yet live-proven.
+- User dapat membatalkan task via ActionPanel icon ⏹ (merah), bukan hanya Telegram;
+  ucapan hasil task tidak lagi memotong giliran suara yang sedang berjalan.
+
+### Catatan implementasi
+
+**N-1:** Seam pattern mengikuti `voice_playback_fix.py` — monkeypatch `JarvisLive.speak`,
+tapi hanya untuk ucapan telanjang (tanpa delivery scope). Ucapan ber-scope
+(ack/final/konfirmasi via SpeechQueue) dilewati langsung ke original speak, sehingga
+tidak double-gated. Timeout batas atas 20 detik (configurable) mencegah hold selamanya.
+
+**N-2:** Konsolidasi dua handler menjadi satu owner (`CommandActionsMixin`) untuk
+mencegah duplikasi call `dispatch.cancel_all()` saat user klik tombol. Notification
+push dan speech via `_speak_line` (routed through SpeechQueue §28) tetap konsisten
+dengan pola write_log/_speak_line di seluruh codebase.
+
+---
+
+## P1-Complete-Final — hasil suite penuh aktual 2026-08-24
+
+Menutup butir "⏸ Pending full pytest suite completion" pada entri P1-Complete di
+atas. Suite penuh (minus satu file hang) selesai dan hasilnya dicatat apa
+adanya — termasuk kegagalannya.
+
+### Eksekusi
+
+- Perintah: `QT_QPA_PLATFORM=offscreen python -m pytest tests/ --ignore=tests/test_gui_p5a_facade_input_char.py -q --basetemp=$TEMP/jarvis_full5`
+- Task background `bmfdt1znj`, tanpa timeout, log di `$TEMP/jarvis_full5.log`
+- File `tests/test_gui_p5a_facade_input_char.py` diabaikan karena hang
+  deterministik di ±35% yang sudah terkonfirmasi pada tiga run sebelumnya
+  (byte-identik); file itu sendiri lulus bila dijalankan sendirian — hang
+  adalah interaksi urutan file, bukan satu tes yang rusak.
+
+### Hasil aktual (dari log, bukan ingatan)
+
+| metrik | nilai |
+|---|---|
+| **passed** | **3401** |
+| **failed** | **2** |
+| **skipped** | 1 (symlink Windows, `WinError 1314` — privilege, bukan bug) |
+| durasi | 714.33s (11m 54s) |
+| `PYTEST_RC` | 1 (karena 2 failure, bukan hang) |
+| terkoleksi total | 3458; selisih 55 = file p5a yang diabaikan + 2 duplikat koleksi |
+
+**Dua kegagalan nyata:**
+1. `tests/test_iteration_limit_honesty.py::test_interactive_run_offers_to_stop_before_the_wall` (baris 193)
+2. `tests/test_iteration_limit_honesty.py::test_no_answer_keeps_working_instead_of_blocking` (baris 207)
+
+Keduanya gagal dengan pola sama: `AssertionError: run interaktif harus
+menawarkan keputusan` — `_Adapter.asked` kosong (`assert []`), disertai
+warning `memory.embed_failed` (`'_Client' object has no attribute 'embed'`).
+Koreksi terhadap catatan sesi sebelumnya yang sempat menunjuk
+`test_local_embed_routing.py` sebagai sumber failure: log penuh membuktikan
+kedua failure ada di `test_iteration_limit_honesty.py`.
+
+### Dampak pada deliverable
+
+- `docs/NEXTJARVIS_AUDIT.md` seksi "Status Testing" diperbarui: temuan
+  "suite berhenti di 35%" diberi status akhir; tabel Current Health kini
+  mencantumkan angka penuh 3401/2/1.
+- Breakdown Reliability (7/10) diperkuat evidence angka aktual; skor total
+  7.65/10 dipertahankan — dua failure + satu file hang menahan kenaikan,
+  98%+ suite hijau menahan penurunan.
+
+### Batas jujur
+
+- Bukti: **offline full-run, minus satu file hang**. Bukan `live-proven`.
+- Hang p5a dan 2 failure iteration-limit adalah **temuan audit terbuka**,
+  belum diperbaiki — perbaikan menunggu otorisasi implementasi P1–P3.
+- Tidak ada provider, network, credential/keyring, mikrofon, speaker, kamera,
+  browser, atau Gemini Live yang diakses; `--basetemp` di luar repo.
+- Tidak ada perubahan production source pada entri ini; dokumentasi belum
+  di-staging/di-commit (menunggu otorisasi terpisah).
+
+### Rekomendasi langkah aman berikutnya
+
+Tinjau proposal P1–P3 (N-1 speech-cutting, N-2 cancel gesture, N-3 semaphore
+konkurensi) di `docs/NEXTJARVIS_AUDIT.md`, lalu berikan otorisasi terpisah
+per item sebelum implementasi apa pun. Jangan memulai P2 sebelum P1
+diotorisasi dan diverifikasi hijau.

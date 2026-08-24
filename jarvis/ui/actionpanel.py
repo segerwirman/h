@@ -118,6 +118,9 @@ _ICONS = {           # glyph, tooltip
     # MK50 §7.3 — panel Home Assistant (CCTV, lampu, cuaca)
     "home":         ("⌂", "Home Assistant — CCTV, lampu, cuaca"),
     "studio":       ("✦", "Content Studio — project dan scene lokal"),
+    # N-2 (audit 2026-08-24) — jalan keluar pembatalan untuk user UI:
+    # sebelumnya hanya Telegram yang bisa membatalkan task berjalan.
+    "cancel":       ("⏹", "Batalkan semua tugas agent yang sedang berjalan"),
 }
 
 
@@ -135,6 +138,7 @@ class ActionPanel(QWidget):
     gateway_ops_clicked = pyqtSignal()
     home_clicked = pyqtSignal()          # MK50 §7.3 — Home Assistant
     studio_clicked = pyqtSignal()        # Studio C — local Content Studio
+    cancel_clicked = pyqtSignal()        # N-2 — batalkan semua task berjalan
 
     def __init__(self, parent: QWidget):
         super().__init__(parent)
@@ -155,7 +159,8 @@ class ActionPanel(QWidget):
                "capabilities": self.capabilities_clicked,
                "messaging": self.messaging_clicked,
                "gateway_ops": self.gateway_ops_clicked,
-               "home": self.home_clicked, "studio": self.studio_clicked}
+               "home": self.home_clicked, "studio": self.studio_clicked,
+               "cancel": self.cancel_clicked}
         self._camera_button: CameraButton | None = None
         self._buttons: dict[str, QPushButton] = {}
         for name in icons:
@@ -163,6 +168,14 @@ class ActionPanel(QWidget):
             if name == "vision":
                 btn: QPushButton = CameraButton(icon_px, self)
                 self._camera_button = btn
+            elif name == "cancel":
+                # Tombol batal memakai warna merah agar jelas dari ikon lain.
+                btn = GlyphButton(glyph, icon_px, self)
+                col = theme.PAL.alert
+                btn.setStyleSheet(
+                    f"QPushButton {{ background: transparent; border: none;"
+                    f"  color: {col}; font-size: {icon_px}px; }}"
+                    f"QPushButton:hover {{ color: {col}; }}")
             else:
                 # GlyphButton so any toggle icon can show a lit on/off lamp
                 btn = GlyphButton(glyph, icon_px, self)

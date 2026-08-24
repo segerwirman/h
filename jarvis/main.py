@@ -108,6 +108,13 @@ def _install_voice_seams(legacy, logger) -> None:
         voice_playback_fix.install(legacy)
     except Exception as _e:                                  # noqa: BLE001
         logger.warning("voice.playback_fix_failed", error=str(_e)[:120])
+    # N-1 (audit 2026-08-24): hasil task tidak lagi memotong giliran suara —
+    # speak() telanjang ditahan sampai batas giliran aman (FROZEN tak diubah).
+    try:
+        from jarvis.integrations import voice_speech_gate
+        voice_speech_gate.install(legacy)
+    except Exception as _e:                                  # noqa: BLE001
+        logger.warning("voice.speech_gate_failed", error=str(_e)[:120])
     voice_speech.install(legacy)
     voice_l1.install(legacy)
     voice_live_transport.install(legacy)

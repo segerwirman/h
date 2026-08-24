@@ -299,10 +299,12 @@ notifications:                   # Mark L Change 1 — boot notification hub
 
 action_panel:                    # Mark L Change 3 + 7
   icons: [vision, upload, spotify, home, studio, focus_mode, palette,
-          timeline, tasks, capabilities, messaging, gateway_ops, settings]
+          timeline, tasks, capabilities, messaging, gateway_ops, cancel,
+          settings]
           # awareness (UI U1): retired from default; watcher stays default-off,
           # opt in by re-adding 'awareness' here. capabilities/messaging/
           # gateway_ops adalah sheet lokal; home: MK50 §7.3
+          # cancel: N-2 (audit 2026-08-24) — pembatalan task dari UI
   icon_px: 22
   height: 56
   spacing: 26

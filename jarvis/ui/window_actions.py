@@ -61,6 +61,35 @@ class CommandActionsMixin:
             self.write_log(
                 f"ERR: browser sistem gagal dibuka — {result.detail}")
 
+    def _on_cancel_tasks_clicked(self) -> None:
+        """N-2 (audit 2026-08-24) — batalkan semua task agent berjalan.
+
+        Sebelumnya pembatalan hanya bisa dicapai lewat Telegram; pengguna
+        mouse/keyboard tidak punya jalan keluar. Gestur ini memanggil
+        ``dispatch.cancel_all()`` (semantik yang sama dengan adapter Telegram)
+        lalu menyampaikan hasilnya via SpeechQueue §28 — BUKAN ``speak``
+        telanjang — sehingga ucapan tidak memotong giliran suara yang sedang
+        berjalan (lihat N-1 / voice_speech_gate).
+        """
+        from jarvis.agent import dispatch
+
+        try:
+            count = dispatch.cancel_all()
+        except Exception as exc:                             # noqa: BLE001
+            _logger.error("ui.cancel_tasks_failed", error=str(exc)[:120])
+            self.write_log(f"ERR: gagal membatalkan tugas — {str(exc)[:80]}")
+            return
+        if count:
+            msg = f"{count} tugas dibatalkan, sir."
+        else:
+            msg = "Tidak ada tugas yang sedang berjalan, sir."
+        self.write_log(f"SYS: {msg}")
+        try:
+            self.notifications.push("Cancel", msg, "warning")
+        except Exception:                                    # noqa: BLE001
+            pass                                             # blip tidak boleh mematikan cancel
+        self._speak_line(msg)
+
     def _close_named_app(self, slots: dict) -> None:
         """Tutup aplikasi BERNAMA di worker thread — guard ada di dalamnya."""
         name = str(slots.get("value") or "").strip()
@@ -502,7 +531,8 @@ class CommandActionsMixin:
 
     def _chat(self, text: str) -> None:
         # live voice pipeline first (it answers with TTS); NLP fallback
-        if self.on_text_command is not None:
+        document_explanation = self._is_document_explanation_request(text)
+        if self.on_text_command is not None and not document_explanation:
             threading.Thread(target=self.on_text_command, args=(text,),
                              daemon=True).start()
             return
@@ -513,11 +543,48 @@ class CommandActionsMixin:
 
         def _run():
             resp = self.assistant.handle_blocking(text)
-            self.write_log(f"Jarvis: {resp.text}")
-            if resp.show_on_stage:
-                self._content_sig.emit(resp.source, resp.text)
+            explanation = resp.meta.get("document_explanation")
+            if explanation is not None:
+                delivered = self._deliver_document_explanation(explanation)
+                if delivered:
+                    message = resp.text
+                else:
+                    lifecycle = resp.meta.get("document_lifecycle")
+                    report = getattr(lifecycle, "interrupted_report", None)
+                    message = report() if callable(report) else (
+                        "Penjelasan dokumen terputus sebelum playback "
+                        "terverifikasi."
+                    )
+                self.write_log(f"Jarvis: {message}")
+                if resp.show_on_stage:
+                    self._content_sig.emit(resp.source, message)
+            else:
+                self.write_log(f"Jarvis: {resp.text}")
+                if resp.show_on_stage:
+                    self._content_sig.emit(resp.source, resp.text)
             self._restore_orb()
         threading.Thread(target=_run, daemon=True, name="nlp-chat").start()
+
+    def _is_document_explanation_request(self, text: str) -> bool:
+        """Keep an explicit document explanation on the coordinator path."""
+        if self.assistant is None:
+            return False
+        context = getattr(self.assistant, "ctx", None)
+        if not getattr(context, "uploaded_file", None):
+            return False
+        try:
+            from jarvis.nlp.document import DocumentAnalysis
+            return DocumentAnalysis.is_explanation_request(text)
+        except Exception:  # noqa: BLE001 - routing must retain its fallback
+            return False
+
+    def _deliver_document_explanation(self, explanation) -> bool:
+        """Use the bound Live submitter; cursor advances only after its drain."""
+        submit = getattr(self, "on_speech_command", None)
+        if not callable(submit):
+            return False
+        import asyncio
+        return asyncio.run(explanation.deliver(submit))
 
     def _restore_orb(self) -> None:
         state = _LEGACY_STATE_MAP.get(self._legacy_state, OrbState.IDLE)
