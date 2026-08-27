@@ -79,6 +79,8 @@ class Session:
     denied_confirmations: set[str] = field(default_factory=set, repr=False)
     execution_context: object | None = field(default=None, repr=False)
     conversation_context: str = field(default="", repr=False)
+    # Opaque process-local execution-grant ID. Never prompt text or secrets.
+    execution_grant_id: str = field(default="", repr=False)
     _persisted: bool = False
 
     def cancel(self) -> None:

@@ -183,8 +183,15 @@ class TaskLedger:
             sets.append("state = ?")
             params.append(str(state)[:32])
         if step is not None:
+            step_value = str(step)
+            if state == "waiting":
+                # WAITING persists a classification code, never human-entered
+                # text, semantic references, tool arguments, or CAPTCHA data.
+                from jarvis.agent.tasks import _WAIT_REASON_CODES
+                if step_value not in _WAIT_REASON_CODES:
+                    step_value = "waiting"
             sets.append("step = ?")
-            params.append(str(step)[:240])
+            params.append(step_value[:240])
         if pending_tool is not None:
             sets.append("pending_tool = ?")
             params.append(str(pending_tool)[:64])

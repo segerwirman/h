@@ -52,6 +52,11 @@ ACTIVE_STATES = frozenset({
 
 # §8.2 — hanya nama di sini yang diserialkan. Sisanya jalan paralel penuh.
 DEFAULT_EXCLUSIVE = ("desktop", "camera", "browser_context")
+_WAIT_REASON_CODES = frozenset({
+    "captcha_handoff",
+    "communication_auth",
+    "human_input",
+})
 
 
 def exclusive_resources() -> frozenset[str]:
@@ -237,6 +242,9 @@ class TaskRegistry:
             else config.get("agent.queue_max", 20))
         self._sem = threading.BoundedSemaphore(max(1, self._max_concurrent))
         self._resource_locks: dict[str, threading.Lock] = {}
+        # Process-local continuation ownership for WAITING tasks. Values are
+        # opaque liveness tokens only; executable state remains in the worker.
+        self._wait_continuations: dict[str, object] = {}
         # Hydrated recovery records (Fase 38): kept SEPARATE from ``_tasks`` so
         # they never take a slot, a resource lock, or a BUS event.  ``snapshot``
         # folds them in for the deck; ``active()``/``running_count()`` ignore them.
@@ -391,6 +399,120 @@ class TaskRegistry:
         self._publish("task.updated", task)
         return view
 
+    def register_wait_continuation(self, task_id: str, token: object) -> bool:
+        """Bind one opaque, process-local liveness token to a live task.
+
+        The registry never persists or executes the token. A worker retains the
+        actual continuation; this binding only proves that a WAITING task still
+        has a live in-process owner eligible to resume.
+        """
+        if token is None:
+            return False
+        with self._lock:
+            task = self._tasks.get(str(task_id or ""))
+            if (
+                task is None
+                or task.status is not TaskStatus.RUNNING
+                or task.cancel.is_set()
+            ):
+                return False
+            self._wait_continuations[task.id] = token
+            return True
+
+    def clear_wait_continuation(self, task_id: str, token: object | None = None) -> bool:
+        """Drop a process-local continuation, optionally identity-bound."""
+        target = str(task_id or "")
+        with self._lock:
+            current = self._wait_continuations.get(target)
+            if current is None or (token is not None and current is not token):
+                return False
+            self._wait_continuations.pop(target, None)
+            return True
+
+    def begin_wait(self, task_id: str, reason_code: str) -> bool:
+        """Move RUNNING → WAITING and release its slot and resources.
+
+        Only a safe classification code reaches the task view or durable ledger.
+        Executable continuation state stays process-local and must already be
+        registered by the live worker.
+        """
+        target = str(task_id or "")
+        reason = str(reason_code or "").strip().casefold()
+        if reason not in _WAIT_REASON_CODES:
+            return False
+        with self._lock:
+            task = self._tasks.get(target)
+            if (
+                task is None
+                or task.status is not TaskStatus.RUNNING
+                or task.cancel.is_set()
+                or target not in self._wait_continuations
+            ):
+                return False
+            task.status = TaskStatus.WAITING
+            task.step = reason
+            view = _view(task)
+        self.release_slot(task)
+        if task.cancel.is_set():
+            self.clear_wait_continuation(target)
+            self.finish(target, status=TaskStatus.CANCELLED)
+            return False
+        self._ledger_mark(
+            target,
+            state=TaskStatus.WAITING.value,
+            step=reason,
+        )
+        self._publish_view("task.updated", view)
+        return True
+
+    def resume_wait(self, task_id: str, token: object | None = None) -> bool:
+        """Reacquire the normal slot/resource path for a WAITING task.
+
+        A missing or mismatched process-local continuation cannot be recovered;
+        the task is cancelled rather than left WAITING forever.
+        """
+        target = str(task_id or "")
+        with self._lock:
+            task = self._tasks.get(target)
+            if task is None or task.status is not TaskStatus.WAITING:
+                return False
+            continuation = self._wait_continuations.get(target)
+            live = continuation is not None and (
+                token is None or continuation is token
+            )
+        if not live:
+            self.cancel(target)
+            self.finish(target, status=TaskStatus.CANCELLED)
+            return False
+        if not self.acquire_slot(task):
+            self.clear_wait_continuation(target, continuation)
+            return False
+        with self._lock:
+            current = self._tasks.get(target)
+            same_continuation = (
+                self._wait_continuations.get(target) is continuation
+            )
+            if (
+                current is not task
+                or task.status is not TaskStatus.WAITING
+                or task.cancel.is_set()
+                or not same_continuation
+            ):
+                valid = False
+            else:
+                task.status = TaskStatus.RUNNING
+                task.step = ""
+                valid = True
+                view = _view(task)
+        if not valid:
+            self.release_slot(task)
+            self.cancel(target)
+            self.finish(target, status=TaskStatus.CANCELLED)
+            return False
+        self._ledger_mark(target, state=TaskStatus.RUNNING.value, step="")
+        self._publish_view("task.updated", view)
+        return True
+
     def prepare_finish(self, task_id: str, result: str = "", error: str = "",
                        status: TaskStatus | None = None,
                        completion_owner: str | None = None) -> TaskView | None:
@@ -422,6 +544,7 @@ class TaskRegistry:
                 task.started_at = task.finished_at
             task.step = ""
             task._finish_pending = True
+            self._wait_continuations.pop(task_id, None)
             return _view(task)
 
 
@@ -483,23 +606,28 @@ class TaskRegistry:
             task.step = ""
             task._finish_pending = False
             task._finished_published = True
+            self._wait_continuations.pop(task_id, None)
             view = _view(task)
         self._ledger_finish(task_id, ok=status == TaskStatus.DONE)
         self._publish_view("task.finished", view)
         return view
 
     def cancel(self, task_id: str) -> bool:
-        """Kooperatif: set event. Task QUEUED langsung jadi CANCELLED karena
-        belum ada pekerjaan yang perlu diberi kesempatan berhenti."""
+        """Kooperatif: set event. Task tanpa worker aktif langsung terminal."""
         with self._lock:
             task = self._tasks.get(task_id)
             if task is None or task.status in TERMINAL_STATES:
                 return False
             task.cancel.set()
-            queued = task.status == TaskStatus.QUEUED and not task._slot
-            view_task = task
-        self._publish("task.updated", view_task)
-        if queued:
+            immediate = (
+                task.status in {TaskStatus.QUEUED, TaskStatus.WAITING}
+                and not task._slot
+            )
+            if task.status is TaskStatus.WAITING:
+                self._wait_continuations.pop(task_id, None)
+            view = _view(task)
+        self._publish_view("task.updated", view)
+        if immediate:
             self.finish(task_id, status=TaskStatus.CANCELLED)
         return True
 
@@ -565,12 +693,14 @@ class TaskRegistry:
             drop = done[:-keep_terminal] if len(done) > keep_terminal else []
             for t in drop:
                 self._tasks.pop(t.id, None)
+                self._wait_continuations.pop(t.id, None)
             return len(drop)
 
     def clear(self) -> None:
         """Hanya untuk tes — buang seluruh state."""
         with self._lock:
             self._tasks.clear()
+            self._wait_continuations.clear()
             self._resource_locks.clear()
             self._sem = threading.BoundedSemaphore(max(1, self._max_concurrent))
             self._recovery_views = []

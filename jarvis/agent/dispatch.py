@@ -146,6 +146,10 @@ def cancel_all() -> int:
     with _active_lock:
         handles = list(_active.values())
     for h in handles:
+        bg = h.bg_task
+        if bg is not None:
+            _revoke_execution_grants(bg.id)
+            h.session.execution_grant_id = ""
         h.cancel()
     return len(handles)
 
@@ -165,6 +169,8 @@ def cancel_task(task_id: str) -> bool:
         handles = [h for h in _active.values()
                    if getattr(getattr(h, "bg_task", None), "id", None) == tid]
     for handle in handles:
+        _revoke_execution_grants(tid)
+        handle.session.execution_grant_id = ""
         handle.cancel()
     return bool(handles)
 
@@ -498,13 +504,28 @@ def _clear_desktop_safe_session(session_id: str) -> None:
         )
 
 
+def _revoke_execution_grants(task_id: str) -> None:
+    """Revoke every process-local grant when its registry task terminates."""
+
+    try:
+        from jarvis.agent.execution_grants import MANAGER
+        MANAGER.revoke_task(task_id)
+    except Exception as exc:                                # noqa: BLE001
+        _logger.warning(
+            "agent.dispatch.execution_grant_cleanup_failed",
+            id=str(task_id)[:32],
+            error=type(exc).__name__,
+        )
+
+
 def dispatch_task(task: str, on_ack=None, on_done=None, on_error=None,
                   on_progress=None, on_task=None, adapter=None,
                   timeout_s: float | None = None,
                   allowed_tools: list[str] | None = None,
                   context=None, resources=frozenset(),
                   title: str | None = None,
-                  source: str = "") -> "object | None":
+                  source: str = "",
+                  direct_grant_capability_ids=()) -> "object | None":
     """Varian §8.3 yang mengembalikan ``Task`` (atau ``None``) alih-alih bool.
 
     Dipakai permukaan baru (Task Deck, tool suara ``task_start``) yang butuh
@@ -516,25 +537,31 @@ def dispatch_task(task: str, on_ack=None, on_done=None, on_error=None,
     ``tests/test_execution_context.py:57`` ``is False``), jadi tanda tangan
     §8.3 diterapkan sebagai fungsi BARU, bukan penggantian.
     """
-    return _dispatch(task, on_ack=on_ack, on_done=on_done, on_error=on_error,
-                     on_progress=on_progress, on_task=on_task, adapter=adapter,
-                     timeout_s=timeout_s, allowed_tools=allowed_tools,
-                     context=context, resources=resources, title=title,
-                     source=source)
+    return _dispatch(
+        task, on_ack=on_ack, on_done=on_done, on_error=on_error,
+        on_progress=on_progress, on_task=on_task, adapter=adapter,
+        timeout_s=timeout_s, allowed_tools=allowed_tools,
+        context=context, resources=resources, title=title, source=source,
+        direct_grant_capability_ids=direct_grant_capability_ids,
+    )
 
 
 def dispatch_async(task: str, on_ack=None, on_done=None, on_error=None,
                    adapter=None, timeout_s: float | None = None,
                    allowed_tools: list[str] | None = None,
                    context=None, on_progress=None, on_task=None,
-                   resources=frozenset(), source: str = "") -> bool:
+                   resources=frozenset(), source: str = "",
+                   direct_grant_capability_ids=()) -> bool:
     """Mulai task agent di background. False bila agent tidak tersedia ATAU
     task sama masih berjalan. Callback dipanggil dari worker thread —
     marshal ke UI thread adalah tanggung jawab caller (sama dengan Hermes)."""
-    return _dispatch(task, on_ack=on_ack, on_done=on_done, on_error=on_error,
-                     on_progress=on_progress, on_task=on_task, adapter=adapter,
-                     timeout_s=timeout_s, allowed_tools=allowed_tools,
-                     context=context, resources=resources, source=source) is not None
+    return _dispatch(
+        task, on_ack=on_ack, on_done=on_done, on_error=on_error,
+        on_progress=on_progress, on_task=on_task, adapter=adapter,
+        timeout_s=timeout_s, allowed_tools=allowed_tools,
+        context=context, resources=resources, source=source,
+        direct_grant_capability_ids=direct_grant_capability_ids,
+    ) is not None
 
 
 def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
@@ -543,7 +570,7 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
               allowed_tools: list[str] | None = None,
               context=None, resources=frozenset(),
               title: str | None = None,
-              source: str = ""):
+              source: str = "", direct_grant_capability_ids=()):
     if not available():
         _logger.warning("agent.dispatch.unavailable", task=task[:80])
         return None
@@ -609,6 +636,62 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
         handle = _active.get(k)
         if handle is not None:
             handle.bg_task = bg_task
+
+    requested_direct_caps = frozenset(
+        str(item).strip() for item in (direct_grant_capability_ids or ())
+        if str(item).strip()
+    )
+    if requested_direct_caps:
+        failure = ""
+        try:
+            from jarvis.agent.capabilities import REGISTRY as capabilities
+            eligible = {
+                descriptor.id for descriptor in capabilities.descriptors()
+                if descriptor.direct_grant
+            }
+            if not requested_direct_caps.issubset(eligible):
+                failure = "direct grant capability denied"
+                raise ValueError(failure)
+            trace_id = str(getattr(context, "trace_id", "") or "")
+            if not trace_id:
+                failure = "direct grant trace required"
+                raise ValueError(failure)
+            from jarvis.agent.execution_grants import (
+                MANAGER as execution_grants,
+                PURPOSE_DIRECT_EXECUTION,
+            )
+            grant = execution_grants.issue(
+                purpose=PURPOSE_DIRECT_EXECUTION,
+                task_id=bg_task.id,
+                trace_id=trace_id,
+                capability_ids=requested_direct_caps,
+                ttl_s=min(
+                    float(timeout_s or config.get("agent.task_timeout_s", 900)),
+                    900.0,
+                ),
+                uses=max(1, len(requested_direct_caps)),
+                generation=0,
+            )
+            session.execution_grant_id = grant.id
+            if session.cancelled:
+                failure = "direct grant task cancelled"
+                raise RuntimeError(failure)
+        except Exception as exc:                               # noqa: BLE001
+            _revoke_execution_grants(bg_task.id)
+            session.execution_grant_id = ""
+            REGISTRY.finish(
+                bg_task.id,
+                error=failure or "direct grant unavailable",
+                completion_owner="caller",
+            )
+            with _active_lock:
+                _active.pop(k, None)
+            _logger.warning(
+                "agent.dispatch.direct_grant_failed",
+                id=bg_task.id,
+                error=type(exc).__name__,
+            )
+            return None
 
     scoped = getattr(adapter, "scoped", None)
     if callable(scoped):
@@ -690,6 +773,8 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
                 kind="final",
                 speech_enabled=False,
             )
+            _revoke_execution_grants(bg_task.id)
+            session.execution_grant_id = ""
             with _active_lock:
                 _active.pop(k, None)
             return
@@ -808,6 +893,8 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
             _release_browser_session(session.id)
             _release_computer_session(session.id)
             _clear_desktop_safe_session(session.id)
+            _revoke_execution_grants(bg_task.id)
+            session.execution_grant_id = ""
             with _active_lock:
                 _active.pop(k, None)
 

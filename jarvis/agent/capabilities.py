@@ -15,6 +15,45 @@ class CapabilityDescriptor:
     risk: str
     timeout_s: float
     enabled: bool = True
+    direct_grant: bool = False
+
+
+# Explicit opt-in only. This table is intentionally small and reviewable:
+# read-only T0/T1 capabilities with no account mutation or external side effect.
+# Synthesized local descriptors never inherit eligibility from their name.
+_DIRECT_GRANT_IDS = frozenset({
+    "web.web_search",
+    "web.web_extract",
+    "web.yt_search_data",
+    "web.yt_video_info",
+    "web.yt_trending",
+    "memory.memory_search",
+    "gws_read.gmail_safe_summary",
+    "gws_read.gcal_safe_agenda",
+    "gws_read.morning_briefing",
+})
+
+
+def _validate_direct_grant(descriptor: CapabilityDescriptor) -> None:
+    if not descriptor.direct_grant:
+        return
+    if descriptor.id not in _DIRECT_GRANT_IDS:
+        raise ValueError(f"direct grant capability not allowlisted: {descriptor.id}")
+    if str(descriptor.risk).casefold() != "low":
+        raise ValueError(f"direct grant requires low risk: {descriptor.id}")
+    # The catalog is an additional boundary, never a substitute for policy.
+    probe = ExecutionContext.create(
+        source="agent",
+        actor_id="local-direct-grant-validation",
+        session_id="capability-validation",
+        surface="desktop",
+        toolsets={descriptor.toolset},
+    )
+    decision = policy.decide(
+        probe, capability=descriptor.id, risk=descriptor.risk,
+    )
+    if not decision.allowed or decision.needs_approval:
+        raise ValueError(f"direct grant policy denied: {descriptor.id}")
 
 
 class CapabilityRegistry:
@@ -24,6 +63,7 @@ class CapabilityRegistry:
     def register(self, descriptor: CapabilityDescriptor) -> None:
         if descriptor.id in self._items:
             raise ValueError(f"capability duplicate: {descriptor.id}")
+        _validate_direct_grant(descriptor)
         self._items[descriptor.id] = descriptor
 
     def descriptors(self) -> list[CapabilityDescriptor]:
@@ -106,11 +146,16 @@ for _descriptor in (
     CapabilityDescriptor("desktop_safe.desktop_safe_toggle", "desktop_safe_toggle", "desktop_safe", "medium", 30),
     CapabilityDescriptor("desktop_safe.desktop_safe_set_content_title", "desktop_safe_set_content_title", "desktop_safe", "medium", 30),
     CapabilityDescriptor("desktop_safe.desktop_safe_reorder_scene", "desktop_safe_reorder_scene", "desktop_safe", "medium", 30),
-    CapabilityDescriptor("web.web_search", "web_search", "web", "low", 45),
-    CapabilityDescriptor("web.web_extract", "web_extract", "web", "low", 60),
-    CapabilityDescriptor("web.yt_search_data", "yt_search_data", "web", "low", 30),
-    CapabilityDescriptor("web.yt_video_info", "yt_video_info", "web", "low", 20),
-    CapabilityDescriptor("web.yt_trending", "yt_trending", "web", "low", 20),
+    CapabilityDescriptor("web.web_search", "web_search", "web", "low", 45,
+                         direct_grant=True),
+    CapabilityDescriptor("web.web_extract", "web_extract", "web", "low", 60,
+                         direct_grant=True),
+    CapabilityDescriptor("web.yt_search_data", "yt_search_data", "web", "low", 30,
+                         direct_grant=True),
+    CapabilityDescriptor("web.yt_video_info", "yt_video_info", "web", "low", 20,
+                         direct_grant=True),
+    CapabilityDescriptor("web.yt_trending", "yt_trending", "web", "low", 20,
+                         direct_grant=True),
     CapabilityDescriptor("image.image_generate", "image_generate", "image",
                          "medium", 180),
     CapabilityDescriptor("skills.skill_list", "skill_list", "skills", "low", 15),
@@ -118,7 +163,7 @@ for _descriptor in (
     CapabilityDescriptor("skills.skill_manage", "skill_manage", "skills",
                          "medium", 15),
     CapabilityDescriptor("memory.memory_search", "memory_search", "memory",
-                         "low", 30),
+                         "low", 30, direct_grant=True),
     CapabilityDescriptor("memory.memory_write", "memory_write", "memory",
                          "medium", 30),
     CapabilityDescriptor("memory.memory_update", "memory_update", "memory",
@@ -126,8 +171,11 @@ for _descriptor in (
     CapabilityDescriptor("memory.memory_forget", "memory_forget", "memory",
                          "medium", 30),
     # Fase 15A: paired remote receives only privacy-tiered GWS read models.
-    CapabilityDescriptor("gws_read.gmail_safe_summary", "gmail_safe_summary", "gws_read", "low", 45),
-    CapabilityDescriptor("gws_read.gcal_safe_agenda", "gcal_safe_agenda", "gws_read", "low", 30),
-    CapabilityDescriptor("gws_read.morning_briefing", "morning_briefing", "gws_read", "low", 45),
+    CapabilityDescriptor("gws_read.gmail_safe_summary", "gmail_safe_summary",
+                         "gws_read", "low", 45, direct_grant=True),
+    CapabilityDescriptor("gws_read.gcal_safe_agenda", "gcal_safe_agenda",
+                         "gws_read", "low", 30, direct_grant=True),
+    CapabilityDescriptor("gws_read.morning_briefing", "morning_briefing",
+                         "gws_read", "low", 45, direct_grant=True),
 ):
     REGISTRY.register(_descriptor)

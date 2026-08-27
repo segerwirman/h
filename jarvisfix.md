@@ -7074,3 +7074,78 @@ menyentuh state konfirmasi atau ingress.
 Mulai Task 4 dengan menambah metadata `direct_grant=False` yang fail-closed dan
 eligibility table eksplisit hanya untuk sedikit capability T0/T1 read-only;
 jangan mengubah policy global, approval high/critical, atau registry ownership.
+
+## Checkpoint B — direct grants + resource-aware WAITING (2026-08-27)
+
+**Status:** Tasks 4–6 selesai dengan bukti **offline/fake**, belum `live-proven`.
+Tidak ada credential/keyring, network, provider, Telegram nyata, browser, UI,
+audio, Gemini Live, desktop automation, atau social API yang dijalankan.
+
+### Perubahan yang diselesaikan
+
+1. **Eligibility direct grant fail-closed.** `CapabilityDescriptor` memperoleh
+   `direct_grant=False`. Hanya sembilan capability read-only risiko rendah yang
+   berada di allowlist eksplisit: pencarian/ekstraksi web, metadata YouTube,
+   pencarian memori, dan tiga ringkasan GWS privat. Descriptor lokal hasil
+   sintesis tidak pernah mewarisi eligibility. Registrasi menolak id tak dikenal,
+   risiko selain low, policy denial, dan policy yang masih meminta approval.
+2. **Grant eksekusi hanya process-local.** `execution_grants.py` memiliki store
+   terkunci dan bounded dengan clock terinjeksi. Grant terikat persis ke purpose,
+   registry task id nyata, trace id, capability id, expiry, use count, dan
+   generation. `direct_execution` tidak dapat memenuhi
+   `communication_override`. Pemakaian dikonsumsi atomik; expiry/revoke langsung
+   gagal tertutup. Bentuk objek hanya memuat identifier/scope—tanpa passphrase,
+   raw args, prompt, continuation, atau secret.
+3. **Binding dan lifecycle dispatch.** Direct grant baru diterbitkan setelah
+   `REGISTRY.submit()` memberi `bg_task.id` nyata. Kegagalan issuance
+   men-terminalkan task sebagai failed, membersihkan handle, dan tidak memulai
+   worker. Grant dicabut saat cancel satu/semua task, saat batal selagi antre,
+   timeout/terminal cleanup, dan explicit manager revoke; session hanya memegang
+   opaque grant id dan mengosongkannya saat revoke.
+4. **WAITING melepaskan authority sumber daya.** `TaskRegistry.begin_wait()`
+   hanya menerima task RUNNING yang punya opaque process-local continuation dan
+   reason code dari set aman; ia beralih ke WAITING lalu melepas semaphore dan
+   resource lewat `release_slot()`. `resume_wait()` mewajibkan continuation yang
+   sama masih hidup dan memperoleh kembali slot/resource lewat `acquire_slot()`.
+   Continuation hilang/mismatch membuat task CANCELLED, bukan menggantung.
+   Cancel WAITING langsung terminal dan menghapus continuation.
+5. **Ledger tetap metadata-only.** WAITING hanya menulis classification code aman
+   (`captcha_handoff`, `communication_auth`, atau `human_input`) pada `step`.
+   Bahkan pemanggilan langsung ledger dengan step bebas disanitasi menjadi
+   `waiting`; tidak ada args, semantic reference, CAPTCHA content, hasil mentah,
+   passphrase, ataupun continuation yang dipersistenkan.
+
+### Bukti offline aktual
+
+| Pemeriksaan | Hasil |
+|---|---:|
+| `pytest tests/test_execution_grants.py tests/test_task_wait_resume.py -q` | **26 passed** |
+| Capability/registry/ledger/dispatch/context/speech regression terpilih | **58 passed** |
+| Gabungan acceptance + regression Checkpoint B | **84 passed** |
+| `python scripts/verify_frozen.py` | **FROZEN integrity: OK** (10 files, baseline `094b696`) |
+| `git diff --check` seluruh working tree | **clean** (tanpa output) |
+| Grep guard modul baru/lifecycle | Tidak ada passphrase-shaped constant; kemunculan hanya komentar batas keamanan/opaque token |
+
+### Batas jujur
+
+- Semua bukti adalah unit/regression test offline dengan fake clock, registry,
+  thread, bus, ledger, dan execution context; ini bukan validasi live.
+- Direct grant belum dikonsumsi oleh `registry.execute()`; enforcement itu memang
+  Task 9 setelah communication mode dan local authorization tersedia. Checkpoint
+  ini hanya membangun eligibility, binding nyata, dan lifecycle process-local.
+- WAITING/resume baru menyediakan lifecycle/resource primitive. CAPTCHA detector,
+  semantic-reference revocation, local human notification, marker-gone check,
+  dan fresh reobserve adalah Task 14 dan belum diklaim selesai.
+- `jarvis/agent/capabilities.py` dan `tests/test_agent_tasks.py` sudah dirty
+  sebelum Tasks 4–6 dimulai. Tambahan descriptor video pada `capabilities.py`
+  serta seluruh perubahan `tests/test_agent_tasks.py` bukan bagian Checkpoint B
+  dan tidak di-stage. Tidak ada reset/restore/clean/stash; staging tetap
+  parsial/eksplisit agar pekerjaan user yang tidak terkait tetap utuh.
+- Tidak ada live validation yang dijalankan dan tidak ada credential yang dibaca,
+  dicetak, atau dipindahkan ke config/prompt/log/model context.
+
+### Langkah aman berikutnya
+
+Audit dan stage hanya hunk Task 4–6, commit Checkpoint B secara eksplisit, lalu
+mulai Task 7 pada owner communication-mode dengan fake bridge lifecycle; jangan
+menyentuh audio device atau WhatsApp Web nyata tanpa otorisasi live terpisah.
