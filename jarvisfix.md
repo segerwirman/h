@@ -6958,3 +6958,119 @@ Tinjau proposal P1–P3 (N-1 speech-cutting, N-2 cancel gesture, N-3 semaphore
 konkurensi) di `docs/NEXTJARVIS_AUDIT.md`, lalu berikan otorisasi terpisah
 per item sebelum implementasi apa pun. Jangan memulai P2 sebelum P1
 diotorisasi dan diverifikasi hijau.
+
+## P1-N1-N2 — Resolved (2026-08-25)
+
+**Implementasi:** N-1 (speech-gate seam `voice_speech_gate.py`) + N-2 (cancel icon + handler tunggal di `CommandActionsMixin`) selesai, 11/11 test offline hijau. FROZEN integrity: OK.
+
+**Jalankan focused test:**
+```bash
+QT_QPA_PLATFORM=offscreen python -m pytest tests/test_n1_n2_audit_fixes.py \
+    tests/test_gui_p5c_action_focus_confirm.py tests/test_voice_playback_fix.py \
+    --basetemp="$TEMP/jarvis_n1n2_focused" -q
+# Expected: 48 + 11 = 59 passed
+```
+
+**Hasil fokus test (2026-08-25):**
+| file | passed | durasi |
+|---|---|---|
+| `test_n1_n2_audit_fixes.py` | **11** | 0.66s |
+| `test_gui_p5c_action_focus_confirm.py` | **48** | 18.78s |
+| `test_voice_playback_fix.py` | included in above | |
+| **Total** | **59** | ~20s |
+
+**FROZEN & diff check:**
+```bash
+python scripts/verify_frozen.py
+# Output: FROZEN integrity: OK (10 files, baseline 094b696)
+
+git diff --check
+# Output: (clean — no whitespace errors)
+```
+
+**Files changed:**
+- `jarvis/integrations/voice_speech_gate.py` — NEW (seam installer)
+- `jarvis/main.py` — ADD seam call after `voice_playback_fix`
+- `jarvis/ui/actionpanel.py` — add `"cancel"` to `_ICONS`, signal, special red-styled button
+- `jarvis/ui/window_actions.py` — `CommandActionsMixin._on_cancel_tasks_clicked` handler
+- `jarvis/ui/window_panels.py` — remove duplicate `_request_cancel_tasks` handler (konsolidasi ke satu owner)
+- `jarvis/ui/window.py` — wiring line 321: `self.action_panel.cancel_clicked.connect(self._on_cancel_tasks_clicked)`
+- `config.yaml` — `action_panel.icons` sudah ada `"cancel"` (prior edit)
+
+**Konflik diperbaiki:** Awalnya dua handler terhubung ke `cancel_clicked` → dua kali `dispatch.cancel_all()` per klik. Duplikat di `WindowPanelsMixin` dihapus; owner tunggal di `CommandActionsMixin` dengan exception safety + notification blip + speech via SpeechQueue §28.
+
+**Evidence labels:** N-1/N-2 resolved, `focused-tested`. Belum `live-proven` (butuh operational authorization untuk run live tanpa provider/network/audio).
+
+### Rekomendasi langkah aman berikutnya
+
+Tinjau diff perubahan N-1/N-2; bila setuju, staging commit terpisah:
+1. `git add jarvis/integrations/voice_speech_gate.py jarvis/ui/*.py config.yaml`
+2. `git commit -m "N-1/N-2: speech gate + cancel gesture (audit 2026-08-24)"`
+3. Jalankan full suite (`--ignore=test_gui_p5a_facade_input_char.py`) sebelum push
+4. Update audit doc status → RESOLVED + evidence label (sudah dilakukan)
+
+Jangan start live validation sebelum approved oleh user.
+
+## Checkpoint A — Telegram single poller + health + confirmation owner (2026-08-27)
+
+**Status:** Tasks 1–3 selesai dengan bukti **offline/fake**, belum `live-proven`.
+Tidak ada poller Telegram nyata, network, credential/keyring, browser, GUI,
+audio, Gemini Live, provider, atau social API yang dijalankan.
+
+### Perubahan yang diselesaikan
+
+1. **Satu owner `getUpdates` antar proses.** `poller_lease.py` memakai
+   create-exclusive lockfile. Proses kedua gagal cepat dengan status
+   `lease_held`; lease PID hidup tidak dicuri. PID mati dapat diambil alih;
+   liveness yang tidak pasti baru boleh takeover setelah umur bounded.
+   Metadata hanya PID, process incarnation, dan timestamp non-rahasia—tanpa
+   token, URL, atau string turunan token.
+2. **Health Telegram jujur dan bounded.** PTB memasang async instance error
+   handler. `Conflict` menjadi `conflict`, memanggil `stop_running()`, dan
+   menghentikan contention; error lain menjadi `error` dengan detail nama
+   kelas saja. State diproyeksikan melalui `telegram_control.status()` dan
+   `OpsAPI.gateway_overview()`; `GatewayManager.health()` memakai kontrak
+   adapter yang sama.
+3. **Satu pemilik state konfirmasi.** Loose dictionaries diganti
+   `ConfirmationStore` ber-`RLock`, `PendingConfirmation`, reverse index, expiry,
+   replacement cancellation, dan resolver idempotent. `/confirm`, callback
+   button, serta alias ketik exact (`ya|iya|lanjut`, `tidak|batal`) memakai
+   cleanup path yang sama. Alias dikonsumsi sebelum clarification/gateway task
+   ingress; teks non-exact tetap mengalir seperti sebelumnya. Callback juga
+   terikat ke chat pemilik konfirmasi.
+
+### Bukti offline aktual
+
+| Pemeriksaan | Hasil |
+|---|---:|
+| Focused health + confirmation | **34 passed** (`1.17s`) |
+| Checkpoint A + seluruh regression Telegram terpilih | **105 passed** (`15.65s`) |
+| `python scripts/verify_frozen.py` | **FROZEN integrity: OK** (10 files, baseline `094b696`) |
+| `git diff --check` pada path Checkpoint A | **clean** (tanpa output) |
+
+Suite 105-test mencakup poller lease, conflict health, confirmation state,
+T0/T1 policy, rollout, setup singleton/handler, remote capabilities/setup,
+proposal ingress, remote read delivery, gateway migration, dan Phase 8 Telegram
+Control. Satu regression fixture gateway lama diperketat dengan method
+`allowed()` karena `_on_text` kini selalu menjalankan authorization sebelum
+menyentuh state konfirmasi atau ingress.
+
+### Batas jujur
+
+- Bukti di atas hanya test offline dengan fake PID/clock/PTB/update/manager;
+  bukan pembuktian bahwa bot nyata sudah menerima/membalas pesan.
+- Reproduksi konflik dua consumer nyata sengaja **tidak dijalankan**; itu bagian
+  live phase terpisah yang memerlukan otorisasi baru.
+- Working tree sudah berisi banyak perubahan milik user sebelum checkpoint.
+  Tidak ada reset/restore/clean/stash; commit checkpoint hanya boleh memakai
+  daftar path eksplisit, tidak `git add .` / `git add -A`.
+- Implementasi poller menyimpan timestamp non-rahasia untuk stale detection dan
+  mengizinkan takeover langsung bila PID dipastikan mati. Ini didokumentasikan
+  eksplisit agar tidak disalahartikan sebagai metadata credential atau pencurian
+  lease proses hidup.
+
+### Langkah aman berikutnya
+
+Mulai Task 4 dengan menambah metadata `direct_grant=False` yang fail-closed dan
+eligibility table eksplisit hanya untuk sedikit capability T0/T1 read-only;
+jangan mengubah policy global, approval high/critical, atau registry ownership.

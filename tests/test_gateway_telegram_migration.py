@@ -29,6 +29,9 @@ def test_live_telegram_text_didelegasikan_ke_gateway_manager(monkeypatch):
         def __init__(self):
             self.calls = []
 
+        def allowed(self, platform, actor_id):
+            return (platform, actor_id) == ("telegram", "42")
+
         def receive(self, *args):
             self.calls.append(args)
             return False

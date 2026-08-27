@@ -13,6 +13,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import Future
+from dataclasses import dataclass
 from pathlib import Path
 
 from jarvis.core import config, log
@@ -46,6 +47,24 @@ def polling_options() -> dict[str, object]:
     }
 
 
+def _is_conflict_error(exc: BaseException) -> bool:
+    """Deteksi konflik getUpdates antar proses — sanitasi nama saja.
+
+    `telegram.error.Conflict` bisa terselubung di `HTTPException`/`RetryAfter`
+    atau dikelilingi `CancelledError`; periksa rantai ``__cause__`` juga.
+    Nama kelas aman untuk log/health; pesan TIDAK dipakai (bisa mengandung
+    URL ber-token).
+    """
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if type(cur).__name__ == "Conflict":
+            return True
+        cur = cur.__cause__ or cur.__context__
+    return False
+
+
 def command_menu() -> tuple[tuple[str, str], ...]:
     """Telegram's slash-command menu; descriptions stay accurate remotely."""
     return (
@@ -62,6 +81,255 @@ def command_menu() -> tuple[tuple[str, str], ...]:
         ("session", "Reset sesi percakapan"),
         ("confirm", "Setujui konfirmasi yang menunggu"),
     )
+
+
+_APPROVE_ALIASES = frozenset({"ya", "iya", "lanjut"})
+_DENY_ALIASES = frozenset({"tidak", "batal"})
+
+
+def _normalize_answer(value: object) -> str:
+    return str(value or "").strip().casefold()
+
+
+@dataclass
+class PendingConfirmation:
+    """Satu konfirmasi terstruktur; payload tugas tidak disimpan di sini."""
+
+    qid: str
+    chat_id: int
+    future: Future
+    options: tuple[str, ...]
+    aliases: dict[str, str]
+    expires_at: float
+    task_id: str = ""
+    trace_id: str = ""
+    state: str = "pending"
+    answer: str | None = None
+
+
+@dataclass(frozen=True)
+class ConfirmationResolution:
+    resolved: bool
+    qid: str = ""
+    answer: str | None = None
+    state: str = ""
+
+
+class ConfirmationStore:
+    """Pemilik locked untuk indeks dan lifecycle konfirmasi Telegram."""
+
+    def __init__(self, *, now_fn=time.monotonic) -> None:
+        self._now_fn = now_fn
+        self._lock = threading.RLock()
+        self._by_qid: dict[str, PendingConfirmation] = {}
+        self._by_chat: dict[int, str] = {}
+
+    @staticmethod
+    def _aliases(options: tuple[str, ...]) -> dict[str, str]:
+        approve = next(
+            (item for item in options
+             if _normalize_answer(item) in _APPROVE_ALIASES),
+            None,
+        )
+        deny = next(
+            (item for item in options
+             if _normalize_answer(item) in _DENY_ALIASES),
+            None,
+        )
+        aliases: dict[str, str] = {}
+        if approve is not None:
+            aliases.update({alias: approve for alias in _APPROVE_ALIASES})
+        if deny is not None:
+            aliases.update({alias: deny for alias in _DENY_ALIASES})
+        return aliases
+
+    @staticmethod
+    def _complete(pending: PendingConfirmation) -> None:
+        if pending.future.done():
+            return
+        try:
+            pending.future.set_result(pending.answer)
+        except Exception:  # noqa: BLE001 - resolver lain mungkin menang
+            pass
+
+    def register(
+        self,
+        chat_id: int,
+        options: list[str] | tuple[str, ...],
+        timeout: float,
+        *,
+        qid: str | None = None,
+        future: Future | None = None,
+        task_id: str = "",
+        trace_id: str = "",
+    ) -> PendingConfirmation:
+        canonical = tuple(str(item) for item in options)
+        pending = PendingConfirmation(
+            qid=qid or uuid.uuid4().hex[:8],
+            chat_id=int(chat_id),
+            future=future or Future(),
+            options=canonical,
+            aliases=self._aliases(canonical),
+            expires_at=self._now_fn() + max(0.0, float(timeout)),
+            task_id=str(task_id or ""),
+            trace_id=str(trace_id or ""),
+        )
+        replaced: PendingConfirmation | None = None
+        with self._lock:
+            previous_qid = self._by_chat.get(pending.chat_id)
+            if previous_qid is not None:
+                replaced = self._take_locked(
+                    previous_qid, answer=None, state="cancelled",
+                    validate=False,
+                )
+            self._by_qid[pending.qid] = pending
+            self._by_chat[pending.chat_id] = pending.qid
+        if replaced is not None:
+            self._complete(replaced)
+        return pending
+
+    def _canonical_answer(
+        self, pending: PendingConfirmation, answer: object,
+    ) -> str | None:
+        normalized = _normalize_answer(answer)
+        if normalized in pending.aliases:
+            return pending.aliases[normalized]
+        exact = [item for item in pending.options
+                 if _normalize_answer(item) == normalized]
+        if len(exact) == 1:
+            return exact[0]
+        # PTB callback_data mempertahankan kontrak lama dengan label yang
+        # dipotong 24 karakter. Terima hanya bila hasilnya tetap unik.
+        truncated = [item for item in pending.options
+                     if _normalize_answer(item[:24]) == normalized]
+        return truncated[0] if len(truncated) == 1 else None
+
+    def _take_locked(
+        self,
+        qid: str,
+        *,
+        answer: object,
+        state: str,
+        validate: bool,
+    ) -> PendingConfirmation | None:
+        pending = self._by_qid.get(qid)
+        if pending is None or pending.state != "pending":
+            return None
+        canonical = (
+            self._canonical_answer(pending, answer)
+            if validate else None
+        )
+        if validate and canonical is None:
+            return None
+        self._by_qid.pop(qid, None)
+        if self._by_chat.get(pending.chat_id) == qid:
+            self._by_chat.pop(pending.chat_id, None)
+        pending.answer = canonical
+        pending.state = state
+        return pending
+
+    def resolve(
+        self, qid: str, answer: object, *, chat_id: int | None = None,
+    ) -> ConfirmationResolution:
+        expired = False
+        with self._lock:
+            current = self._by_qid.get(str(qid))
+            if current is None:
+                return ConfirmationResolution(False)
+            if chat_id is not None and current.chat_id != int(chat_id):
+                return ConfirmationResolution(False)
+            if self._now_fn() >= current.expires_at:
+                pending = self._take_locked(
+                    current.qid, answer=None, state="expired", validate=False,
+                )
+                expired = True
+            else:
+                pending = self._take_locked(
+                    current.qid, answer=answer, state="resolved", validate=True,
+                )
+        if pending is None:
+            return ConfirmationResolution(False)
+        self._complete(pending)
+        if expired:
+            return ConfirmationResolution(False)
+        return ConfirmationResolution(
+            True, pending.qid, pending.answer, pending.state,
+        )
+
+    def resolve_alias(
+        self, chat_id: int, answer: object,
+    ) -> ConfirmationResolution:
+        normalized = _normalize_answer(answer)
+        expired = False
+        with self._lock:
+            qid = self._by_chat.get(int(chat_id))
+            pending = self._by_qid.get(qid or "")
+            if pending is None:
+                return ConfirmationResolution(False)
+            if self._now_fn() >= pending.expires_at:
+                taken = self._take_locked(
+                    pending.qid,
+                    answer=None,
+                    state="expired",
+                    validate=False,
+                )
+                expired = True
+            elif normalized not in pending.aliases:
+                return ConfirmationResolution(False)
+            else:
+                taken = self._take_locked(
+                    pending.qid,
+                    answer=normalized,
+                    state="resolved",
+                    validate=True,
+                )
+        if taken is None:
+            return ConfirmationResolution(False)
+        self._complete(taken)
+        if expired:
+            return ConfirmationResolution(False)
+        return ConfirmationResolution(
+            True, taken.qid, taken.answer, taken.state,
+        )
+
+    def cancel(self, qid: str, *, state: str = "cancelled") -> bool:
+        with self._lock:
+            pending = self._take_locked(
+                str(qid), answer=None, state=state, validate=False,
+            )
+        if pending is None:
+            return False
+        self._complete(pending)
+        return True
+
+    def cancel_chat(self, chat_id: int) -> bool:
+        with self._lock:
+            qid = self._by_chat.get(int(chat_id))
+        return self.cancel(qid) if qid is not None else False
+
+    def expire(self, qid: str, *, force: bool = False) -> bool:
+        with self._lock:
+            pending = self._by_qid.get(str(qid))
+            if pending is None:
+                return False
+            if not force and self._now_fn() < pending.expires_at:
+                return False
+            taken = self._take_locked(
+                pending.qid, answer=None, state="expired", validate=False,
+            )
+        if taken is None:
+            return False
+        self._complete(taken)
+        return True
+
+    def active_for_chat(self, chat_id: int) -> PendingConfirmation | None:
+        with self._lock:
+            qid = self._by_chat.get(int(chat_id))
+            return self._by_qid.get(qid or "")
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._by_qid)
 
 
 class TelegramService:
@@ -83,9 +351,12 @@ class TelegramService:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._app = None
         self.running = False
-        self._pending: dict[str, Future] = {}       # qid → Future jawaban
-        self._pending_chat: dict[str, int] = {}     # qid → chat
-        self._pending_confirm: dict[int, str] = {}  # chat → qid
+        # N-P1 Task 2: status health agregat + alasan sanitasi.
+        # State: connected | conflict | error | stopped | starting
+        self._health_state = "stopped"
+        self._health_detail = ""
+        self._confirmations = ConfirmationStore()
+        self._clarification_lock = threading.RLock()
         self._await_text: dict[int, Future] = {}    # chat → Future teks bebas
         self._chat_sessions: dict[int, str] = {}    # konteks logis adapter
         from jarvis.agent.remote_setup import get_setup_queue
@@ -99,7 +370,14 @@ class TelegramService:
         self._gateway_manager = gateway_manager
 
     def health(self) -> dict[str, str]:
-        return {"state": "connected" if self.running else "stopped"}
+        """Status sanitasi: tanpa token/URL. Detail hanya nama kelas error."""
+        state = self._health_state
+        if self.running and state in ("stopped", "starting"):
+            state = "connected"
+        out = {"state": state}
+        if self._health_detail:
+            out["detail"] = self._health_detail
+        return out
 
     def handle_gateway_inbound(self, inbound) -> None:
         """Resume normalized ingress only after GatewayManager accepts it."""
@@ -165,7 +443,22 @@ class TelegramService:
 
     def _main(self) -> None:
         loop: asyncio.AbstractEventLoop | None = None
+        lease = None
         try:
+            # N-P1 Task 1: single-owner antar proses. Proses kedua yang
+            # gagal memegang lease TIDAK memulai polling sama sekali —
+            # mencegah "terminated by other getUpdates request" berulang.
+            from jarvis.integrations.poller_lease import acquire_default
+            lease_res = acquire_default()
+            if not lease_res.acquired:
+                self._health_state = "conflict"
+                self._health_detail = "lease_held_by_other_process"
+                _logger.error("telegram.poller_lease_held",
+                              reason=lease_res.reason)
+                return
+            lease = lease_res.lease
+            self._health_state = "starting"
+
             from telegram import Update
             from telegram.ext import (Application, CallbackQueryHandler,
                                       CommandHandler, MessageHandler,
@@ -197,16 +490,35 @@ class TelegramService:
                 filters.TEXT & ~filters.COMMAND, self._on_text))
             app.add_handler(MessageHandler(filters.COMMAND,
                                            self._on_unknown_command))
+            # N-P1 Task 2: handler error PTB — tanpa ini PTB mencatat
+            # "No error handlers are registered" dan kegagalan tersembunyi.
+            app.add_error_handler(self._on_ptb_error)
 
             self.running = True
+            self._health_state = "connected"
             _logger.info("telegram.started")
             options = polling_options()
             options["allowed_updates"] = Update.ALL_TYPES
             app.run_polling(**options)
         except Exception as e:                               # noqa: BLE001
+            self.running = False
+            # N-P1 Task 2: klasifikasi sanitasi — konflik vs error lain.
+            if _is_conflict_error(e):
+                self._health_state = "conflict"
+                self._health_detail = "getUpdates_conflict"
+            else:
+                self._health_state = "error"
+                self._health_detail = type(e).__name__
             _logger.error("telegram.crashed", error=type(e).__name__)
         finally:
             self.running = False
+            if lease is not None:
+                try:
+                    lease.release()
+                except Exception:                            # noqa: BLE001
+                    pass
+            if self._health_state not in ("conflict", "error"):
+                self._health_state = "stopped"
             self._app = None
             self._loop = None
             if loop is not None and not loop.is_running():
@@ -215,6 +527,29 @@ class TelegramService:
                 except Exception:                            # noqa: BLE001
                     pass
             _logger.info("telegram.stopped")
+
+    async def _on_ptb_error(self, update, context) -> None:
+        """Catat error PTB pada instance dan hentikan contention konflik."""
+        exc = getattr(context, "error", None)
+        if exc is None:
+            return
+        conflict = _is_conflict_error(exc)
+        if conflict:
+            self._health_state = "conflict"
+            self._health_detail = "getUpdates_conflict"
+            self.running = False
+            app = self._app
+            if app is not None:
+                try:
+                    app.stop_running()
+                except Exception:                            # noqa: BLE001
+                    pass
+        else:
+            self._health_state = "error"
+            self._health_detail = type(exc).__name__
+        _logger.warning("telegram.ptb_error",
+                        error=type(exc).__name__,
+                        conflict=conflict)
 
     # ── keamanan: middleware pertama di SEMUA handler ─────────────────────
 
@@ -515,17 +850,15 @@ class TelegramService:
     async def _cmd_confirm(self, update, context) -> None:
         if not self._authorized(update):
             return
-        chat_id = update.effective_chat.id
-        qid = self._pending_confirm.pop(chat_id, None)
-        fut = self._pending.pop(qid, None) if qid else None
-        if qid:
-            self._pending_chat.pop(qid, None)
-        if fut is None or fut.done():
+        result = self._confirmations.resolve_alias(
+            update.effective_chat.id, "lanjut",
+        )
+        if not result.resolved:
             await update.message.reply_text(
                 "Tidak ada aksi yang sedang menunggu konfirmasi.")
             return
-        fut.set_result("Lanjut")
-        await update.message.reply_text("Konfirmasi diterima: Lanjut.")
+        await update.message.reply_text(
+            f"Konfirmasi diterima: {result.answer}.")
 
     def _session_id(self, chat_id: int) -> str:
         return self._chat_sessions.setdefault(
@@ -533,17 +866,14 @@ class TelegramService:
 
     def _reset_session(self, chat_id: int) -> str:
         self._chat_sessions[chat_id] = f"tg-{uuid.uuid4().hex[:10]}"
-        waiting = self._await_text.pop(chat_id, None)
+        with self._clarification_lock:
+            waiting = self._await_text.pop(chat_id, None)
         if waiting is not None and not waiting.done():
-            waiting.set_result(None)
-        for qid, pending_chat in list(self._pending_chat.items()):
-            if pending_chat != chat_id:
-                continue
-            future = self._pending.pop(qid, None)
-            self._pending_chat.pop(qid, None)
-            if future is not None and not future.done():
-                future.set_result(None)
-        self._pending_confirm.pop(chat_id, None)
+            try:
+                waiting.set_result(None)
+            except Exception:                                 # noqa: BLE001
+                pass
+        self._confirmations.cancel_chat(chat_id)
         return self._chat_sessions[chat_id]
 
     async def _on_callback(self, update, context) -> None:
@@ -553,14 +883,16 @@ class TelegramService:
         data = q.data or ""
         await q.answer()
         if data.startswith("ask:"):
-            _, qid, answer = data.split(":", 2)
-            fut = self._pending.pop(qid, None)
-            chat_id = self._pending_chat.pop(qid, None)
-            if chat_id is not None and self._pending_confirm.get(chat_id) == qid:
-                self._pending_confirm.pop(chat_id, None)
-            if fut is not None and not fut.done():
-                fut.set_result(answer)
-            await q.edit_message_text(f"{q.message.text}\n→ {answer}")
+            parts = data.split(":", 2)
+            if len(parts) != 3:
+                return
+            _, qid, answer = parts
+            result = self._confirmations.resolve(
+                qid, answer, chat_id=update.effective_chat.id,
+            )
+            if result.resolved:
+                await q.edit_message_text(
+                    f"{q.message.text}\n→ {result.answer}")
             return
         if data.startswith("session:reset:"):
             _, _, expected = data.split(":", 2)
@@ -674,19 +1006,23 @@ class TelegramService:
         await self._handle_task(update, text)
 
     async def _on_text(self, update, context) -> None:
-        if self._gateway_manager is not None:
-            chat_id = update.effective_chat.id
-            waiting = self._await_text.get(chat_id)
-            if waiting is not None and not waiting.done():
-                if self._authorized(update):
-                    self._await_text.pop(chat_id, None)
-                    waiting.set_result((update.message.text or "").strip())
-                return
-            self._receive_gateway_text(update, update.message.text or "")
-            return
         if not self._authorized(update):
             return
         chat_id = update.effective_chat.id
+        text = (update.message.text or "").strip()
+        confirmation = self._confirmations.resolve_alias(chat_id, text)
+        if confirmation.resolved:
+            await update.message.reply_text(
+                f"Konfirmasi diterima: {confirmation.answer}.")
+            return
+        if self._gateway_manager is not None:
+            with self._clarification_lock:
+                waiting = self._await_text.pop(chat_id, None)
+            if waiting is not None and not waiting.done():
+                waiting.set_result(text)
+                return
+            self._receive_gateway_text(update, text)
+            return
         message_id = getattr(update.message, "message_id", "")
         # Telegram always supplies message_id. Compatibility fixtures/legacy
         # callers without one still receive a process-local idempotency key.
@@ -694,7 +1030,6 @@ class TelegramService:
             message_id = f"legacy-{id(update.message)}"
         if not self._gateway_registry.accept_inbound("telegram", message_id, chat_id):
             return
-        text = (update.message.text or "").strip()
         # 15B: exact allowlisted remote request becomes metadata-only local approval.
         from jarvis.agent import remote_proposal_ingress, remote_proposals
         proposal = remote_proposal_ingress.stage_text(
@@ -706,8 +1041,10 @@ class TelegramService:
                         actor_id=f"telegram:{chat_id}", session_id=self._session_id(chat_id))
             await self._reply_text(update.message, "Permintaan menunggu persetujuan desktop lokal.")
             return
-        # jawaban untuk pertanyaan clarify yang menunggu?
-        fut = self._await_text.pop(chat_id, None)
+        # Jawaban teks bebas untuk pertanyaan clarify tetap terpisah dari
+        # confirmation aliases yang sudah dikonsumsi di awal handler.
+        with self._clarification_lock:
+            fut = self._await_text.pop(chat_id, None)
         if fut is not None and not fut.done():
             fut.set_result(text)
             return
@@ -827,41 +1164,42 @@ class TelegramService:
                          options: list[str] | None,
                          timeout: float) -> str | None:
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-        qid = uuid.uuid4().hex[:8]
         fut: Future = Future()
+        pending: PendingConfirmation | None = None
         if options:
-            self._pending[qid] = fut
-            self._pending_chat[qid] = chat_id
-            normalized = {str(option).strip().lower() for option in options}
-            if "lanjut" in normalized and "batal" in normalized:
-                previous = self._pending_confirm.get(chat_id)
-                if previous and previous != qid:
-                    old = self._pending.pop(previous, None)
-                    self._pending_chat.pop(previous, None)
-                    if old is not None and not old.done():
-                        old.set_result(None)
-                self._pending_confirm[chat_id] = qid
+            pending = self._confirmations.register(
+                chat_id, options, timeout, future=fut,
+            )
             kb = InlineKeyboardMarkup([[
                 InlineKeyboardButton(
-                    (("✅ " if str(o).strip().lower() == "lanjut" else
-                      "❌ " if str(o).strip().lower() == "batal" else "")
+                    (("✅ " if _normalize_answer(o) in _APPROVE_ALIASES else
+                      "❌ " if _normalize_answer(o) in _DENY_ALIASES else "")
                      + str(o))[:32],
-                                     callback_data=f"ask:{qid}:{o[:24]}")
+                    callback_data=f"ask:{pending.qid}:{str(o)[:24]}",
+                )
                 for o in options[:3]]])
             self._submit(self._app.bot.send_message(
                 chat_id, f"❓ {question[:3500]}", reply_markup=kb))
         else:
-            self._await_text[chat_id] = fut
+            with self._clarification_lock:
+                previous = self._await_text.get(chat_id)
+                self._await_text[chat_id] = fut
+            if previous is not None and not previous.done():
+                try:
+                    previous.set_result(None)
+                except Exception:                            # noqa: BLE001
+                    pass
             self._submit(self._app.bot.send_message(
                 chat_id, f"❓ {question[:3500]}\n(balas pesan ini)"))
         try:
             return fut.result(timeout=timeout)
         except Exception:                                    # noqa: BLE001
-            self._pending.pop(qid, None)
-            self._pending_chat.pop(qid, None)
-            if self._pending_confirm.get(chat_id) == qid:
-                self._pending_confirm.pop(chat_id, None)
-            self._await_text.pop(chat_id, None)
+            if pending is not None:
+                self._confirmations.expire(pending.qid, force=True)
+            else:
+                with self._clarification_lock:
+                    if self._await_text.get(chat_id) is fut:
+                        self._await_text.pop(chat_id, None)
             return None
 
 

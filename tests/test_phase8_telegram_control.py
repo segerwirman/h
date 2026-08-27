@@ -6,7 +6,6 @@ import inspect
 import os
 import sys
 import types
-from concurrent.futures import Future
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -402,17 +401,15 @@ def test_confirm_command_and_session_reset_are_functional(monkeypatch):
 
     monkeypatch.setattr(telegram.telegram_control, "allowed_ids", lambda: (42,))
     service = telegram.TelegramService()
-    future = Future()
-    service._pending["abc"] = future
-    service._pending_chat["abc"] = 42
-    service._pending_confirm[42] = "abc"
+    pending = service._confirmations.register(
+        42, ["Lanjut", "Batal"], 300, qid="abc")
     update = _update(42)
 
     asyncio.run(service._cmd_confirm(update, SimpleNamespace(args=[])))
     first = service._session_id(42)
     second = service._reset_session(42)
 
-    assert future.result() == "Lanjut"
+    assert pending.future.result() == "Lanjut"
     assert "diterima" in update.message.replies[0].lower()
     assert first != second
 

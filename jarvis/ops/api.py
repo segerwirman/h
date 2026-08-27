@@ -56,9 +56,14 @@ class OpsAPI:
         try:
             from jarvis.integrations import telegram_control
             state = telegram_control.status()
-            telegram = {key: state.get(key) for key in ("state", "configured", "running")}
+            telegram = {
+                key: state.get(key)
+                for key in ("state", "configured", "running",
+                            "runtime_state")
+            }
         except Exception:  # noqa: BLE001
-            telegram = {"state": "unknown", "configured": False, "running": False}
+            telegram = {"state": "unknown", "configured": False,
+                        "running": False, "runtime_state": "unknown"}
         return {"health": health, "telegram": telegram}
 
     def gateway_pairs(self, role: str) -> list[dict] | None:

@@ -234,15 +234,25 @@ def _scrub_legacy_env_file() -> None:
 
 def status() -> dict[str, object]:
     running = False
+    runtime_state = "stopped"
+    runtime_detail = ""
     try:
         from jarvis.agent.adapters.telegram import TelegramService
-        running = TelegramService.get().running
+        svc = TelegramService.get()
+        running = svc.running
+        health = svc.health() or {}
+        runtime_state = str(health.get("state", "stopped"))
+        runtime_detail = str(health.get("detail", ""))
     except Exception:  # noqa: BLE001
         pass
     ready = credentials_ready()
     active = master_enabled()
     gateway_enabled = bool(release_controls.current().get("gateway", False))
-    if running:
+    if runtime_state == "conflict":
+        state = "CONFLICT — proses lain mem-polling bot yang sama"
+    elif runtime_state == "error":
+        state = f"Error — {runtime_detail}" if runtime_detail else "Error"
+    elif running:
         state = "Connected"
     elif ready and active and not gateway_enabled:
         state = "Configured — blocked by gateway release control"
@@ -259,6 +269,7 @@ def status() -> dict[str, object]:
         "master_enabled": active,
         "gateway_enabled": gateway_enabled,
         "running": running,
+        "runtime_state": runtime_state,
         "state": state,
         "blocked_by": (
             "credentials"
