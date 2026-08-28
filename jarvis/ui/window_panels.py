@@ -179,6 +179,59 @@ class WindowPanelsMixin:
         self.notifications.push("Focus Mode", "AKTIF" if active else "nonaktif", "info")
         self.notifications.set_focus_mode(active)
 
+    def _toggle_screen_control(self) -> None:
+        from jarvis.agent import dispatch
+        from jarvis.ui import screen_control
+
+        snapshot = screen_control.COORDINATOR.snapshot()
+        if snapshot.state != screen_control.OFF:
+            screen_control.COORDINATOR.revoke("toggle_off")
+            return
+        if not bool(config.get("screen_control.enabled", False)):
+            self.write_log(
+                "SYS: Screen Control belum diizinkan di konfigurasi lokal.")
+            self.notifications.push(
+                "Screen Control", "Dinonaktifkan di konfigurasi", "warning")
+            return
+        scope = dispatch.screen_control_scope()
+        if scope is None:
+            self.write_log(
+                "SYS: Screen Control memerlukan tepat satu tugas agent aktif.")
+            self.notifications.push(
+                "Screen Control", "Tidak ada satu tugas aktif yang jelas", "warning")
+            return
+        if not screen_control.COORDINATOR.activate(
+            scope.session_id,
+            scope.task_id,
+            ttl_s=screen_control.default_ttl_s(),
+        ):
+            self.write_log(
+                "SYS: Screen Control gagal mengambil otoritas desktop.")
+            self.notifications.push(
+                "Screen Control", "Desktop sedang digunakan", "warning")
+
+    def _on_screen_control_changed(self, data: dict) -> None:
+        active = bool(data.get("active", False))
+        self.action_panel.set_indicator("screen_control", active)
+        self.action_panel.set_button_state(
+            "screen_control",
+            "Screen Control — AKTIF (klik untuk nonaktif)"
+            if active else "Screen Control — kontrol desktop semantik lokal",
+        )
+        reason = str(data.get("reason") or "")
+        if active:
+            message = "AKTIF untuk tugas agent lokal."
+        elif reason != "activated":
+            message = "nonaktif."
+        else:
+            return
+        self.write_log(f"SYS: Screen Control {message}")
+        self.notifications.push(
+            "Screen Control",
+            message,
+            "info" if active else "warning",
+        )
+
     def _toggle_awareness(self) -> None:
         from jarvis.core import screen_awareness
         aw = screen_awareness.get()

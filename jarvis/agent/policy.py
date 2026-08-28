@@ -51,3 +51,33 @@ def desktop_safe_context_error(context, *, capability: str, risk: str = "medium"
     if not decision.allowed:
         return f"desktop_safe_policy_denied:{decision.reason}"
     return ""
+
+
+def screen_control_context_error(context, *, capability: str,
+                                 risk: str = "medium", runtime_session=None) -> str:
+    """Require exact process-local Screen Control session and task ownership."""
+    context_error = desktop_safe_context_error(
+        context,
+        capability=capability,
+        risk=risk,
+        runtime_session=runtime_session,
+    )
+    if context_error:
+        return context_error
+    runtime_session_id = str(getattr(runtime_session, "id", "") or "")
+    runtime_task_id = str(getattr(runtime_session, "registry_task_id", "") or "")
+    if not runtime_session_id or not runtime_task_id:
+        return "screen_control_runtime_task_binding_required"
+    try:
+        from jarvis.ui import screen_control
+
+        snapshot = screen_control.COORDINATOR.snapshot()
+    except Exception:
+        return "screen_control_state_unavailable"
+    if snapshot.state != screen_control.ACTIVE:
+        return "screen_control_not_active"
+    if str(snapshot.session_id or "") != runtime_session_id:
+        return "screen_control_session_mismatch"
+    if str(snapshot.task_id or "") != runtime_task_id:
+        return "screen_control_task_mismatch"
+    return ""

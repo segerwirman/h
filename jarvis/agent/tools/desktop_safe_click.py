@@ -12,17 +12,20 @@ from dataclasses import dataclass
 from functools import wraps
 from threading import RLock
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from jarvis.agent.base import Tool, ToolResult
 from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame, SafeClickPlan
 from jarvis.automation.cua_safety import CuaSafetyGate
 from jarvis.automation.desktop_service import DESKTOP
+from jarvis.automation.screen_coordinates import COORDINATES
 from jarvis.automation.uia_capture import UIACaptureBackend
 from jarvis.automation.cua_driver import DRIVER
 
 
 class _Params(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     observation_id: str = Field(min_length=1, description="ID observasi UIA aktif")
     element_id: str = Field(min_length=1, description="ID elemen semantik dari observasi")
 
@@ -48,7 +51,10 @@ class SafeDesktopSession:
     set_value_native: object | None = None
     set_text_native: object | None = None
     click_native: object | None = None
+    right_click_native: object | None = None
+    double_click_native: object | None = None
     scroll_native: object | None = None
+    text_entry_native: object | None = None
     select_option_native: object | None = None
     toggle_native: object | None = None
     reorder_native: object | None = None
@@ -343,9 +349,149 @@ class SafeDesktopSession:
         finally:
             self.desktop.release(owner)
 
+    def _attempt_semantic_action(
+        self,
+        *,
+        ref,
+        before,
+        owner: str,
+        callback,
+        action_name: str,
+        callback_args: tuple = (),
+        require_committed: bool = False,
+    ):
+        """Attempt once, retire the ref, and recapture even after native failure."""
+        if not self.desktop.claim(owner):
+            return None, "desktop sedang dikendalikan sesi lain"
+        native_error = None
+        committed = None
+        try:
+            try:
+                committed = callback(ref, *callback_args)
+            except Exception as exc:
+                native_error = exc
+            finally:
+                self._disown(ref.observation_id)
+            try:
+                after = self.capture.capture()
+            except Exception as exc:
+                detail = (
+                    f"executor gagal: {type(native_error).__name__}; "
+                    if native_error is not None else ""
+                )
+                return (type("SemanticActionOutcome", (), {
+                    "ok": False, "executed": True, "verified": False,
+                    "requires_confirmation": False, "after": None,
+                    "reason": (
+                        f"{action_name} terkirim; {detail}recapture gagal: "
+                        f"{type(exc).__name__}"
+                    ),
+                })(), "")
+            after_element = after.tree._by_id.get(ref.element_id)
+            identity_verified = bool(
+                self.gate.verify_recapture(before, after)
+                and after_element is not None
+                and after_element.states.get("_uia_runtime_id") == ref.native_identity
+                and after_element.role == ref.role
+            )
+            verified = bool(
+                native_error is None
+                and identity_verified
+                and (not require_committed or committed is True)
+            )
+            reason = (
+                f"{action_name} semantik terverifikasi"
+                if verified else
+                f"{action_name} terkirim tetapi executor atau recapture tidak terverifikasi"
+            )
+            return (type("SemanticActionOutcome", (), {
+                "ok": verified, "executed": True, "verified": verified,
+                "requires_confirmation": False, "after": after,
+                "reason": reason,
+            })(), "")
+        finally:
+            self.desktop.release(owner)
+
+    def _pointer_action(self, observation_id: str, element_id: str, *,
+                        session_id: str, action: str, callback):
+        owner = str(session_id or "")
+        if self._owners.get(str(observation_id)) != owner:
+            return None, "observasi tidak diterbitkan untuk sesi desktop ini"
+        try:
+            ref = self.gate.reference(observation_id, element_id)
+            decision = self.gate.evaluate(ref, action=action)
+            before = self.gate._observations[ref.observation_id]
+        except Exception as exc:
+            return None, f"observasi atau elemen tidak aman: {exc}"
+        if not decision.allowed or not ref.native_identity:
+            return None, "target pointer tidak memiliki identitas UIA stabil atau tidak aman"
+        if decision.requires_confirmation:
+            return None, "target pointer membutuhkan konfirmasi desktop-local"
+        if callback is None:
+            return None, f"executor {action} UIA belum tersedia"
+        return self._attempt_semantic_action(
+            ref=ref,
+            before=before,
+            owner=owner,
+            callback=callback,
+            action_name=action,
+        )
+
+    @_lifecycle_serialized
+    def right_click(self, observation_id: str, element_id: str, *, session_id: str):
+        return self._pointer_action(
+            observation_id,
+            element_id,
+            session_id=session_id,
+            action="right_click",
+            callback=self.right_click_native,
+        )
+
+    @_lifecycle_serialized
+    def double_click(self, observation_id: str, element_id: str, *, session_id: str):
+        return self._pointer_action(
+            observation_id,
+            element_id,
+            session_id=session_id,
+            action="double_click",
+            callback=self.double_click_native,
+        )
+
+    @_lifecycle_serialized
+    def text_entry(self, observation_id: str, element_id: str, *, text: str,
+                   session_id: str):
+        from jarvis.automation.cua_safety import admit_text_entry
+
+        owner = str(session_id or "")
+        if self._owners.get(str(observation_id)) != owner:
+            return None, "observasi tidak diterbitkan untuk sesi desktop ini"
+        try:
+            ref = self.gate.reference(observation_id, element_id)
+            decision = self.gate.evaluate(ref, action="text_entry")
+            before = self.gate._observations[ref.observation_id]
+            element = before.tree._by_id.get(ref.element_id)
+        except Exception as exc:
+            return None, f"observasi atau field tidak aman: {exc}"
+        if element is None or not decision.allowed or not ref.native_identity:
+            return None, "target text entry tidak aman atau tidak memiliki identitas stabil"
+        admission = admit_text_entry(element, text)
+        if not admission.allowed:
+            return None, admission.reason
+        if self.text_entry_native is None:
+            return None, "executor text entry UIA belum tersedia"
+        return self._attempt_semantic_action(
+            ref=ref,
+            before=before,
+            owner=owner,
+            callback=self.text_entry_native,
+            action_name="text_entry",
+            callback_args=(admission.text,),
+            require_committed=True,
+        )
+
     @_lifecycle_serialized
     def scroll(self, observation_id: str, element_id: str, *, direction: str,
-               session_id: str):
+               session_id: str, count: int = 1):
         owner = str(session_id or "")
         if self._owners.get(str(observation_id)) != owner:
             return None, "observasi tidak diterbitkan untuk sesi desktop ini"
@@ -358,21 +504,36 @@ class SafeDesktopSession:
             return None, f"observasi atau elemen tidak aman: {exc}"
         if element is None or element.role != "scrollbar" or not decision.allowed:
             return None, "target bukan scroll container semantik yang aman"
-        delta = -3 if str(direction).casefold() == "down" else 3
-        if str(direction).casefold() not in {"down", "up"}:
+        normalized_direction = str(direction).casefold()
+        if normalized_direction not in {"down", "up"}:
             return None, "direction harus down atau up"
+        try:
+            bounded_count = int(count)
+        except (TypeError, ValueError):
+            return None, "count scroll harus integer 1-5"
+        if not 1 <= bounded_count <= 5:
+            return None, "count scroll harus 1-5"
+        delta = (-3 if normalized_direction == "down" else 3) * bounded_count
         if self.scroll_rect is None:
             return None, "executor scroll semantic belum tersedia"
         if not ref.native_identity:
             return None, "scrollbar tidak memiliki identitas UIA stabil"
+        if self.scroll_native is not None:
+            def execute(ref, requested_delta):
+                return self.scroll_native(ref, requested_delta)
+        else:
+            def execute(ref, requested_delta):
+                return self.scroll_rect(ref.rect, requested_delta)
         if not self.desktop.claim(owner):
             return None, "desktop sedang dikendalikan sesi lain"
+        native_error = None
         try:
-            if self.scroll_native is not None:
-                self.scroll_native(ref, delta)
-            else:
-                self.scroll_rect(ref.rect, delta)
-            self._disown(ref.observation_id)
+            try:
+                execute(ref, delta)
+            except Exception as exc:
+                native_error = exc
+            finally:
+                self._disown(ref.observation_id)
             try:
                 after = self.capture.capture()
             except Exception as exc:
@@ -386,16 +547,17 @@ class SafeDesktopSession:
             changed = bool(after_element is not None and
                            after_element.states.get("_uia_runtime_id") == ref.native_identity and
                            dict(after_element.states) != before_state)
-            verified = self.gate.verify_recapture(before, after) and changed
+            verified = bool(
+                native_error is None
+                and self.gate.verify_recapture(before, after)
+                and changed
+            )
             return (type("ScrollOutcome", (), {
                 "ok": verified, "executed": True, "verified": verified,
                 "after": after,
                 "reason": ("scroll semantik terverifikasi" if verified else
-                           "scroll terkirim tetapi state UI tidak berubah atau recapture tidak cocok"),
+                           "scroll terkirim tetapi executor, state UI, atau recapture tidak terverifikasi"),
             })(), "")
-        except Exception as exc:
-            self._disown(observation_id)
-            return None, f"scroll gagal: {type(exc).__name__}"
         finally:
             self.desktop.release(owner)
 
@@ -566,12 +728,12 @@ def _default_session() -> SafeDesktopSession:
     adapter = CaptureAdapter(gate, backend.capture)
 
     def click_rect(rect: tuple[int, int, int, int]) -> None:
-        x, y, width, height = rect
-        DRIVER.click(x + width // 2, y + height // 2, button="left", double=False)
+        x, y = COORDINATES.rect_center_to_physical(rect)
+        DRIVER.click(x, y, button="left", double=False)
 
     def scroll_rect(rect: tuple[int, int, int, int], delta: int) -> None:
-        x, y, width, height = rect
-        DRIVER.scroll(x + width // 2, y + height // 2, delta)
+        x, y = COORDINATES.rect_center_to_physical(rect)
+        DRIVER.scroll(x, y, delta)
 
     def set_value_native(ref, value: float) -> None:
         backend.set_slider_value(ref, value)
@@ -589,7 +751,10 @@ def _default_session() -> SafeDesktopSession:
         toggle_native=backend.toggle_checkbox_semantic,
         select_option_native=backend.select_option_semantic,
         click_native=backend.click_semantic,
+        right_click_native=backend.right_click_semantic,
+        double_click_native=backend.double_click_semantic,
         scroll_native=backend.scroll_semantic,
+        text_entry_native=backend.set_text_field_value,
         reorder_native=reorder_native,
     )
 

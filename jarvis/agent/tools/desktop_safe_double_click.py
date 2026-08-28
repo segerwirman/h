@@ -1,8 +1,7 @@
-"""Bounded semantic scroll for desktop-local safe UIA sessions only."""
+"""Screen Control-gated semantic double-click with a fixed left button."""
 from __future__ import annotations
 
 import asyncio
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -14,17 +13,15 @@ class _Params(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     observation_id: str = Field(min_length=1, description="ID observasi UIA aktif")
-    element_id: str = Field(min_length=1, description="ID scroll container semantik")
-    direction: Literal["down", "up"] = Field(description="Arah bounded scroll")
-    count: int = Field(default=1, ge=1, le=5, description="Jumlah langkah kecil 1-5")
+    element_id: str = Field(min_length=1, description="ID elemen semantik")
 
 
-class DesktopSafeScroll(Tool):
-    name = "desktop_safe_scroll"
+class DesktopSafeDoubleClick(Tool):
+    name = "desktop_safe_double_click"
     description = (
-        "Scroll satu langkah kecil pada scrollbar UIA semantik dari observasi sesi "
-        "desktop yang sama. Hanya menerima observation_id, element_id, dan arah; "
-        "tanpa koordinat atau delta mentah. Recapture harus membuktikan state berubah."
+        "Klik dua kali satu target UIA semantik dalam Screen Control aktif. Hanya "
+        "menerima observation_id dan element_id; double-click kiri dan koordinat "
+        "ditentukan executor tepercaya lalu action wajib diikuti recapture."
     )
     params_schema = _Params
     wants_context = True
@@ -33,25 +30,23 @@ class DesktopSafeScroll(Tool):
     def __init__(self, *, session: SafeDesktopSession | None = None):
         self._session = session
 
-    async def run(self, observation_id: str, element_id: str,
-                  direction: Literal["down", "up"], count: int = 1,
-                  _session=None, _context=None, **_) -> ToolResult:
-        from jarvis.agent.policy import desktop_safe_context_error
+    async def run(self, observation_id: str, element_id: str, _session=None,
+                  _context=None, **_) -> ToolResult:
+        from jarvis.agent.policy import screen_control_context_error
 
-        context_error = desktop_safe_context_error(
-            _context, capability="desktop_safe.desktop_safe_scroll",
+        context_error = screen_control_context_error(
+            _context,
+            capability="desktop_safe.desktop_safe_double_click",
             runtime_session=_session,
         )
         if context_error:
             return ToolResult.fail(context_error)
         authority = self._session or desktop_safe_session()
-        owner = str(getattr(_session, "id", "") or "desktop-safe-click")
+        owner = str(getattr(_session, "id", "") or "desktop-safe-double-click")
         outcome, error = await asyncio.to_thread(
-            authority.scroll,
+            authority.double_click,
             str(observation_id),
             str(element_id),
-            direction=str(direction),
-            count=int(count),
             session_id=owner,
         )
         if outcome is None:
@@ -64,12 +59,12 @@ class DesktopSafeScroll(Tool):
                 after_observation_id=outcome.after.id if outcome.after else "",
             )
         return ToolResult.success(
-            "Scroll semantik selesai dan state UI terverifikasi berubah.",
-            display="scroll desktop terverifikasi",
+            "Double-click semantik selesai dan recapture terverifikasi.",
+            display="double-click desktop terverifikasi",
             executed=True,
             verified=True,
             after_observation_id=outcome.after.id if outcome.after else "",
         )
 
 
-__all__ = ["DesktopSafeScroll"]
+__all__ = ["DesktopSafeDoubleClick"]

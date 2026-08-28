@@ -40,11 +40,14 @@ def test_tool_baru_masuk_grup_eksplisit_yang_tepat():
     assert groups["desktop_safe"] == {
         "desktop_observe",
         "desktop_safe_click",
+        "desktop_safe_double_click",
         "desktop_safe_reorder_scene",
+        "desktop_safe_right_click",
         "desktop_safe_scroll",
         "desktop_safe_select_option",
         "desktop_safe_set_content_title",
         "desktop_safe_set_value",
+        "desktop_safe_text_entry",
         "desktop_safe_toggle",
         "desktop_visual_observe",
     }

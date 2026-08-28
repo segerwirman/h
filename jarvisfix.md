@@ -7248,3 +7248,115 @@ Audit staged/unstaged diff Checkpoint C secara terpisah, commit hanya path/hunk
 Tasks 7–9, lalu mulai Task 10 pada coordinator Screen Control process-local.
 Jangan mengaktifkan desktop authority atau menjalankan desktop nyata; Task 10
 harus dimulai dengan fake BUS/lease dan Qt offscreen.
+
+## Checkpoint D — Screen Control authority + coordinates + semantic actions (2026-08-28)
+
+**Status:** Tasks 10–12 selesai dan `runtime-wired` dengan bukti
+**offline/fake**, `focused-tested`/`fixture-accepted`, belum `live-proven`.
+Tidak ada desktop/screen capture nyata, gerakan pointer, monitor discovery,
+browser automation, credential/keyring, network, Telegram/WhatsApp, perangkat
+audio, Gemini Live/provider, atau social API yang dijalankan.
+
+### Perubahan yang diselesaikan
+
+1. **Satu owner Screen Control process-local.** Coordinator memiliki state
+   `off → active → handing_off`, generation, session/task owner, dan TTL maksimum
+   3.600 detik. Authority desktop dipin selama sesi dan operasi owner yang sama
+   memakai borrow terhitung tanpa memblokir diri sendiri. Cancel/emergency,
+   expiry, unsafe state, window close, shutdown, dan cleanup terminal dispatch
+   mencabut authority secara generation-matched dan melepas lease tepat sekali.
+   ActionPanel hanya memancarkan signal; wiring, indicator, dan lifecycle tetap
+   dimiliki coordinator/window.
+2. **Pemetaan koordinat mixed-DPI berada di trusted seam.** Mapper murni dan
+   terinjeksi memisahkan ruang logical/physical, mendukung origin monitor negatif,
+   skala per-monitor, point/rect conversion, exclusive rectangle edges, dan
+   round-trip. Conversion gagal tertutup untuk monitor tak dikenal, provider yang
+   tidak tersedia, rect lintas monitor/tidak positif, DPI invalid, atau geometri
+   logical/physical yang tidak konsisten. Default produksi memperlakukan koordinat
+   UIA Windows sebagai physical; agent tetap tidak menerima koordinat mentah.
+3. **Aksi semantik baru tetap ID-only.** Tool right-click, double-click, bounded
+   scroll (`count` 1–5), dan text entry hanya menerima observation/element ID serta
+   parameter bounded yang relevan. Schema strict menolak `x`, `y`, `button`,
+   `double`, `delta`, dan `keys`. UIA memvalidasi foreground surface, RuntimeId,
+   role, dan rectangle tepat sebelum native action; center fisik hanya diturunkan
+   oleh executor trusted melalui coordinate seam.
+4. **Text entry fail-closed.** Generic mutation memakai UIA ValuePattern, bukan
+   keyboard injection. Field password/PIN/OTP/login/credential/payment/card/
+   bank/transfer, browser address bar, disabled/non-text, input kosong, lebih dari
+   500 karakter, dan control character terlarang ditolak. Unicode printable,
+   newline, dan tab bounded dipertahankan. Isi text tidak masuk generic
+   desktop-safe audit telemetry.
+5. **Setiap attempt meretire observation.** Pointer, scroll, dan text mutation
+   menghapus semantic reference lama lalu mencoba capture ulang bahkan ketika
+   native executor gagal. Hasil tetap jujur: action yang sudah dicoba bertanda
+   `executed=True`, tetapi `verified=False` bila executor/identity/recapture tidak
+   dapat dibuktikan. Semua aksi baru juga memerlukan exact active Screen Control
+   session/task binding; tidak ada direct grant baru.
+
+### RED-first dan koreksi rancangan
+
+- Baseline Task 11 merah: **3 failed, 8 errors** karena coordinate seam belum ada
+  dan schema click masih menerima `x`/`y`. Implementasi menambahkan mapper murni,
+  strict schema, dan wiring center trusted.
+- Baseline Task 12 merah: **18 failed** karena tool/executor/admission/gate baru
+  memang belum ada. Test dibuat dengan semantic trees, fake UIA callbacks, fake
+  coordinator snapshots, dan tidak menyentuh desktop nyata.
+- Broad regression pertama menghasilkan **198 passed, 1 failed**. Produksi sudah
+  mendaftarkan tiga modul baru, tetapi expected set eksplisit di
+  `test_toolgroups_usage.py` masih basi. Ekspektasi kontrak diperbarui; rerun
+  menjadi **199 passed**.
+- Combined regression berikutnya menghasilkan **259 passed, 1 failed**. Scroll
+  lifecycle memanggil `desktop.claim()` dua kali akibat satu claim lama tertinggal
+  saat refactor native-failure recapture. Duplicate claim dibuang; focused
+  lifecycle/action menjadi **38 passed**, lalu combined menjadi **260 passed**.
+- Fixture coordinate reorder semula mengubah atribut `_rect`, sementara fake
+  control membaca `rectangle()` default sehingga dua center tampak identik.
+  Fixture dikoreksi agar `rectangle()` mengembalikan rect kasus uji; ini koreksi
+  test double, bukan perilaku produksi.
+
+### Bukti offline aktual
+
+| Pemeriksaan | Hasil |
+|---|---:|
+| Focused Task 12 + coordinate + scroll | **40 passed** |
+| Broad Screen Control setelah expected-set fix | **199 passed** |
+| Remaining desktop-safe regression | **60 passed** |
+| Focused action/scroll setelah native-failure lifecycle | **26 passed** |
+| Combined selected Checkpoint D regression final | **260 passed** |
+| Post-audit focused rerun setelah dua S110 dibersuarakan | **93 passed** (`2.89s`) |
+| Final post-index-rebuild selected regression | **193 passed** (`6.95s`) |
+| `py_compile` target Checkpoint D | **lulus** (tanpa output) |
+| Ruff pada seluruh Python path Checkpoint D | **All checks passed!** |
+| `python scripts/verify_frozen.py` | **FROZEN integrity: OK** (10 files, baseline `094b696`) |
+| Cached + whole-tree `git diff --check` | **clean** (tanpa output) |
+
+Combined 260-test run mencakup coordinator/dispatch/UI offscreen, authority
+lease/revocation, coordinate mapping, UIA identity validation, desktop-safe
+lifecycle/action/tool schemas, capability/tool-group/resource ownership, dan
+regression terkait. Seluruh dependency native diganti fake/injected seam.
+
+### Batas jujur
+
+- **Full repository pytest tidak dijalankan.** Angka 260 adalah selected broad
+  regression Checkpoint D, bukan klaim seluruh mixed working tree hijau.
+- **Root Ruff penuh juga tidak dijalankan.** Ruff pada seluruh Python path
+  Checkpoint D, `py_compile`, FROZEN verifier, dan `git diff --check` lulus,
+  tetapi hasil scoped itu tidak boleh disebut root lint green.
+- Tidak ada live Screen Control: tidak ada capture desktop nyata, pointer/scroll/
+  text mutation nyata, mixed-monitor discovery nyata, overlay, atau CAPTCHA flow.
+  Overlay adalah Task 13 dan human-only CAPTCHA handoff adalah Task 14.
+- CAPTCHA belum dideteksi atau di-handoff pada checkpoint ini. Jarvis belum dan
+  tidak boleh menyelesaikan, membypass, mengklik-through, meng-outsourcing, atau
+  memakai solver. `HANDOFF` non-executable, WAITING, fresh observation, dan
+  marker-gone check tetap pekerjaan Checkpoint E.
+- Banyak tracked/untracked file user tetap dirty. Tidak ada
+  reset/restore/clean/stash. Commit checkpoint harus memakai path/hunk eksplisit;
+  perubahan voice-device yang tidak terkait di `config.yaml` wajib tetap unstaged,
+  dan `git add .` / `git add -A` dilarang.
+
+### Langkah aman berikutnya
+
+Audit dan stage hanya path/hunk Tasks 10–12, commit Checkpoint D tanpa push, lalu
+bangkitkan prompt lanjutan melalui `scripts/next_phase_prompt.py`. Sesudah itu
+mulai Task 13 dengan test Qt offscreen untuk overlay click-through dan capture
+exclusion/fallback hide-around-capture; jangan menjalankan desktop nyata.

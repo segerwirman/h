@@ -51,6 +51,14 @@ class DispatchSourceScope:
     conversation_id: str = ""
 
 
+@dataclass(frozen=True)
+class ScreenControlScope:
+    """One unambiguous live registry task eligible to own Screen Control."""
+
+    session_id: str
+    task_id: str
+
+
 class _BufferedFinalAdapter:
     """Delegate interaction/progress but hold final text until validation.
 
@@ -141,6 +149,44 @@ def active_count() -> int:
 def active_tasks() -> list[str]:
     with _active_lock:
         return [h.task for h in _active.values()]
+
+
+def screen_control_scope() -> ScreenControlScope | None:
+    """Resolve exactly one live RUNNING task without exposing prompt content."""
+    with _active_lock:
+        candidates = [
+            handle for handle in _active.values()
+            if (
+                not handle.session.cancelled
+                and getattr(getattr(handle, "bg_task", None), "id", None)
+                and handle.session.registry_task_id
+                == getattr(handle.bg_task, "id", None)
+            )
+        ]
+    if len(candidates) != 1:
+        return None
+    handle = candidates[0]
+    task_id = str(handle.bg_task.id)
+    try:
+        from jarvis.agent.tasks import REGISTRY, TaskStatus
+        view = REGISTRY.get(task_id)
+    except Exception:
+        return None
+    if (
+        view is None
+        or view.status != TaskStatus.RUNNING
+        or view.cancelled
+        or not view.active
+    ):
+        return None
+    with _active_lock:
+        if (
+            handle not in _active.values()
+            or handle.session.cancelled
+            or handle.session.registry_task_id != task_id
+        ):
+            return None
+    return ScreenControlScope(handle.session.id, task_id)
 
 
 def communication_authorization_scope(
@@ -342,6 +388,10 @@ def bind_communication_grant(
 
 
 def cancel_all() -> int:
+    try:
+        BUS.publish("agent.tasks.cancel_all")
+    except Exception as exc:                                # noqa: BLE001
+        quiet.swallowed("agent.dispatch.cancel_all_publish_failed", exc)
     with _active_lock:
         handles = list(_active.values())
     for h in handles:
@@ -370,6 +420,7 @@ def cancel_task(task_id: str) -> bool:
         handles = [h for h in _active.values()
                    if getattr(getattr(h, "bg_task", None), "id", None) == tid]
     for handle in handles:
+        _release_screen_control_session(handle.session.id, "task_cancelled")
         _revoke_execution_grants(tid)
         handle.session.execution_grant_id = ""
         handle.session.communication_grant_id = ""
@@ -704,6 +755,22 @@ def _clear_desktop_safe_session(session_id: str) -> None:
             "agent.dispatch.desktop_safe_cleanup_failed",
             session=str(session_id)[:32],
             error=str(exc)[:120],
+        )
+
+
+def _release_screen_control_session(
+    session_id: str,
+    reason: str = "task_terminal",
+) -> None:
+    """Release matching Screen Control authority on every terminal path."""
+    try:
+        from jarvis.ui.screen_control import COORDINATOR
+        COORDINATOR.release_session(session_id, reason)
+    except Exception as exc:                                # noqa: BLE001
+        _logger.warning(
+            "agent.dispatch.screen_control_cleanup_failed",
+            session=str(session_id)[:32],
+            error=type(exc).__name__,
         )
 
 
@@ -1105,6 +1172,7 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
             _release_browser_session(session.id)
             _release_computer_session(session.id)
             _clear_desktop_safe_session(session.id)
+            _release_screen_control_session(session.id)
             _revoke_execution_grants(bg_task.id)
             session.execution_grant_id = ""
             session.communication_grant_id = ""

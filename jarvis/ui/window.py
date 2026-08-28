@@ -319,6 +319,7 @@ class MainWindow(
             _logger.warning("action_hint.install_failed", error=str(e)[:120])
         self.action_panel.awareness_clicked.connect(self._toggle_awareness)
         self.action_panel.focus_mode_clicked.connect(self._toggle_focus_mode)
+        self.action_panel.screen_control_clicked.connect(self._toggle_screen_control)
         self.action_panel.palette_clicked.connect(self._toggle_command_palette)
         self.action_panel.timeline_clicked.connect(self._toggle_timeline)
         self.action_panel.cancel_clicked.connect(self._on_cancel_tasks_clicked)
@@ -355,6 +356,11 @@ class MainWindow(
         BUS.subscribe("intent", self._on_intent_event, ui=True)
         BUS.subscribe("confirm", self._on_confirm, ui=True)
         BUS.subscribe("cancel", self._on_cancel, ui=True)
+        BUS.subscribe(
+            "screen_control.changed",
+            self._on_screen_control_changed,
+            ui=True,
+        )
         from jarvis.integrations.vision_supervisor import start_vision_supervisor
         start_vision_supervisor()
         BUS.subscribe("sentiment.updated", self._on_sentiment, ui=True)

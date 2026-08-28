@@ -109,6 +109,7 @@ _ICONS = {           # glyph, tooltip
     "settings":   ("⚙", "Pengaturan — API key"),
     "awareness":  ("◈", "Screen awareness — pause/resume"),
     "focus_mode": ("◐", "Focus Mode — pause comment narration"),
+    "screen_control": ("⌖", "Screen Control — kontrol desktop semantik lokal"),
     "palette":    ("▤", "Command palette"),
     "timeline":   ("◷", "Context timeline"),
     # Semua control plane dibuka sebagai sheet lokal, bukan ContentStage.
@@ -131,6 +132,7 @@ class ActionPanel(QWidget):
     settings_clicked = pyqtSignal()
     awareness_clicked = pyqtSignal()
     focus_mode_clicked = pyqtSignal()
+    screen_control_clicked = pyqtSignal()
     palette_clicked = pyqtSignal()
     timeline_clicked = pyqtSignal()
     capabilities_clicked = pyqtSignal()
@@ -155,6 +157,7 @@ class ActionPanel(QWidget):
         sig = {"vision": self.vision_clicked, "upload": self.upload_clicked,
                "spotify": self.spotify_clicked, "settings": self.settings_clicked,
                "awareness": self.awareness_clicked, "focus_mode": self.focus_mode_clicked,
+               "screen_control": self.screen_control_clicked,
                "palette": self.palette_clicked, "timeline": self.timeline_clicked,
                "capabilities": self.capabilities_clicked,
                "messaging": self.messaging_clicked,

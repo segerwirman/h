@@ -69,7 +69,7 @@ def test_desktop_safe_scroll_schema_only_accepts_semantic_ids_and_bounded_direct
 
     props = DesktopSafeScroll().json_schema()["properties"]
 
-    assert set(props) == {"observation_id", "element_id", "direction"}
+    assert set(props) == {"observation_id", "element_id", "direction", "count"}
     assert "x" not in props and "y" not in props and "dy" not in props
     assert props["direction"]["enum"] == ["down", "up"]
 

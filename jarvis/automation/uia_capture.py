@@ -18,6 +18,7 @@ from jarvis.automation.cua_safety import (
 )
 from jarvis.automation.cua_driver import DRIVER
 from jarvis.automation.desktop_service import DESKTOP
+from jarvis.automation.screen_coordinates import COORDINATES
 from jarvis.core.element_model import ElementScope, ScreenElementTree, UIElement
 from jarvis.core.privacy_denylist import is_denylisted
 
@@ -50,11 +51,13 @@ class UIACaptureBackend:
     so import/discovery remains harmless when UIA is unavailable.
     """
 
-    def __init__(self, desktop=None, *, max_elements: int = 500, driver=None):
+    def __init__(self, desktop=None, *, max_elements: int = 500, driver=None,
+                 coordinates=None):
         self._desktop = desktop
         self._real_desktop = desktop is None
         self._max_elements = max(1, int(max_elements))
         self._driver = driver or DRIVER
+        self._coordinates = coordinates or COORDINATES
 
     def capture(self) -> CaptureFrame:
         window = self._active_window()
@@ -70,15 +73,27 @@ class UIACaptureBackend:
 
     def click_semantic(self, ref: SemanticTargetRef) -> None:
         """Click only the matching current UIA target; ref identity is mandatory."""
+        self._click_semantic(ref, button="left", double=False)
+
+    def right_click_semantic(self, ref: SemanticTargetRef) -> None:
+        """Right-click one matching semantic target with no agent button control."""
+        self._click_semantic(ref, button="right", double=False)
+
+    def double_click_semantic(self, ref: SemanticTargetRef) -> None:
+        """Double-click one matching semantic target with a fixed left button."""
+        self._click_semantic(ref, button="left", double=True)
+
+    def _click_semantic(self, ref: SemanticTargetRef, *, button: str,
+                        double: bool) -> None:
         self._matching_control(ref, expected_role=None)
-        x, y, width, height = ref.rect
-        self._driver.click(x + width // 2, y + height // 2, button="left", double=False)
+        x, y = self._coordinates.rect_center_to_physical(ref.rect)
+        self._driver.click(x, y, button=button, double=double)
 
     def scroll_semantic(self, ref: SemanticTargetRef, delta: int) -> None:
         """Scroll only the matching current UIA scrollbar with fixed internal delta."""
         self._matching_control(ref, expected_role="scrollbar")
-        x, y, width, height = ref.rect
-        self._driver.scroll(x + width // 2, y + height // 2, int(delta))
+        x, y = self._coordinates.rect_center_to_physical(ref.rect)
+        self._driver.scroll(x, y, int(delta))
 
     def _matching_control(self, ref: SemanticTargetRef, *, expected_role: str | None):
         window = self._active_window()
@@ -139,42 +154,28 @@ class UIACaptureBackend:
     def set_text_field_value(self, ref: SemanticTargetRef, text: str) -> bool:
         """Apply UIA ValuePattern once and prove the committed value changed.
 
-        For Phase 19 this is intentionally restricted to text_field/edit only.
-        No password, no submit, no address bar. The text is already validated by
-        ``content_title_policy.admit_title`` before injection. Returns True only
-        when the committed ValuePattern.CurrentValue differs after the single
-        SetValue attempt; raw values never leave this boundary.
+        Text admission is owned by the calling semantic session. This native
+        boundary repeats UIA surface, role, rectangle, and RuntimeId validation
+        immediately before the single ValuePattern mutation.
         """
-        window = self._active_window()
-        if self._identity(window).surface_id != ref.surface_id:
-            raise RuntimeError("surface desktop berubah sebelum set_text")
-        clean = str(text or "")
-        for index, control in enumerate(_descendants(window)[:self._max_elements], start=1):
-            if f"uia-{index}" != ref.element_id:
-                continue
-            element = _element_from_control(control, index)
-            if element is None or element.role != "text_field" or element.rect != ref.rect:
-                raise RuntimeError("semantic text field tidak lagi cocok dengan observasi")
-            if not ref.native_identity or _uia_runtime_identity(control) != ref.native_identity:
-                raise RuntimeError("identitas UIA text field berubah sebelum set_text")
-            pattern = getattr(control, "iface_value", None)
-            setter = getattr(pattern, "SetValue", None) if pattern is not None else None
-            if setter is None:
-                raise RuntimeError("pattern ValuePattern tidak tersedia untuk text field")
-            try:
-                before_value = str(pattern.CurrentValue)
-            except Exception as exc:
-                raise RuntimeError("text field tidak memiliki ValuePattern verifikasi") from exc
-            try:
-                setter(clean)
-            except Exception as exc:
-                raise RuntimeError(f"UIA ValuePattern gagal: {type(exc).__name__}") from exc
-            try:
-                after_value = str(pattern.CurrentValue)
-            except Exception as exc:
-                raise RuntimeError("nilai text field tidak dapat diverifikasi setelah set") from exc
-            return before_value != after_value
-        raise RuntimeError("semantic text field tidak ditemukan pada UIA aktif")
+        control = self._matching_control(ref, expected_role="text_field")
+        pattern = getattr(control, "iface_value", None)
+        setter = getattr(pattern, "SetValue", None) if pattern is not None else None
+        if setter is None:
+            raise RuntimeError("pattern ValuePattern tidak tersedia untuk text field")
+        try:
+            before_value = str(pattern.CurrentValue)
+        except Exception as exc:
+            raise RuntimeError("text field tidak memiliki ValuePattern verifikasi") from exc
+        try:
+            setter(str(text))
+        except Exception as exc:
+            raise RuntimeError(f"UIA ValuePattern gagal: {type(exc).__name__}") from exc
+        try:
+            after_value = str(pattern.CurrentValue)
+        except Exception as exc:
+            raise RuntimeError("nilai text field tidak dapat diverifikasi setelah set") from exc
+        return before_value != after_value
 
 
     def reorder_semantic(self, src_ref: SemanticTargetRef, dst_ref: SemanticTargetRef) -> None:
@@ -223,13 +224,9 @@ class UIACaptureBackend:
             dst_parent = str(dst_elem.states.get("_uia_parent_runtime_id", "") or "")
             if src_parent and dst_parent and src_parent != dst_parent:
                 raise RuntimeError("reorder beda parent ditolak")
-        # one native drag — center to center, internal duration fixed, no agent coord
-        sx, sy, sw, sh = src_ref.rect
-        dx, dy, dw, dh = dst_ref.rect
-        from_x = sx + sw // 2
-        from_y = sy + sh // 2
-        to_x = dx + dw // 2
-        to_y = dy + dh // 2
+        # one native drag — trusted mapper derives both physical centers.
+        from_x, from_y = self._coordinates.rect_center_to_physical(src_ref.rect)
+        to_x, to_y = self._coordinates.rect_center_to_physical(dst_ref.rect)
         try:
             self._driver.drag(from_x, from_y, to_x, to_y, duration=0.35)
         except Exception as exc:
@@ -310,11 +307,12 @@ class UIASafeClickService:
     """Lease-guarded bridge from semantic ref to exactly one driver click."""
 
     def __init__(self, gate: CuaSafetyGate, capture: CaptureAdapter,
-                 *, driver=None, desktop=None, audit=None):
+                 *, driver=None, desktop=None, audit=None, coordinates=None):
         self._gate = gate
         self._capture = capture
         self._driver = driver or DRIVER
         self._desktop = desktop or DESKTOP
+        self._coordinates = coordinates or COORDINATES
         if audit is None:
             from jarvis.core import log
             audit = log.get("automation.uia_safe_click").info
@@ -345,13 +343,10 @@ class UIASafeClickService:
                                     "desktop sedang dikendalikan sesi lain")
         try:
             def click_rect(rect: tuple[int, int, int, int]) -> None:
-                x, y, width, height = rect
+                x, y = self._coordinates.rect_center_to_physical(rect)
                 self._emit("cua.safe_click.attempt", capture_id=ref.observation_id,
                            ref_id=ref.element_id, attempted=True)
-                self._driver.click(
-                    x + width // 2, y + height // 2,
-                    button="left", double=False,
-                )
+                self._driver.click(x, y, button="left", double=False)
             outcome = SafeClickPlan(self._gate, self._capture, click_rect).execute(ref)
             self._emit("cua.safe_click.recapture", capture_id=ref.observation_id,
                        after_capture_id=(outcome.after.id if outcome.after else ""),

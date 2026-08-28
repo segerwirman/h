@@ -9,12 +9,13 @@ this contract.
 from __future__ import annotations
 
 import time
+import unicodedata
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass
 from enum import Enum
 
-from jarvis.core.element_model import ScreenElementTree
+from jarvis.core.element_model import ElementScope, ScreenElementTree, UIElement
 
 
 class CuaSafetyError(ValueError):
@@ -71,18 +72,57 @@ class SafetyDecision:
         return self.classification is ConfirmationClass.CONFIRM
 
 
+@dataclass(frozen=True)
+class TextEntryAdmission:
+    allowed: bool
+    reason: str
+    text: str = ""
+
+
 _SENSITIVE_TERMS = (
-    "password", "passcode", "pin", "otp", "verification code",
-    "sign in", "log in", "login", "credit card", "card number", "cvv",
-    "payment", "checkout", "bank", "transfer", "permission", "allow app",
-    "administrator", "elevation", "uac", "security code",
+    "password", "kata sandi", "passcode", "pin", "otp", "one time password",
+    "verification code", "verification", "credential", "credentials",
+    "sign in", "log in", "login", "credit card", "debit card", "card number",
+    "cvv", "cvc", "payment", "checkout", "bank", "transfer", "permission",
+    "allow app", "administrator", "elevation", "uac", "security code",
 )
 _DESTRUCTIVE_TERMS = (
     "delete", "remove", "erase", "format", "reset", "wipe", "discard",
     "uninstall", "overwrite", "send", "submit", "purchase", "pay",
     "transfer", "confirm order",
 )
-_SUPPORTED_ACTIONS = frozenset({"click", "type", "key", "scroll", "drag", "set_value", "select_option", "toggle", "set_content_title", "reorder_scene"})
+_SUPPORTED_ACTIONS = frozenset({
+    "click", "right_click", "double_click", "text_entry", "type", "key",
+    "scroll", "drag", "set_value", "select_option", "toggle",
+    "set_content_title", "reorder_scene",
+})
+_TEXT_ENTRY_ROLES = frozenset({"text_field", "search_field", "textarea", "composer"})
+_MAX_TEXT_ENTRY_CHARS = 500
+
+
+def admit_text_entry(element: UIElement, text: str) -> TextEntryAdmission:
+    """Admit bounded printable text only for a non-sensitive semantic field."""
+    if not isinstance(element, UIElement) or element.role not in _TEXT_ENTRY_ROLES:
+        return TextEntryAdmission(False, "target bukan text field semantik")
+    if element.scope is ElementScope.BROWSER_ADDRESS:
+        return TextEntryAdmission(False, "browser address tidak boleh diisi generik")
+    if bool(element.states.get("disabled")):
+        return TextEntryAdmission(False, "text field tidak dapat diedit")
+    label = " ".join(
+        f"{element.name or ''} {element.label or ''} {element.elem_type or ''}".casefold().split()
+    )
+    if any(term in label for term in _SENSITIVE_TERMS):
+        return TextEntryAdmission(False, "field sensitif harus diisi manusia")
+    if not isinstance(text, str):
+        return TextEntryAdmission(False, "text harus berupa string")
+    if not text or len(text) > _MAX_TEXT_ENTRY_CHARS:
+        return TextEntryAdmission(False, "panjang text harus 1-500 karakter")
+    if any(
+        character not in {"\n", "\t"} and unicodedata.category(character).startswith("C")
+        for character in text
+    ):
+        return TextEntryAdmission(False, "text mengandung karakter kontrol yang dilarang")
+    return TextEntryAdmission(True, "text bounded dan field non-sensitif", text)
 
 
 class CuaSafetyGate:
@@ -212,5 +252,6 @@ class CuaSafetyGate:
 
 __all__ = [
     "ConfirmationClass", "CuaObservation", "CuaSafetyError", "CuaSafetyGate",
-    "SafetyDecision", "SemanticTargetRef", "StaleObservationError", "UnsafeTargetError",
+    "SafetyDecision", "SemanticTargetRef", "StaleObservationError",
+    "TextEntryAdmission", "UnsafeTargetError", "admit_text_entry",
 ]

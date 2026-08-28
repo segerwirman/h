@@ -298,9 +298,9 @@ notifications:                   # Mark L Change 1 — boot notification hub
       })();
 
 action_panel:                    # Mark L Change 3 + 7
-  icons: [vision, upload, spotify, home, studio, focus_mode, palette,
-          timeline, tasks, capabilities, messaging, gateway_ops, cancel,
-          settings]
+  icons: [vision, upload, spotify, home, studio, focus_mode, screen_control,
+          palette, timeline, tasks, capabilities, messaging, gateway_ops,
+          cancel, settings]
           # awareness (UI U1): retired from default; watcher stays default-off,
           # opt in by re-adding 'awareness' here. capabilities/messaging/
           # gateway_ops adalah sheet lokal; home: MK50 §7.3
@@ -321,6 +321,10 @@ action_panel:                    # Mark L Change 3 + 7
     offset_px: 10                # jarak di atas ikon
   indicator_dot_px: 3.0          # lit on/off lamp drawn on toggle icons when active
   indicator_margin_px: 7.0       # inset of that lamp from the icon's top-right corner
+
+screen_control:
+  enabled: false                 # per-session ActionPanel opt-in; local desktop only
+  session_ttl_s: 900             # bounded process-local authority (15 minutes)
 
 overlays:
   sys_stats_poll_s: 2.0

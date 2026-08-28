@@ -254,6 +254,12 @@ def run(no_voice: bool = False, *, ui_factory=None) -> int:
         desktop_safe_lifecycle.install(ui._win.__class__)
     except Exception as exc:                                 # noqa: BLE001
         logger.warning("desktop_safe.ui_teardown_unavailable", error=str(exc)[:120])
+    try:
+        from jarvis.ui import screen_control
+        screen_control.install(ui._win.__class__)
+        supervisor.add_stop("screen_control", screen_control.shutdown)
+    except Exception as exc:                                 # noqa: BLE001
+        logger.warning("screen_control.ui_teardown_unavailable", error=str(exc)[:120])
 
     # Wake Trigger (Module 10) — idempotent: an active/speaking session is
     # never re-woken, and the acknowledgment goes through MainWindow._speak_line.
