@@ -103,10 +103,13 @@ def test_policy_never_auto_replies_to_bounded_negated_acknowledgments():
         "Saya tidak suka produk ini": "negated_positive",
         "gak suka sama sekali": "negated_positive",
         "I do not love this": "negated_positive",
+        "I don't love this": "negated_positive",
+        "I didn’t love this": "negated_positive",
         "Saya tidak suka.": "negated_positive",
         "I never loved this": "negated_positive",
         "no thanks": "negated_thanks",
         "tidak terima kasih": "negated_thanks",
+        "I don't love this, thanks": "negated_positive",
         "I do not love this, thanks": "negated_positive",
         "Thanks, but I do not love this": "negated_positive",
     }
@@ -132,6 +135,25 @@ def test_policy_matches_only_explicit_non_negated_acknowledgment_tokens():
     assert lovely.disposition is ReplyDisposition.DRAFT
     assert lovely.reply == ""
     assert lovely.reason == "ambiguous"
+
+
+def test_policy_never_auto_replies_to_acknowledgments_mixed_with_requests():
+    policy = DeterministicReplyPolicy()
+    cases = (
+        "Thanks, but where is my refund?",
+        "Thanks, can you explain what happened?",
+        "I love it, but how do I return it?",
+        "Thanks, please explain what happened.",
+        "I love it, but please help with a return.",
+        "Awesome, but could you help me?",
+        "Terima kasih, tolong periksa pesanan saya.",
+    )
+
+    for text in cases:
+        decision = policy.classify(text, platform="instagram", author_id="a-1")
+        assert decision.disposition is ReplyDisposition.DRAFT
+        assert decision.reply == ""
+        assert decision.reason == "mixed_request"
 
 
 def test_platform_manual_approval_forces_draft_even_when_auto_is_active():

@@ -7744,3 +7744,60 @@ Stage hanya tiga production path, dua test path, dan bagian evidence ini; commit
 tanpa push, lalu review commit baru read-only/offline. Graph API migration baru
 layak dimulai sebagai slice terpisah bila review tersebut hijau. Live capability
 probe tetap memerlukan otorisasi baru, test account, read-only, dan tanpa reply.
+
+## Checkpoint F follow-up 3 — contracted negation + mixed requests (2026-08-28)
+
+**Status implementasi:** dua finding review commit `67ca3df` diperbaiki sebagai
+slice RED→GREEN terpisah dan hanya diverifikasi offline. Seluruh social lane tetap
+default-off. Tidak ada credential, test account, network, API call, browser action,
+atau outbound reply nyata yang digunakan.
+
+### Perubahan
+
+1. Classifier mengenali kontraksi negasi Inggris yang ditokenisasi sebagai pasangan
+   bounded (`don`/`didn`/`doesn` + `t`) dalam lookback yang sama dengan negasi
+   eksplisit. Bentuk ASCII dan Unicode apostrophe seperti `don't` dan `didn’t`
+   sekarang DRAFT dengan reason `negated_positive`; mixed `don't ... thanks` juga
+   diblokir sebelum kategori thanks dapat dipilih.
+2. Bila acknowledgment thanks/positive bercampur dengan tanda tanya atau token
+   permintaan bounded (`please`, `help`, `explain`, `tolong`, `mohon`, serta kata
+   tanya/modal yang didukung), classifier mengembalikan DRAFT tanpa reply dengan
+   reason `mixed_request`. Acknowledgment eksplisit seperti `Thanks!` dan `Saya
+   suka.` tetap AUTO.
+
+### Bukti RED→GREEN aktual
+
+- RED focused: **2 failed, 7 passed** (`0.61s`). Failure mereproduksi kontraksi
+  negasi yang masih AUTO-positive serta acknowledgment bercampur pertanyaan yang
+  masih AUTO-thanks.
+- Focused classifier GREEN setelah implementation: **9 passed** (`0.48s`).
+- Focused dua-file final: **27 passed** (`0.86s`).
+- Broad offline social regression final: **106 passed** (`2.59s`).
+- Ruff scoped dua Python path: **All checks passed!**
+- `py_compile` dua Python path: lulus tanpa output.
+- `python scripts/verify_frozen.py`: **FROZEN integrity: OK** (10 files,
+  baseline `094b696`).
+- Probe offline tambahan untuk ASCII/Unicode contractions, mixed questions,
+  mixed request imperatives, dan positive controls: **OK**.
+- Scoped `git diff --check`: tanpa whitespace error; warning LF→CRLF pada dua
+  working-copy path dicatat dan bukan whitespace failure.
+
+### Batas jujur
+
+- Full repository pytest kembali **tidak mencapai eksekusi suite**: collection
+  berhenti pada unrelated dirty `tests/test_voice_turn_guard.py` karena
+  `ImportError: cannot import name 'voice_turn_guard' from jarvis.integrations`
+  (**1 warning, 1 error**, `3.87s`). Tidak ada file voice user yang diubah.
+- Root-wide Ruff kembali gagal pada dua finding unrelated existing dirty work:
+  `S110` di `jarvis/agent/communication_authorization.py:142` dan
+  `jarvis/agent/tools/whatsapp_web.py:364`. Scoped Ruff slice ini hijau.
+- Graph API tetap v19.0 dan **tidak dimigrasikan** dalam slice ini.
+- Capability probe test-account read-only tetap **belum diotorisasi dan tidak
+  dijalankan**. Live behavior dan outbound send nyata belum terbukti.
+
+### Langkah aman berikutnya
+
+Stage hanya classifier, regression test, dan bagian evidence ini; commit tanpa
+push, lalu review commit baru read-only/offline. Graph API migration hanya boleh
+dibuka sebagai slice terpisah bila review tersebut hijau. Capability probe tetap
+memerlukan otorisasi baru, test account, read-only, dan tanpa mengirim balasan.

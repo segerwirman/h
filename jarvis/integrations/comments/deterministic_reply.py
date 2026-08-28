@@ -91,6 +91,33 @@ _POSITIVE_PHRASES = tuple(
 _NEGATIONS = frozenset(
     {"tidak", "tak", "bukan", "gak", "nggak", "ga", "no", "not", "never"}
 )
+_NEGATED_CONTRACTIONS = frozenset({"didn", "doesn", "don"})
+_REQUEST_TERMS = frozenset(
+    {
+        "apa",
+        "apakah",
+        "bagaimana",
+        "bantu",
+        "bisa",
+        "boleh",
+        "can",
+        "could",
+        "explain",
+        "help",
+        "how",
+        "jelaskan",
+        "mohon",
+        "please",
+        "tolong",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "why",
+        "would",
+    }
+)
 _TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
 _OPEN_ENDED_PREFIXES = (
     "mengapa ",
@@ -120,7 +147,17 @@ def _phrase_starts(tokens: list[str], phrases: tuple[tuple[str, ...], ...]) -> l
 
 def _is_negated(tokens: list[str], phrase_start: int, *, lookback: int = 3) -> bool:
     start = max(0, phrase_start - lookback)
-    return any(token in _NEGATIONS for token in tokens[start:phrase_start])
+    prefix = tokens[start:phrase_start]
+    return any(token in _NEGATIONS for token in prefix) or any(
+        token in _NEGATED_CONTRACTIONS
+        and index + 1 < len(prefix)
+        and prefix[index + 1] == "t"
+        for index, token in enumerate(prefix)
+    )
+
+
+def _contains_request(tokens: list[str], normalized: str) -> bool:
+    return normalized.endswith("?") or any(token in _REQUEST_TERMS for token in tokens)
 
 
 class DeterministicReplyPolicy:
@@ -180,6 +217,8 @@ class DeterministicReplyPolicy:
             return ReplyDecision(ReplyDisposition.DRAFT, reason="negated_positive")
         if any(_is_negated(tokens, start) for start in thanks_starts):
             return ReplyDecision(ReplyDisposition.DRAFT, reason="negated_thanks")
+        if (thanks_starts or positive_starts) and _contains_request(tokens, normalized):
+            return ReplyDecision(ReplyDisposition.DRAFT, reason="mixed_request")
         if thanks_starts:
             return self._template("thanks", normalized, platform, author_id)
         if positive_starts:
