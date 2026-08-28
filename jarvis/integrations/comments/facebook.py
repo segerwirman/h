@@ -22,9 +22,9 @@ import time
 from jarvis.core import config, log, secrets_store
 from jarvis.integrations.comments.base import (CommentEvent, PlatformAdapter,
                                                PlatformCapabilities, ReplyResult)
+from jarvis.integrations.comments.meta_graph import GRAPH_API_BASE
 
 _logger = log.get("comments.facebook")
-_GRAPH_BASE = "https://graph.facebook.com/v19.0"
 _TOKEN_KEY = "FACEBOOK_PAGE_ACCESS_TOKEN"
 
 
@@ -74,7 +74,7 @@ class FacebookAdapter(PlatformAdapter):
             params = {"access_token": self._token(), "fields": "id,from,message,created_time"}
             if self._since:
                 params["since"] = int(self._since)
-            resp = requests.get(f"{_GRAPH_BASE}/{self._live_video_id}/comments",
+            resp = requests.get(f"{GRAPH_API_BASE}/{self._live_video_id}/comments",
                                params=params, timeout=10)
             resp.raise_for_status()
             data = resp.json()
@@ -108,7 +108,7 @@ class FacebookAdapter(PlatformAdapter):
             return ReplyResult(False, "requests not installed")
         try:
             resp = requests.post(
-                f"{_GRAPH_BASE}/{comment.comment_id}/comments",
+                f"{GRAPH_API_BASE}/{comment.comment_id}/comments",
                 data={"message": text, "access_token": self._token()}, timeout=10)
             resp.raise_for_status()
             data = resp.json()

@@ -21,9 +21,9 @@ import time
 from jarvis.core import config, log, secrets_store
 from jarvis.integrations.comments.base import (CommentEvent, PlatformAdapter,
                                                PlatformCapabilities, ReplyResult)
+from jarvis.integrations.comments.meta_graph import GRAPH_API_BASE
 
 _logger = log.get("comments.instagram")
-_GRAPH_BASE = "https://graph.facebook.com/v19.0"
 _TOKEN_KEY = "INSTAGRAM_ACCESS_TOKEN"
 
 
@@ -70,7 +70,7 @@ class InstagramAdapter(PlatformAdapter):
             return []
         try:
             resp = requests.get(
-                f"{_GRAPH_BASE}/{self._media_id}/comments",
+                f"{GRAPH_API_BASE}/{self._media_id}/comments",
                 params={"access_token": self._token(), "fields": "id,username,text,timestamp"},
                 timeout=10)
             resp.raise_for_status()
@@ -107,7 +107,7 @@ class InstagramAdapter(PlatformAdapter):
             return ReplyResult(False, "requests not installed")
         try:
             resp = requests.post(
-                f"{_GRAPH_BASE}/{comment.comment_id}/replies",
+                f"{GRAPH_API_BASE}/{comment.comment_id}/replies",
                 data={"message": text, "access_token": self._token()}, timeout=10)
             resp.raise_for_status()
             data = resp.json()

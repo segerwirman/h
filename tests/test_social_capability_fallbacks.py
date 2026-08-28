@@ -423,6 +423,279 @@ def test_meta_messaging_failed_first_poll_does_not_commit_startup_cutoff(
     assert [event.comment_id for event in adapter.poll_comments()] == ["post-recovery"]
 
 
+class _OfflineMetaResponse:
+    def __init__(self, payload: dict) -> None:
+        self._payload = payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict:
+        return self._payload
+
+
+def test_facebook_comments_v26_contract_preserves_request_shape(monkeypatch):
+    import requests
+
+    calls: list[tuple[str, str, dict]] = []
+
+    def fake_get(url: str, **kwargs):
+        calls.append(("GET", url, kwargs))
+        return _OfflineMetaResponse({"data": []})
+
+    def fake_post(url: str, **kwargs):
+        calls.append(("POST", url, kwargs))
+        return _OfflineMetaResponse({"id": "offline-reply-1"})
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(requests, "post", fake_post)
+    adapter = FacebookAdapter(live_video_id="offline-live-1")
+    monkeypatch.setattr(
+        adapter,
+        "capabilities",
+        lambda: PlatformCapabilities(True, True, False, "offline contract"),
+    )
+    monkeypatch.setattr(adapter, "_token", lambda: "offline-meta-token")
+    comment = CommentEvent(
+        "facebook",
+        "offline-comment-1",
+        "offline-author-1",
+        "Offline User",
+        "halo",
+        1.0,
+    )
+
+    assert adapter.poll_comments() == []
+    assert adapter.send_reply(comment, "Halo juga!").ok is True
+
+    assert calls == [
+        (
+            "GET",
+            "https://graph.facebook.com/v26.0/offline-live-1/comments",
+            {
+                "params": {
+                    "access_token": "offline-meta-token",
+                    "fields": "id,from,message,created_time",
+                },
+                "timeout": 10,
+            },
+        ),
+        (
+            "POST",
+            "https://graph.facebook.com/v26.0/offline-comment-1/comments",
+            {
+                "data": {
+                    "message": "Halo juga!",
+                    "access_token": "offline-meta-token",
+                },
+                "timeout": 10,
+            },
+        ),
+    ]
+    assert all("/v19.0/" not in url for _, url, _ in calls)
+
+
+def test_instagram_comments_v26_contract_preserves_request_shape(monkeypatch):
+    import requests
+
+    calls: list[tuple[str, str, dict]] = []
+
+    def fake_get(url: str, **kwargs):
+        calls.append(("GET", url, kwargs))
+        return _OfflineMetaResponse({"data": []})
+
+    def fake_post(url: str, **kwargs):
+        calls.append(("POST", url, kwargs))
+        return _OfflineMetaResponse({"id": "offline-reply-1"})
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(requests, "post", fake_post)
+    adapter = InstagramAdapter(media_id="offline-media-1")
+    monkeypatch.setattr(
+        adapter,
+        "capabilities",
+        lambda: PlatformCapabilities(True, True, False, "offline contract"),
+    )
+    monkeypatch.setattr(adapter, "_token", lambda: "offline-meta-token")
+    comment = CommentEvent(
+        "instagram",
+        "offline-comment-1",
+        "offline-author-1",
+        "Offline User",
+        "halo",
+        1.0,
+    )
+
+    assert adapter.poll_comments() == []
+    assert adapter.send_reply(comment, "Halo juga!").ok is True
+
+    assert calls == [
+        (
+            "GET",
+            "https://graph.facebook.com/v26.0/offline-media-1/comments",
+            {
+                "params": {
+                    "access_token": "offline-meta-token",
+                    "fields": "id,username,text,timestamp",
+                },
+                "timeout": 10,
+            },
+        ),
+        (
+            "POST",
+            "https://graph.facebook.com/v26.0/offline-comment-1/replies",
+            {
+                "data": {
+                    "message": "Halo juga!",
+                    "access_token": "offline-meta-token",
+                },
+                "timeout": 10,
+            },
+        ),
+    ]
+    assert all("/v19.0/" not in url for _, url, _ in calls)
+
+
+def test_facebook_messaging_v26_contract_preserves_request_shape(monkeypatch):
+    import requests
+
+    from jarvis.integrations.comments import facebook_messaging
+
+    calls: list[tuple[str, str, dict]] = []
+
+    def fake_get(url: str, **kwargs):
+        calls.append(("GET", url, kwargs))
+        if url.endswith("/me/permissions"):
+            return _OfflineMetaResponse(
+                {"data": [{"permission": "pages_messaging", "status": "granted"}]}
+            )
+        return _OfflineMetaResponse({"data": []})
+
+    def fake_post(url: str, **kwargs):
+        calls.append(("POST", url, kwargs))
+        return _OfflineMetaResponse({"message_id": "offline-message-1"})
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(requests, "post", fake_post)
+    client = facebook_messaging._GraphMessagingClient()
+
+    assert client.granted_permissions("offline-meta-token") == {"pages_messaging"}
+    assert client.poll_messages("offline-page-1", "offline-meta-token") == []
+    assert client.send_message(
+        "offline-page-1",
+        "offline-author-1",
+        "Halo juga!",
+        "offline-meta-token",
+    ) == {"ok": True, "id": "offline-message-1"}
+
+    assert calls == [
+        (
+            "GET",
+            "https://graph.facebook.com/v26.0/me/permissions",
+            {"params": {"access_token": "offline-meta-token"}, "timeout": 10},
+        ),
+        (
+            "GET",
+            "https://graph.facebook.com/v26.0/offline-page-1/conversations",
+            {
+                "params": {
+                    "access_token": "offline-meta-token",
+                    "fields": "id,messages.limit(25){id,from,message,created_time}",
+                },
+                "timeout": 10,
+            },
+        ),
+        (
+            "POST",
+            "https://graph.facebook.com/v26.0/offline-page-1/messages",
+            {
+                "params": {"access_token": "offline-meta-token"},
+                "json": {
+                    "recipient": {"id": "offline-author-1"},
+                    "message": {"text": "Halo juga!"},
+                },
+                "timeout": 10,
+            },
+        ),
+    ]
+    assert all("/v19.0/" not in url for _, url, _ in calls)
+
+
+def test_instagram_messaging_v26_contract_preserves_request_shape(monkeypatch):
+    import requests
+
+    from jarvis.integrations.comments import instagram_messaging
+
+    calls: list[tuple[str, str, dict]] = []
+
+    def fake_get(url: str, **kwargs):
+        calls.append(("GET", url, kwargs))
+        if url.endswith("/me/permissions"):
+            return _OfflineMetaResponse(
+                {
+                    "data": [
+                        {
+                            "permission": "instagram_manage_messages",
+                            "status": "granted",
+                        }
+                    ]
+                }
+            )
+        return _OfflineMetaResponse({"data": []})
+
+    def fake_post(url: str, **kwargs):
+        calls.append(("POST", url, kwargs))
+        return _OfflineMetaResponse({"message_id": "offline-message-1"})
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    monkeypatch.setattr(requests, "post", fake_post)
+    client = instagram_messaging._InstagramMessagingClient()
+
+    assert client.granted_permissions("offline-meta-token") == {
+        "instagram_manage_messages"
+    }
+    assert client.poll_messages("offline-ig-1", "offline-meta-token") == []
+    assert client.send_message(
+        "offline-ig-1",
+        "offline-author-1",
+        "Halo juga!",
+        "offline-meta-token",
+    ) == {"ok": True, "id": "offline-message-1"}
+
+    assert calls == [
+        (
+            "GET",
+            "https://graph.facebook.com/v26.0/me/permissions",
+            {"params": {"access_token": "offline-meta-token"}, "timeout": 10},
+        ),
+        (
+            "GET",
+            "https://graph.facebook.com/v26.0/offline-ig-1/conversations",
+            {
+                "params": {
+                    "access_token": "offline-meta-token",
+                    "platform": "instagram",
+                    "fields": "id,messages.limit(25){id,from,message,created_time}",
+                },
+                "timeout": 10,
+            },
+        ),
+        (
+            "POST",
+            "https://graph.facebook.com/v26.0/offline-ig-1/messages",
+            {
+                "params": {"access_token": "offline-meta-token"},
+                "json": {
+                    "recipient": {"id": "offline-author-1"},
+                    "message": {"text": "Halo juga!"},
+                },
+                "timeout": 10,
+            },
+        ),
+    ]
+    assert all("/v19.0/" not in url for _, url, _ in calls)
+
+
 @pytest.mark.parametrize(
     ("client_type", "account_id", "author_name"),
     [

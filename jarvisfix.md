@@ -7987,3 +7987,71 @@ network, provider, random, atau model path.
 Dengan review scope ini hijau, migrasi Graph API boleh dibuka hanya sebagai slice
 offline terpisah. Capability probe live tetap memerlukan otorisasi baru, test
 account, read-only, dan tanpa mengirim balasan. Tidak ada push.
+
+## Checkpoint F follow-up 10 — Meta Graph API v26 contract migration (2026-08-28)
+
+**Status implementasi:** empat lane resmi Meta dimigrasikan dari Graph API v19.0
+ke satu kontrak base bersama v26.0. Slice ini hanya mengubah versi URL. Request
+method, endpoint suffix, params, fields, token placement, JSON/data payload,
+timeout, permission gates, history/self-message filtering, dan default-off policy
+tetap sama.
+
+### Gate dokumentasi resmi
+
+- Sumber versi resmi: `https://developers.facebook.com/docs/graph-api/changelog/versions`,
+  diakses 2026-08-28. Versi terbaru yang terdaftar adalah **v26.0**, dirilis
+  2026-07-29, dengan expiration masih TBD. v19.0 telah expired 2026-05-21.
+- Changelog resmi v20.0 sampai v26.0 ditinjau. Perubahan yang surfaced tidak
+  mengenai request contract slice ini: `permalink_url` comment v20 tidak diminta;
+  Messaging Events API v21 adalah `POST /{app_id}/page_activities`; Live Video
+  `overlay_url` v24 tidak diminta; perubahan v23/v25/v26 yang surfaced juga bukan
+  comments/conversations/messages contract yang digunakan.
+- Changelog v22 menghapus **Instagram v1.0 API** dan meminta migrasi ke Instagram
+  Platform. Referensi Instagram Platform saat ini kemudian diperiksa:
+  `https://developers.facebook.com/docs/instagram-platform/instagram-api-with-facebook-login/comment-moderation`,
+  `.../instagram-graph-api/reference/ig-media/comments`, dan
+  `.../instagram-graph-api/reference/ig-comment/replies`. Dokumentasi resmi itu
+  menetapkan host Facebook Login tetap `graph.facebook.com` dan endpoint tetap
+  `GET /<IG_MEDIA_ID>/comments` serta `POST /<IG_COMMENT_ID>/replies`. Karena
+  repository memakai professional-account/Facebook Login surface tersebut, tidak
+  diperlukan semantic endpoint migration dalam slice versi ini.
+
+### Bukti RED → GREEN aktual
+
+- Empat contract test offline ditulis sebelum production edit. Semua HTTP boundary
+  diganti fake `requests.get`/`requests.post`, memakai ID/token sentinel; fake tidak
+  meneruskan network.
+- RED command focused (`-k v26_contract`) pada production v19.0: **4 failed,
+  18 deselected** (`0.88s`). Keempat failure adalah exact URL mismatch
+  `graph.facebook.com/v19.0/...` vs expected `v26.0`; fixture, import, method,
+  params, payload, dan fake response berjalan.
+- Setelah satu `GRAPH_API_VERSION = "v26.0"` / `GRAPH_API_BASE` bersama dipakai
+  empat module, command yang sama GREEN: **4 passed, 18 deselected** (`0.58s`).
+- Focused `tests/test_social_capability_fallbacks.py`: **22 passed** (`0.59s`).
+- Broad offline social regression: **110 passed** (`2.62s`).
+- Scoped Ruff: **All checks passed!**; scoped `py_compile`: lulus tanpa output.
+- FROZEN integrity: **OK** (10 files, baseline `094b696`).
+- Scoped production search: **no v19.0 matches**.
+- Scoped `git diff --check`: tanpa whitespace error; warning LF→CRLF pada lima
+  existing working-copy path dicatat dan tidak dinormalisasi massal.
+
+### Batas jujur
+
+- Full repository pytest dicoba tetapi collection berhenti pada unrelated dirty
+  `tests/test_voice_turn_guard.py`: `ImportError: cannot import name
+  'voice_turn_guard' from jarvis.integrations` (**1 warning, 1 error**, `3.74s`).
+  File voice user tidak diubah untuk memaksa hijau.
+- Root-wide Ruff dicoba dan tetap menemukan dua finding unrelated existing dirty
+  work: `S110` di `jarvis/agent/communication_authorization.py:142` dan
+  `jarvis/agent/tools/whatsapp_web.py:364`. Scoped Ruff slice ini hijau.
+- Tidak ada request ke `graph.facebook.com`, credential/keyring read, Meta account,
+  test account, capability probe, browser action, atau outbound reply nyata. Fetch
+  hanya menuju dokumentasi publik `developers.facebook.com` tanpa login/token.
+  Contract test fake/offline **bukan** bukti capability atau kompatibilitas akun live.
+
+### Langkah aman berikutnya
+
+Stage tepat module base baru, empat adapter Meta, satu test path, dan evidence ini;
+commit tanpa push, lalu review commit read-only/offline. Capability probe tetap di
+luar scope dan memerlukan otorisasi baru; bila kelak diotorisasi gunakan test
+account, read-only, dan jangan mengirim balasan.

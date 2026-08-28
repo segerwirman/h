@@ -12,9 +12,9 @@ from jarvis.integrations.comments.base import (
     PlatformCapabilities,
     ReplyResult,
 )
+from jarvis.integrations.comments.meta_graph import GRAPH_API_BASE
 
 _logger = log.get("comments.facebook_messaging")
-_GRAPH_BASE = "https://graph.facebook.com/v19.0"
 _TOKEN_KEY = "jarvis/facebook_messaging/page_access_token"
 _PERMISSION = "pages_messaging"
 
@@ -24,7 +24,7 @@ class _GraphMessagingClient:
         import requests
 
         response = requests.get(
-            f"{_GRAPH_BASE}/me/permissions",
+            f"{GRAPH_API_BASE}/me/permissions",
             params={"access_token": token},
             timeout=10,
         )
@@ -39,7 +39,7 @@ class _GraphMessagingClient:
         import requests
 
         response = requests.get(
-            f"{_GRAPH_BASE}/{account_id}/conversations",
+            f"{GRAPH_API_BASE}/{account_id}/conversations",
             params={
                 "access_token": token,
                 "fields": "id,messages.limit(25){id,from,message,created_time}",
@@ -74,7 +74,7 @@ class _GraphMessagingClient:
         import requests
 
         response = requests.post(
-            f"{_GRAPH_BASE}/{account_id}/messages",
+            f"{GRAPH_API_BASE}/{account_id}/messages",
             params={"access_token": token},
             json={"recipient": {"id": recipient_id}, "message": {"text": text}},
             timeout=10,
