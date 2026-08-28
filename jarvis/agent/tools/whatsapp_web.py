@@ -59,6 +59,12 @@ def _start_bridge() -> dict:
     return start_bridge()
 
 
+def _exit_communication_mode() -> bool:
+    from jarvis.agent.communication_mode import exit
+
+    return exit()
+
+
 def _call_display(contact: str, state: str, audio: dict) -> str:
     """Satu kalimat keadaan panggilan + satu kalimat kemampuan bicara.
 
@@ -353,5 +359,10 @@ class WhatsAppHangup(Tool):
                 ),
             )
         except Exception as exc:  # noqa: BLE001
-            await asyncio.to_thread(stop_bridge)
+            try:
+                await asyncio.to_thread(stop_bridge)
+            except Exception:  # noqa: BLE001
+                pass
             return ToolResult.fail(str(exc))
+        finally:
+            _exit_communication_mode()

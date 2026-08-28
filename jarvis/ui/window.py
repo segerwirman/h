@@ -270,6 +270,12 @@ class MainWindow(
         from jarvis.ui.monitor_source_sheet import MonitorSourceSheet
         self.monitor_source_sheet = MonitorSourceSheet(parent=central)
         self.monitor_source_sheet.hide()
+        from jarvis.ui.communication_auth_sheet import CommunicationAuthorizationSheet
+        self.communication_auth_sheet = CommunicationAuthorizationSheet(central)
+        self.communication_auth_sheet.hide()
+        self._communication_auth_scope = None
+        self.communication_auth_sheet.resolved.connect(
+            self._on_communication_authorization_resolved)
         # Palette ownership moved to WindowPanelsMixin:
         # {"action_id": "manage_monitor_sources"}
         # {"manage_monitor_sources": self.manage_monitor_sources}
@@ -355,6 +361,11 @@ class MainWindow(
         BUS.subscribe("remote_setup.pending", self._on_remote_setup_pending, ui=True)
         BUS.subscribe("remote_proposal.pending", self._on_remote_proposal_pending, ui=True)
         BUS.subscribe("voice_proposal.pending", self._on_voice_proposal_pending, ui=True)
+        BUS.subscribe(
+            "communication.authorization.required",
+            self._on_communication_authorization_required,
+            ui=True,
+        )
         self._pending_voice_proposal_id: str | None = None
         self._drain = QTimer(self)
         self._drain.timeout.connect(BUS.drain_ui)

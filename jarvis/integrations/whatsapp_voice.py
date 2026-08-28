@@ -23,6 +23,18 @@ _legacy = None
 _live_ref: weakref.ReferenceType | None = None
 
 
+def _enter_communication_mode() -> int:
+    from jarvis.agent.communication_mode import enter
+
+    return enter()
+
+
+def _exit_communication_mode() -> bool:
+    from jarvis.agent.communication_mode import exit
+
+    return exit()
+
+
 def list_audio_devices() -> dict[str, list[dict[str, object]]]:
     """Return safe device metadata needed to configure the virtual bridge."""
 
@@ -285,12 +297,22 @@ class WhatsAppAudioBridge:
             self._active = True
             self._last_error = ""
         instance._phone_active = True
-        self._output_thread = threading.Thread(
-            target=self._output_worker,
-            daemon=True,
-            name="jarvis-whatsapp-audio",
-        )
-        self._output_thread.start()
+        try:
+            _enter_communication_mode()
+            self._output_thread = threading.Thread(
+                target=self._output_worker,
+                daemon=True,
+                name="jarvis-whatsapp-audio",
+            )
+            self._output_thread.start()
+        except Exception as exc:  # noqa: BLE001
+            self._last_error = f"communication lock gagal: {type(exc).__name__}"
+            _logger.warning(
+                "whatsapp.communication_lock_failed",
+                error=type(exc).__name__,
+            )
+            self.stop()
+            return self.status()
         _logger.info("whatsapp.audio_started")
         return self.status()
 
@@ -307,39 +329,42 @@ class WhatsAppAudioBridge:
                 pass
 
     def stop(self) -> dict:
-        with self._lock:
-            was_active = self._active
-            self._active = False
-            input_stream = self._input_stream
-            output_stream = self._output_stream
-            self._input_stream = None
-            self._output_stream = None
-        instance = _live()
-        if instance is not None:
-            instance._phone_active = False
-        for stream in (input_stream, output_stream):
-            if stream is None:
-                continue
-            try:
-                stream.stop()
-            except Exception:
-                pass
-            try:
-                stream.close()
-            except Exception:
-                pass
-        thread = self._output_thread
-        if thread and thread is not threading.current_thread():
-            thread.join(timeout=2)
-        self._output_thread = None
-        while True:
-            try:
-                self._output_queue.get_nowait()
-            except queue.Empty:
-                break
-        if was_active:
-            _logger.info("whatsapp.audio_stopped")
-        return self.status()
+        try:
+            with self._lock:
+                was_active = self._active
+                self._active = False
+                input_stream = self._input_stream
+                output_stream = self._output_stream
+                self._input_stream = None
+                self._output_stream = None
+            instance = _live()
+            if instance is not None:
+                instance._phone_active = False
+            for stream in (input_stream, output_stream):
+                if stream is None:
+                    continue
+                try:
+                    stream.stop()
+                except Exception:
+                    pass
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+            thread = self._output_thread
+            if thread and thread is not threading.current_thread():
+                thread.join(timeout=2)
+            self._output_thread = None
+            while True:
+                try:
+                    self._output_queue.get_nowait()
+                except queue.Empty:
+                    break
+            if was_active:
+                _logger.info("whatsapp.audio_stopped")
+            return self.status()
+        finally:
+            _exit_communication_mode()
 
 
 def install(legacy_module) -> None:

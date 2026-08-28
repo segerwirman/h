@@ -216,6 +216,79 @@ def test_gateway_operations_action_opens_local_control_plane_sheet(win):
     assert win.gateway_operations_sheet.geometry().width() >= 720
 
 
+def test_communication_auth_window_re_resolves_scope_and_binds_opaque_id(
+        win, monkeypatch):
+    from jarvis.ui.communication_auth_sheet import AuthorizationScope
+
+    scope = AuthorizationScope(
+        task_id="T-real",
+        trace_id="trace-123",
+        capability_ids=frozenset({"local.test.work"}),
+        ttl_s=45,
+        uses=1,
+    )
+    calls = []
+    monkeypatch.setattr(
+        "jarvis.agent.dispatch.communication_authorization_scope",
+        lambda task_id, capability_ids, **bounds: calls.append(
+            (task_id, frozenset(capability_ids), bounds)
+        ) or scope,
+    )
+    bound = []
+    monkeypatch.setattr(
+        "jarvis.agent.dispatch.bind_communication_grant",
+        lambda grant_id, **grant_scope: bound.append(
+            (grant_id, grant_scope)
+        ) or True,
+    )
+
+    win._on_communication_authorization_required({
+        "task_id": "T-real",
+        "capability_ids": ["local.test.work"],
+        "ttl_s": 45,
+        "uses": 1,
+    })
+
+    assert calls == [(
+        "T-real",
+        frozenset({"local.test.work"}),
+        {"ttl_s": 45, "uses": 1},
+    )]
+    assert win.communication_auth_sheet.isHidden() is False
+    assert win._communication_auth_scope is scope
+    assert win.communication_auth_sheet._entry.text() == ""
+
+    win._on_communication_authorization_resolved(True, "G-opaque")
+
+    assert bound == [(
+        "G-opaque",
+        {
+            "task_id": "T-real",
+            "trace_id": "trace-123",
+            "capability_ids": frozenset({"local.test.work"}),
+        },
+    )]
+    assert win._communication_auth_scope is None
+    assert "G-opaque" not in repr(win.notifications._blips)
+
+
+def test_communication_auth_window_rejects_stale_bus_scope(win, monkeypatch):
+    monkeypatch.setattr(
+        "jarvis.agent.dispatch.communication_authorization_scope",
+        lambda *_args, **_kwargs: None,
+    )
+
+    win._on_communication_authorization_required({
+        "task_id": "T-stale",
+        "capability_ids": ["local.test.work"],
+        "ttl_s": 45,
+        "uses": 1,
+    })
+
+    assert win._communication_auth_scope is None
+    assert win.communication_auth_sheet.isHidden() is True
+
+
 def test_command_palette_model_has_static_commands(win):
     ids = {c["action_id"] for c in win.command_palette.model._commands}
     assert "go_home" in ids

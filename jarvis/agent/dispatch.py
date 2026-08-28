@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import math
 import threading
 import time
 from contextlib import contextmanager
@@ -142,6 +143,204 @@ def active_tasks() -> list[str]:
         return [h.task for h in _active.values()]
 
 
+def communication_authorization_scope(
+    task_id: str,
+    capability_ids,
+    *,
+    ttl_s: float = 60.0,
+    uses: int = 1,
+):
+    """Build a local auth scope for one matching live dispatch session.
+
+    Only stable identifiers leave this boundary. The passphrase remains owned by
+    the Qt sheet and the returned scope never contains tool arguments or prompt
+    content.
+    """
+    target = str(task_id or "").strip()
+    capabilities = frozenset(
+        str(item).strip() for item in (capability_ids or ())
+        if str(item).strip()
+    )
+    try:
+        ttl = float(ttl_s)
+        use_count = int(uses)
+    except (TypeError, ValueError):
+        return None
+    if (
+        not target
+        or not capabilities
+        or not math.isfinite(ttl)
+        or ttl <= 0
+        or use_count <= 0
+    ):
+        return None
+    with _active_lock:
+        matches = [
+            handle for handle in _active.values()
+            if getattr(getattr(handle, "bg_task", None), "id", None) == target
+        ]
+        if len(matches) != 1:
+            return None
+        handle = matches[0]
+        session = handle.session
+        trace_id = str(
+            getattr(getattr(session, "execution_context", None), "trace_id", "")
+            or ""
+        ).strip()
+        if (
+            session.cancelled
+            or session.registry_task_id != target
+            or not trace_id
+        ):
+            return None
+    try:
+        from jarvis.agent.tasks import REGISTRY
+        view = REGISTRY.get(target)
+    except Exception:
+        return None
+    if view is None or not view.active or view.cancelled:
+        return None
+    try:
+        from jarvis.ui.communication_auth_sheet import AuthorizationScope
+        return AuthorizationScope(
+            task_id=target,
+            trace_id=trace_id,
+            capability_ids=capabilities,
+            ttl_s=ttl,
+            uses=use_count,
+        )
+    except Exception:
+        return None
+
+
+def request_communication_authorization(
+    task_id: str,
+    capability_ids,
+    *,
+    ttl_s: float = 60.0,
+    uses: int = 1,
+) -> bool:
+    """Ask the registered desktop UI to present the local-only auth sheet."""
+    scope = communication_authorization_scope(
+        task_id,
+        capability_ids,
+        ttl_s=ttl_s,
+        uses=uses,
+    )
+    if scope is None:
+        return False
+    try:
+        BUS.publish(
+            "communication.authorization.required",
+            task_id=scope.task_id,
+            capability_ids=sorted(scope.capability_ids),
+            ttl_s=scope.ttl_s,
+            uses=scope.uses,
+        )
+        return True
+    except Exception:
+        return False
+
+
+def bind_communication_grant(
+    grant_id: str,
+    *,
+    task_id: str,
+    trace_id: str,
+    capability_ids,
+) -> bool:
+    """Attach one validated opaque override grant to its live session.
+
+    A failed binding always revokes the supplied grant. Validation is
+    non-consuming; registry.execute remains the only owner that consumes uses.
+    """
+    opaque_id = str(grant_id or "").strip()
+    target = str(task_id or "").strip()
+    trace = str(trace_id or "").strip()
+    capabilities = frozenset(
+        str(item).strip() for item in (capability_ids or ())
+        if str(item).strip()
+    )
+
+    def _reject() -> bool:
+        if opaque_id:
+            try:
+                from jarvis.agent.execution_grants import MANAGER
+                MANAGER.revoke(opaque_id)
+            except Exception:
+                pass
+        return False
+
+    if not opaque_id or not target or not trace or not capabilities:
+        return _reject()
+    try:
+        from jarvis.agent import communication_mode
+        from jarvis.agent.execution_grants import (
+            MANAGER,
+            PURPOSE_COMMUNICATION_OVERRIDE,
+        )
+        from jarvis.agent.tasks import REGISTRY
+        if not communication_mode.active():
+            return _reject()
+        view = REGISTRY.get(target)
+        if view is None or not view.active or view.cancelled:
+            return _reject()
+        generation = communication_mode.generation()
+        grant = MANAGER.get(opaque_id)
+        if (
+            grant is None
+            or grant.purpose != PURPOSE_COMMUNICATION_OVERRIDE
+            or grant.task_id != target
+            or grant.trace_id != trace
+            or grant.capability_ids != capabilities
+            or grant.generation != generation
+            or any(
+                not MANAGER.verify(
+                    opaque_id,
+                    purpose=PURPOSE_COMMUNICATION_OVERRIDE,
+                    task_id=target,
+                    trace_id=trace,
+                    capability_id=capability_id,
+                    generation=generation,
+                    consume=False,
+                )
+                for capability_id in capabilities
+            )
+        ):
+            return _reject()
+    except Exception:
+        return _reject()
+
+    previous = ""
+    with _active_lock:
+        matches = [
+            handle for handle in _active.values()
+            if getattr(getattr(handle, "bg_task", None), "id", None) == target
+        ]
+        if len(matches) != 1:
+            return _reject()
+        handle = matches[0]
+        session = handle.session
+        session_trace = str(
+            getattr(getattr(session, "execution_context", None), "trace_id", "")
+            or ""
+        ).strip()
+        if (
+            session.cancelled
+            or session.registry_task_id != target
+            or session_trace != trace
+        ):
+            return _reject()
+        current = REGISTRY.get(target)
+        if current is None or not current.active or current.cancelled:
+            return _reject()
+        previous = str(session.communication_grant_id or "")
+        session.communication_grant_id = opaque_id
+    if previous and previous != opaque_id:
+        MANAGER.revoke(previous)
+    return True
+
+
 def cancel_all() -> int:
     with _active_lock:
         handles = list(_active.values())
@@ -150,6 +349,8 @@ def cancel_all() -> int:
         if bg is not None:
             _revoke_execution_grants(bg.id)
             h.session.execution_grant_id = ""
+            h.session.communication_grant_id = ""
+            h.session.registry_task_id = ""
         h.cancel()
     return len(handles)
 
@@ -171,6 +372,8 @@ def cancel_task(task_id: str) -> bool:
     for handle in handles:
         _revoke_execution_grants(tid)
         handle.session.execution_grant_id = ""
+        handle.session.communication_grant_id = ""
+        handle.session.registry_task_id = ""
         handle.cancel()
     return bool(handles)
 
@@ -582,6 +785,10 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
             _logger.info("agent.dispatch.policy_denied", reason=decision.reason,
                          trace=context.trace_id[:12])
             return None
+    from jarvis.agent import communication_mode
+    if communication_mode.active():
+        _logger.info("agent.dispatch.communication_locked")
+        return None
 
     from jarvis.agent.adapters.base import NullAdapter
     from jarvis.agent.session import Session
@@ -632,6 +839,7 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
         _logger.warning("agent.dispatch.queue_full", task=task[:80])
         return None
     REGISTRY.update(bg_task.id, session_id=session.id)
+    session.registry_task_id = bg_task.id
     with _active_lock:
         handle = _active.get(k)
         if handle is not None:
@@ -679,6 +887,8 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
         except Exception as exc:                               # noqa: BLE001
             _revoke_execution_grants(bg_task.id)
             session.execution_grant_id = ""
+            session.communication_grant_id = ""
+            session.registry_task_id = ""
             REGISTRY.finish(
                 bg_task.id,
                 error=failure or "direct grant unavailable",
@@ -775,6 +985,8 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
             )
             _revoke_execution_grants(bg_task.id)
             session.execution_grant_id = ""
+            session.communication_grant_id = ""
+            session.registry_task_id = ""
             with _active_lock:
                 _active.pop(k, None)
             return
@@ -895,6 +1107,8 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
             _clear_desktop_safe_session(session.id)
             _revoke_execution_grants(bg_task.id)
             session.execution_grant_id = ""
+            session.communication_grant_id = ""
+            session.registry_task_id = ""
             with _active_lock:
                 _active.pop(k, None)
 

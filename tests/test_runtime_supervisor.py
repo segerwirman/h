@@ -74,7 +74,7 @@ def test_canonical_main_mengekspos_supervisor_runtime_dan_ui_factory():
 
 def test_whatsapp_shutdown_registration_does_not_create_browser(monkeypatch):
     from jarvis import main
-    from jarvis.integrations import whatsapp_web
+    from jarvis.integrations import whatsapp_voice, whatsapp_web
     from jarvis.runtime.supervisor import RuntimeSupervisor
 
     calls = []
@@ -86,7 +86,12 @@ def test_whatsapp_shutdown_registration_does_not_create_browser(monkeypatch):
     monkeypatch.setattr(
         whatsapp_web,
         "shutdown_existing",
-        lambda: calls.append("shutdown"),
+        lambda: calls.append("web_shutdown"),
+    )
+    monkeypatch.setattr(
+        whatsapp_voice,
+        "_shutdown_existing",
+        lambda: calls.append("voice_shutdown"),
     )
     supervisor = RuntimeSupervisor()
 
@@ -94,7 +99,7 @@ def test_whatsapp_shutdown_registration_does_not_create_browser(monkeypatch):
 
     assert calls == []
     supervisor.shutdown()
-    assert calls == ["shutdown"]
+    assert calls == ["voice_shutdown", "web_shutdown"]
 
 
 def test_legacy_voice_memiliki_request_stop_idempoten():

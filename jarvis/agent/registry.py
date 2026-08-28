@@ -100,6 +100,105 @@ def get(name: str) -> Tool | None:
     return all_tools().get(name)
 
 
+def _grant_scope(session, context, field_name: str) -> tuple[str, str, str]:
+    grant_id = str(getattr(session, field_name, "") or "")
+    task_id = str(getattr(session, "registry_task_id", "") or "")
+    trace_id = str(getattr(context, "trace_id", "") or "")
+    return grant_id, task_id, trace_id
+
+
+def _communication_admission(descriptor, session, context) -> tuple[bool, bool]:
+    """Return ``(allowed, consumes_override)`` for the current lock state."""
+    from jarvis.agent import communication_mode
+
+    if not communication_mode.active():
+        return True, False
+    if communication_mode.is_escape(descriptor.tool_name):
+        return True, False
+    grant_id, task_id, trace_id = _grant_scope(
+        session,
+        context,
+        "communication_grant_id",
+    )
+    if not grant_id or not task_id or not trace_id:
+        return False, False
+    try:
+        from jarvis.agent.execution_grants import (
+            MANAGER,
+            PURPOSE_COMMUNICATION_OVERRIDE,
+        )
+        valid = MANAGER.verify(
+            grant_id,
+            purpose=PURPOSE_COMMUNICATION_OVERRIDE,
+            task_id=task_id,
+            trace_id=trace_id,
+            capability_id=descriptor.id,
+            generation=communication_mode.generation(),
+            consume=False,
+        )
+    except Exception:
+        return False, False
+    return bool(valid), bool(valid)
+
+
+def _consume_communication_override(descriptor, session, context) -> bool:
+    from jarvis.agent import communication_mode
+    from jarvis.agent.execution_grants import (
+        MANAGER,
+        PURPOSE_COMMUNICATION_OVERRIDE,
+    )
+
+    if not communication_mode.active():
+        return False
+    grant_id, task_id, trace_id = _grant_scope(
+        session,
+        context,
+        "communication_grant_id",
+    )
+    if not grant_id or not task_id or not trace_id:
+        return False
+    try:
+        return MANAGER.verify(
+            grant_id,
+            purpose=PURPOSE_COMMUNICATION_OVERRIDE,
+            task_id=task_id,
+            trace_id=trace_id,
+            capability_id=descriptor.id,
+            generation=communication_mode.generation(),
+            consume=True,
+        )
+    except Exception:
+        return False
+
+
+def _direct_confirmation_granted(descriptor, session, context) -> bool:
+    if not descriptor.direct_grant:
+        return False
+    grant_id, task_id, trace_id = _grant_scope(
+        session,
+        context,
+        "execution_grant_id",
+    )
+    if not grant_id or not task_id or not trace_id:
+        return False
+    try:
+        from jarvis.agent.execution_grants import (
+            MANAGER,
+            PURPOSE_DIRECT_EXECUTION,
+        )
+        return MANAGER.verify(
+            grant_id,
+            purpose=PURPOSE_DIRECT_EXECUTION,
+            task_id=task_id,
+            trace_id=trace_id,
+            capability_id=descriptor.id,
+            generation=0,
+            consume=True,
+        )
+    except Exception:
+        return False
+
+
 def _discover() -> dict[str, Tool]:
     import jarvis.agent.tools as tools_pkg
 
@@ -185,6 +284,29 @@ async def execute(name: str, args: dict, adapter=None,
         return ToolResult.fail("capability tidak terdaftar untuk execution context")
     if descriptor.toolset == "desktop_safe" and context is None:
         return ToolResult.fail("desktop_safe membutuhkan execution context desktop-local")
+    communication_allowed, communication_override = _communication_admission(
+        descriptor,
+        session,
+        context,
+    )
+    if not communication_allowed:
+        requested = False
+        if _is_active_native_desktop_adapter(adapter):
+            try:
+                from jarvis.agent import dispatch
+                requested = dispatch.request_communication_authorization(
+                    str(getattr(session, "registry_task_id", "") or ""),
+                    {descriptor.id},
+                )
+            except Exception:
+                requested = False
+        detail = (
+            "; otorisasi lokal diminta"
+            if requested else ""
+        )
+        return ToolResult.fail(
+            f"execution dikunci selama mode komunikasi aktif{detail}"
+        )
 
     if context is not None:
         from jarvis.agent import policy
@@ -219,7 +341,14 @@ async def execute(name: str, args: dict, adapter=None,
         needs = tool.needs_confirmation(**args)
     except Exception:                                        # noqa: BLE001
         needs = tool.requires_confirmation
+    direct_confirmation = False
     if needs and not policy_approval_granted:
+        direct_confirmation = _direct_confirmation_granted(
+            descriptor,
+            session,
+            context,
+        )
+    if needs and not policy_approval_granted and not direct_confirmation:
         if descriptor.toolset == "desktop_safe" and not _is_active_native_desktop_adapter(adapter):
             return ToolResult.fail(
                 "desktop_safe confirmation membutuhkan adapter desktop-local")
@@ -263,6 +392,14 @@ async def execute(name: str, args: dict, adapter=None,
         args["_context"] = context
         if descriptor.toolset == "desktop_safe":
             args["_desktop_safe_confirmation"] = confirmation_granted
+
+    if communication_override:
+        # Re-check after policy/approval/confirmation awaits and consume exactly
+        # one use immediately before the actual side effect.
+        if not _consume_communication_override(descriptor, session, context):
+            return ToolResult.fail(
+                "execution dikunci atau izin komunikasi sudah tidak valid"
+            )
 
     t0 = time.perf_counter()
     try:

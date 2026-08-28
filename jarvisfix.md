@@ -7149,3 +7149,102 @@ audio, Gemini Live, desktop automation, atau social API yang dijalankan.
 Audit dan stage hanya hunk Task 4–6, commit Checkpoint B secara eksplisit, lalu
 mulai Task 7 pada owner communication-mode dengan fake bridge lifecycle; jangan
 menyentuh audio device atau WhatsApp Web nyata tanpa otorisasi live terpisah.
+
+## Checkpoint C — WhatsApp communication lock + local scoped authorization (2026-08-28)
+
+**Status:** Tasks 7–9 selesai dan `runtime-wired` dengan bukti
+**offline/fake**, belum `live-proven`. Tidak ada WhatsApp Web nyata, perangkat
+audio, Gemini Live/provider, browser, Telegram, credential, keyring, passphrase
+nyata, desktop automation, atau social API yang dijalankan.
+
+### Perubahan yang diselesaikan
+
+1. **Satu owner communication mode.** `communication_mode.py` memegang state aktif
+   dan generation process-local. Lock baru masuk setelah kedua stream
+   `WhatsAppAudioBridge` berhasil aktif; start gagal tidak mengunci eksekusi.
+   Stop, output-worker failure, hangup, dan graceful shutdown keluar dari mode
+   serta mencabut grant generation terkait. Escape hanya cocok
+   dengan capability/tool ID exact: status/hangup WhatsApp, cancel task,
+   emergency stop, dan local communication auth—tidak pernah dari task prose.
+2. **Verifier lokal tanpa menyimpan passphrase mentah.** Verifier memakai
+   PBKDF2-HMAC-SHA256, salt acak, 600.000 iterasi, dan
+   `hmac.compare_digest`. Record terenkripsi melalui `secrets_store` hanya
+   memuat algorithm/salt/iterations/dklen/verifier. Failed-attempt window dan
+   lockout bersifat process-local dan bounded. Raw passphrase tidak masuk BUS,
+   log, YAML, prompt, `ExecutionContext.secrets`, payload remote, audit, atau
+   grant.
+3. **Authorization sheet secret-safe.** Sheet Qt lokal memakai Password echo,
+   selalu kosong saat dibuka, dan membersihkan field sebelum authorizer kembali,
+   saat cancel, serta saat close. Signal keluar hanya `(success, opaque_grant_id)`;
+   trace ID tidak dipublikasikan melalui BUS. Main window memperlakukan metadata
+   BUS sebagai stale/untrusted dan membangun ulang scope dari live dispatch
+   handle sebelum menampilkan sheet.
+4. **Binding ke task nyata dan scope exact.** Authorizer hanya menerima task
+   `TaskRegistry` yang masih aktif dan capability descriptor yang registered serta
+   enabled. `task_start`, `agent.dispatch`, target tak dikenal, TTL/use di luar
+   batas, atau mismatch task/trace/capability/generation ditolak. Grant yang gagal
+   di-bind langsung dicabut. Session memisahkan `execution_grant_id`
+   (`direct_execution`) dari `communication_grant_id`
+   (`communication_override`) sehingga kedua purpose tidak dapat menimpa atau
+   memenuhi satu sama lain.
+5. **Double gate tetap tunduk policy.** Dispatch menolak task T2 baru sebelum
+   `TaskRegistry.submit()` selama mode aktif. `registry.execute()` memeriksa lock
+   setelah descriptor resolution dan sebelum policy/approval/confirmation side
+   effect, lalu mengonsumsi grant tepat sebelum tool run. Hard policy denial dan
+   approval high/critical tetap menang. Command-plan replay tetap melewati
+   `registry.execute()`. Hanya native desktop adapter untuk task yang sudah hidup
+   sebelum lock yang dapat meminta sheet lokal; remote adapter gagal tertutup.
+6. **Cleanup lifecycle.** Cancel satu/semua task, queued cancellation, terminal
+   worker cleanup, generation retirement, dan shutdown mengosongkan serta mencabut
+   opaque grant. Tidak dibuat persistent queue, lifecycle owner, atau authority
+   kedua.
+
+### Bukti offline aktual
+
+| Pemeriksaan | Hasil |
+|---|---:|
+| Focused Task 7–9 sebelum binding UI produksi | **39 passed** |
+| Binding + authorization UI focused setelah koreksi fixture Qt | **50 passed** |
+| Broad regression Checkpoint C yang relevan | **232 passed** (`24.40s`) |
+| `python scripts/verify_frozen.py` | **FROZEN integrity: OK** (10 files, baseline `094b696`) |
+| `git diff --check` seluruh working tree | **clean** (tanpa output) |
+
+Focused/broad suites memakai fake bridge, stream, clock, KDF store, capability,
+TaskRegistry, dispatch worker, BUS, adapter, dan Qt offscreen. Koreksi terakhir
+pada test UI memakai `isHidden() is False`, bukan `isVisible()`, karena parent
+MainWindow fixture memang tidak ditampilkan; ini memperbaiki assertion fixture,
+bukan perilaku produksi.
+
+### Kegagalan regression di luar Checkpoint C
+
+Broad run yang turut memasukkan suite N2 untracked menghasilkan **2 failed, 237
+passed**. Kedua kegagalan berada di
+`tests/test_gui_n2_cancel_gesture.py`: test memanggil
+`MainWindow._request_cancel_tasks()`, sedangkan produksi saat ini mengekspos
+`_on_cancel_tasks_clicked()`. Reproduksi suite itu sendiri menghasilkan **2
+failed, 6 passed** dengan `AttributeError` yang sama. Mismatch N2 tersebut sudah
+ada di working tree user dan tidak diubah atau diselundupkan ke commit
+Checkpoint C; karena itu angka **232 passed** di atas hanya regression relevan,
+bukan klaim bahwa seluruh mixed tree hijau.
+
+### Batas jujur
+
+- Seluruh bukti Checkpoint C adalah `focused-tested`/`fixture-accepted` offline;
+  belum membuktikan audio dua arah, selector WhatsApp, Gemini Live, pengalaman
+  passphrase, keyring, ataupun grant pada sesi nyata.
+- Verifier nyata tidak dibuat atau dibaca. Tidak ada passphrase user yang diminta,
+  ditampilkan, dicetak, atau dipindahkan.
+- First blocked registry call gagal tertutup sambil meminta authorization lokal;
+  hanya attempt berikutnya dengan grant exact yang sudah terikat dapat berjalan.
+- Banyak tracked dan untracked file user tetap dirty. Tidak ada
+  reset/restore/clean/stash; commit checkpoint wajib memakai path/hunk eksplisit
+  dan tidak boleh memakai `git add .` / `git add -A`.
+- Live validation tetap fase terpisah yang memerlukan otorisasi baru. Bukti fake
+  tidak boleh disebut bukti live.
+
+### Langkah aman berikutnya
+
+Audit staged/unstaged diff Checkpoint C secara terpisah, commit hanya path/hunk
+Tasks 7–9, lalu mulai Task 10 pada coordinator Screen Control process-local.
+Jangan mengaktifkan desktop authority atau menjalankan desktop nyata; Task 10
+harus dimulai dengan fake BUS/lease dan Qt offscreen.

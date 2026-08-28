@@ -79,8 +79,11 @@ class Session:
     denied_confirmations: set[str] = field(default_factory=set, repr=False)
     execution_context: object | None = field(default=None, repr=False)
     conversation_context: str = field(default="", repr=False)
-    # Opaque process-local execution-grant ID. Never prompt text or secrets.
+    # Opaque process-local grant IDs. Never prompt text or secrets.
     execution_grant_id: str = field(default="", repr=False)
+    communication_grant_id: str = field(default="", repr=False)
+    # Real TaskRegistry identity used only for exact grant verification.
+    registry_task_id: str = field(default="", repr=False)
     _persisted: bool = False
 
     def cancel(self) -> None:

@@ -127,10 +127,11 @@ def _install_voice_seams(legacy, logger) -> None:
 
 
 def _register_whatsapp_shutdown(supervisor: RuntimeSupervisor) -> None:
-    """Register canonical teardown without creating the optional service."""
-    from jarvis.integrations import whatsapp_web
+    """Register canonical teardown without creating optional singletons."""
+    from jarvis.integrations import whatsapp_voice, whatsapp_web
 
     supervisor.add_stop("whatsapp_web", whatsapp_web.shutdown_existing)
+    supervisor.add_stop("whatsapp_voice", whatsapp_voice._shutdown_existing)
 
 
 def _register_browser_shutdown(supervisor: RuntimeSupervisor) -> None:

@@ -381,6 +381,63 @@ class WindowPanelsMixin:
             sheet.setGeometry((c.width() - w) // 2, (c.height() - h) // 2, w, h)
         sheet.raise_()
 
+    def _on_communication_authorization_required(self, data: dict) -> None:
+        """Resolve BUS metadata against the live session before opening locally."""
+        from jarvis.agent import dispatch
+
+        sheet = getattr(self, "communication_auth_sheet", None)
+        if sheet is None:
+            return
+        scope = dispatch.communication_authorization_scope(
+            str(data.get("task_id", "") or ""),
+            data.get("capability_ids", ()),
+            ttl_s=data.get("ttl_s", 60.0),
+            uses=data.get("uses", 1),
+        )
+        if scope is None:
+            self._communication_auth_scope = None
+            return
+        self._communication_auth_scope = scope
+        central = self.centralWidget()
+        if central is None or not sheet.present(
+            scope,
+            central.width(),
+            central.height(),
+        ):
+            self._communication_auth_scope = None
+            return
+        self.notifications.push(
+            "Otorisasi komunikasi",
+            "Masukkan sandi lokal untuk izin sementara.",
+            "warning",
+        )
+
+    def _on_communication_authorization_resolved(
+        self,
+        ok: bool,
+        grant_id: str,
+    ) -> None:
+        """Bind only an opaque grant ID; the sheet owns all secret material."""
+        scope, self._communication_auth_scope = (
+            self._communication_auth_scope,
+            None,
+        )
+        if not ok or scope is None or not grant_id:
+            return
+        from jarvis.agent import dispatch
+
+        bound = dispatch.bind_communication_grant(
+            grant_id,
+            task_id=scope.task_id,
+            trace_id=scope.trace_id,
+            capability_ids=scope.capability_ids,
+        )
+        self.notifications.push(
+            "Otorisasi komunikasi",
+            "Izin sementara aktif." if bound else "Tugas sudah tidak tersedia.",
+            "success" if bound else "warning",
+        )
+
     def toggle_vision_panel(self) -> None:
         """Klik ikon vision yang sama menutup, termasuk selama LOADING."""
         visible = not (self.stage.current == "vision"

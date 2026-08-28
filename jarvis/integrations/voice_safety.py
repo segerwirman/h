@@ -134,6 +134,7 @@ def graceful_shutdown(live=None) -> None:
         pass
 
     for step, fn in (
+        ("communication", _stop_communication_mode),
         ("vision", _stop_vision),
         ("live", lambda: _stop_live(live)),
         ("sqlite", _flush_sqlite),
@@ -152,6 +153,14 @@ def graceful_shutdown(live=None) -> None:
         os._exit(0)
 
     threading.Thread(target=_exit, daemon=True, name="jarvis-exit").start()
+
+
+def _stop_communication_mode() -> None:
+    from jarvis.integrations.whatsapp_voice import _shutdown_existing
+
+    _shutdown_existing()
+    from jarvis.agent.communication_mode import exit
+    exit()
 
 
 def _stop_vision() -> None:
