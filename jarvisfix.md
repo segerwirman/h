@@ -7854,3 +7854,31 @@ commit hardening terpisah; tidak ada live validation atau outbound reply.
 Stage hanya classifier, dua regression-test path, dan evidence ini; commit tanpa
 push, lalu review commit hardening read-only/offline. Slice migrasi Graph API hanya
 boleh dibuka bila review final tersebut hijau.
+
+## Checkpoint F follow-up 5 — terminal acknowledgment residuals (2026-08-28)
+
+**Status review:** review offline commit `f74a3dd` masih menemukan dua residual
+external-send: kata negasi utuh `cannot` belum dikenal, dan imperative/request umum
+setelah acknowledgment (`contact`, `check`, `cancel`, `fix`, `hubungi`) masih dapat
+menjadi AUTO. Keduanya direproduksi dengan RED test sebelum fix terpisah ini.
+
+### Perubahan dan bukti
+
+- `_NEGATIONS` kini mencakup bounded token `cannot`.
+- Request phrase list mencakup imperative bounded Inggris/Indonesia yang ditemukan
+  review: `contact`, `check`, `cancel`, `fix`, `hubungi`, dan `batalkan`.
+- RED review terminal: **2 failed, 7 passed** (`0.64s`).
+- GREEN classifier: **9 passed** (`0.47s`).
+- Focused dua-file final: **27 passed** (`0.86s`).
+- Broad offline social regression: **106 passed** (`2.59s`).
+- Ruff scoped dan `py_compile` dua path: lulus.
+- FROZEN integrity: **OK** (10 files, baseline `094b696`).
+- Adversarial offline probe residual + positive controls: **OK**.
+- Scoped `git diff --check`: tanpa whitespace error; warning LF→CRLF pada dua path.
+
+### Batas dan gate
+
+Tidak ada live API, credential, test account, browser, atau outbound reply. Graph
+API tetap v19.0. Capability probe tetap belum diotorisasi dan tidak dijalankan.
+Commit fix ini tanpa push, lalu lakukan satu review offline terminal. Migrasi Graph
+API hanya boleh dibuka bila review tersebut hijau.

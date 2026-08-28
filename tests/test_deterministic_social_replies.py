@@ -103,6 +103,7 @@ def test_policy_never_auto_replies_to_bounded_negated_acknowledgments():
         "Saya tidak suka produk ini": "negated_positive",
         "gak suka sama sekali": "negated_positive",
         "I do not love this": "negated_positive",
+        "I cannot love this": "negated_positive",
         "I don't love this": "negated_positive",
         "I didn’t love this": "negated_positive",
         "I couldn’t love this": "negated_positive",
@@ -158,6 +159,11 @@ def test_policy_never_auto_replies_to_acknowledgments_mixed_with_requests():
         "Love it, return instructions.",
         "Thanks, send details.",
         "Love it, share details.",
+        "Thanks, contact me.",
+        "Thanks, check my account.",
+        "Thanks, cancel it.",
+        "Awesome, fix it.",
+        "Terima kasih, hubungi saya.",
         "Terima kasih, tolong periksa pesanan saya.",
     )
 

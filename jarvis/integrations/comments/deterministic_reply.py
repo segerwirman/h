@@ -89,7 +89,18 @@ _POSITIVE_PHRASES = tuple(
     )
 )
 _NEGATIONS = frozenset(
-    {"tidak", "tak", "bukan", "gak", "nggak", "ga", "no", "not", "never"}
+    {
+        "bukan",
+        "cannot",
+        "ga",
+        "gak",
+        "never",
+        "nggak",
+        "no",
+        "not",
+        "tak",
+        "tidak",
+    }
 )
 _NEGATED_CONTRACTIONS = frozenset(
     {
@@ -145,9 +156,15 @@ _REQUEST_TERMS = frozenset(
 _REQUEST_PHRASES = (
     ("bantu", "kami"),
     ("bantu", "saya"),
+    ("batalkan",),
+    ("cancel",),
+    ("check",),
+    ("contact",),
     ("explain",),
+    ("fix",),
     ("help", "me"),
     ("help", "us"),
+    ("hubungi",),
     ("jelaskan",),
     ("return", "instructions"),
     ("send", "details"),
