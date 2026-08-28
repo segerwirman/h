@@ -91,23 +91,47 @@ _POSITIVE_PHRASES = tuple(
 _NEGATIONS = frozenset(
     {"tidak", "tak", "bukan", "gak", "nggak", "ga", "no", "not", "never"}
 )
-_NEGATED_CONTRACTIONS = frozenset({"didn", "doesn", "don"})
+_NEGATED_CONTRACTIONS = frozenset(
+    {
+        "aren",
+        "can",
+        "couldn",
+        "didn",
+        "doesn",
+        "don",
+        "hadn",
+        "hasn",
+        "haven",
+        "isn",
+        "mustn",
+        "needn",
+        "shouldn",
+        "wasn",
+        "weren",
+        "won",
+        "wouldn",
+    }
+)
 _REQUEST_TERMS = frozenset(
     {
         "apa",
         "apakah",
         "bagaimana",
-        "bantu",
         "bisa",
         "boleh",
+        "but",
         "can",
         "could",
-        "explain",
-        "help",
         "how",
-        "jelaskan",
+        "missing",
         "mohon",
+        "namun",
+        "order",
+        "pesanan",
         "please",
+        "refund",
+        "status",
+        "tapi",
         "tolong",
         "what",
         "when",
@@ -117,6 +141,17 @@ _REQUEST_TERMS = frozenset(
         "why",
         "would",
     }
+)
+_REQUEST_PHRASES = (
+    ("bantu", "kami"),
+    ("bantu", "saya"),
+    ("explain",),
+    ("help", "me"),
+    ("help", "us"),
+    ("jelaskan",),
+    ("return", "instructions"),
+    ("send", "details"),
+    ("share", "details"),
 )
 _TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
 _OPEN_ENDED_PREFIXES = (
@@ -145,7 +180,7 @@ def _phrase_starts(tokens: list[str], phrases: tuple[tuple[str, ...], ...]) -> l
     return starts
 
 
-def _is_negated(tokens: list[str], phrase_start: int, *, lookback: int = 3) -> bool:
+def _is_negated(tokens: list[str], phrase_start: int, *, lookback: int = 5) -> bool:
     start = max(0, phrase_start - lookback)
     prefix = tokens[start:phrase_start]
     return any(token in _NEGATIONS for token in prefix) or any(
@@ -157,7 +192,11 @@ def _is_negated(tokens: list[str], phrase_start: int, *, lookback: int = 3) -> b
 
 
 def _contains_request(tokens: list[str], normalized: str) -> bool:
-    return normalized.endswith("?") or any(token in _REQUEST_TERMS for token in tokens)
+    return (
+        normalized.endswith("?")
+        or any(token in _REQUEST_TERMS for token in tokens)
+        or bool(_phrase_starts(tokens, _REQUEST_PHRASES))
+    )
 
 
 class DeterministicReplyPolicy:

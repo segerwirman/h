@@ -7801,3 +7801,56 @@ Stage hanya classifier, regression test, dan bagian evidence ini; commit tanpa
 push, lalu review commit baru read-only/offline. Graph API migration hanya boleh
 dibuka sebagai slice terpisah bila review tersebut hijau. Capability probe tetap
 memerlukan otorisasi baru, test account, read-only, dan tanpa mengirim balasan.
+
+## Checkpoint F follow-up 4 — review hardening contractions + requests (2026-08-28)
+
+**Status review:** review offline commit `e3be1ec` belum langsung hijau. Probe
+adversarial menemukan kontraksi negatif lain (`couldn't`, `won't`, `wouldn't`,
+`haven't`, `isn't`), negasi dengan filler lebih panjang, dan acknowledgment
+bercampur request tanpa tanda tanya/modal (`Thanks, refund status`, `Thanks, send
+details`) masih dapat menjadi AUTO. Finding tersebut diperbaiki RED→GREEN sebagai
+commit hardening terpisah; tidak ada live validation atau outbound reply.
+
+### Perubahan hardening
+
+1. Daftar prefix kontraksi negatif bounded diperluas untuk bentuk `n't` umum dan
+   lookback negasi dinaikkan dari 3 menjadi 5 token. Bentuk ASCII/Unicode apostrophe
+   serta filler bounded seperti `I haven't really at all loved this` sekarang DRAFT.
+2. Gate mixed-request diperluas dengan request/context terms bounded serta pasangan
+   request-verb + object (`send/share details`, `help me`, `bantu saya`). Generic
+   imperatives diuji RED sebelum implementasi. Acknowledgment murni tetap menjadi
+   kontrol AUTO.
+3. Runtime-boundary fake test kini memasukkan `Thanks, my order is missing.` dan
+   membuktikan classifier menghasilkan DRAFT tanpa adapter send attempt.
+
+### Bukti aktual
+
+- RED review residual contraction/context terms: **2 failed, 7 passed** (`0.59s`).
+- RED generic imperative request: **1 failed, 8 passed** (`0.64s`).
+- RED extended bounded-negation lookback: **1 failed, 8 passed** (`0.66s`).
+- Final focused dua-file: **27 passed** (`0.94s`).
+- Final broad offline social regression: **106 passed** (`2.80s`).
+- Ruff scoped tiga Python path: **All checks passed!**
+- `py_compile` scoped tiga Python path: lulus tanpa output.
+- `python scripts/verify_frozen.py`: **FROZEN integrity: OK** (10 files,
+  baseline `094b696`).
+- Final adversarial offline probe untuk contractions, bounded filler, mixed context,
+  imperative request, dan positive controls: **OK**.
+- Scoped `git diff --check`: tanpa whitespace error; warning LF→CRLF pada tiga
+  working-copy path bukan whitespace failure.
+
+### Batas jujur
+
+- Full repository pytest dan root-wide Ruff tidak diulang setelah hardening ini
+  karena tidak ada perubahan pada blocker unrelated yang sudah direproduksi tepat
+  sebelum commit `e3be1ec`: collection `test_voice_turn_guard.py` gagal import, dan
+  root Ruff memiliki dua S110 unrelated. Scoped suite/static checks hardening hijau.
+- Graph API tetap v19.0 dan **belum dimigrasikan**.
+- Capability probe tetap **belum diotorisasi dan tidak dijalankan**; bila kelak
+  diotorisasi harus test account, read-only, dan tanpa mengirim balasan.
+
+### Langkah aman berikutnya
+
+Stage hanya classifier, dua regression-test path, dan evidence ini; commit tanpa
+push, lalu review commit hardening read-only/offline. Slice migrasi Graph API hanya
+boleh dibuka bila review final tersebut hijau.

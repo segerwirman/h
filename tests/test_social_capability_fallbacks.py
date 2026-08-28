@@ -836,9 +836,19 @@ def test_runtime_handler_shares_policy_rate_cooldown_and_audit_across_lanes():
             1.0,
         )
     )
+    handler(
+        CommentEvent(
+            "youtube_comments",
+            "comment-2",
+            "author-3",
+            "Offline User",
+            "Thanks, my order is missing.",
+            2.0,
+        )
+    )
 
     assert len(facebook.sent) == 1
     assert youtube.sent == [], "ambiguous text must remain draft with no send attempt"
     decisions = [event for event in audit.events if event.get("event") == "reply_decision"]
-    assert [event["disposition"] for event in decisions] == ["auto", "draft"]
+    assert [event["disposition"] for event in decisions] == ["auto", "draft", "draft"]
     assert all("reply" not in event and "text" not in event for event in decisions)
