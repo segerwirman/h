@@ -132,14 +132,20 @@ def test_policy_never_auto_replies_to_bounded_negated_acknowledgments():
 def test_policy_matches_only_explicit_non_negated_acknowledgment_tokens():
     policy = DeterministicReplyPolicy()
 
-    positive = policy.classify("Saya suka.", platform="instagram", author_id="a-1")
-    thanks = policy.classify("Thanks!", platform="instagram", author_id="a-1")
-    lovely = policy.classify("What a lovely day", platform="instagram", author_id="a-1")
+    controls = {
+        "Saya suka.": "positive",
+        "Saya suka banget.": "positive",
+        "Love it!": "positive",
+        "Thanks!": "thanks",
+        "Thank you very much!": "thanks",
+        "Terima kasih banyak.": "thanks",
+    }
+    for text, reason in controls.items():
+        decision = policy.classify(text, platform="instagram", author_id="a-1")
+        assert decision.disposition is ReplyDisposition.AUTO
+        assert decision.reason == reason
 
-    assert positive.disposition is ReplyDisposition.AUTO
-    assert positive.reason == "positive"
-    assert thanks.disposition is ReplyDisposition.AUTO
-    assert thanks.reason == "thanks"
+    lovely = policy.classify("What a lovely day", platform="instagram", author_id="a-1")
     assert lovely.disposition is ReplyDisposition.DRAFT
     assert lovely.reply == ""
     assert lovely.reason == "ambiguous"
@@ -164,6 +170,12 @@ def test_policy_never_auto_replies_to_acknowledgments_mixed_with_requests():
         "Thanks, cancel it.",
         "Awesome, fix it.",
         "Terima kasih, hubungi saya.",
+        "Thanks, archive it.",
+        "Thanks, delete my account.",
+        "Thanks, forward the receipt.",
+        "Love it, replace mine.",
+        "Awesome, close the ticket.",
+        "Terima kasih, hapus akun saya.",
         "Terima kasih, tolong periksa pesanan saya.",
     )
 

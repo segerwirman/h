@@ -123,52 +123,21 @@ _NEGATED_CONTRACTIONS = frozenset(
         "wouldn",
     }
 )
-_REQUEST_TERMS = frozenset(
+_ACKNOWLEDGMENT_FILLERS = frozenset(
     {
-        "apa",
-        "apakah",
-        "bagaimana",
-        "bisa",
-        "boleh",
-        "but",
-        "can",
-        "could",
-        "how",
-        "missing",
-        "mohon",
-        "namun",
-        "order",
-        "pesanan",
-        "please",
-        "refund",
-        "status",
-        "tapi",
-        "tolong",
-        "what",
-        "when",
-        "where",
-        "which",
-        "who",
-        "why",
-        "would",
+        "banget",
+        "banyak",
+        "indeed",
+        "it",
+        "produk",
+        "saya",
+        "sekali",
+        "so",
+        "tersebut",
+        "this",
+        "very",
+        "much",
     }
-)
-_REQUEST_PHRASES = (
-    ("bantu", "kami"),
-    ("bantu", "saya"),
-    ("batalkan",),
-    ("cancel",),
-    ("check",),
-    ("contact",),
-    ("explain",),
-    ("fix",),
-    ("help", "me"),
-    ("help", "us"),
-    ("hubungi",),
-    ("jelaskan",),
-    ("return", "instructions"),
-    ("send", "details"),
-    ("share", "details"),
 )
 _TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
 _OPEN_ENDED_PREFIXES = (
@@ -208,11 +177,20 @@ def _is_negated(tokens: list[str], phrase_start: int, *, lookback: int = 5) -> b
     )
 
 
-def _contains_request(tokens: list[str], normalized: str) -> bool:
-    return (
-        normalized.endswith("?")
-        or any(token in _REQUEST_TERMS for token in tokens)
-        or bool(_phrase_starts(tokens, _REQUEST_PHRASES))
+def _is_pure_acknowledgment(
+    tokens: list[str],
+    phrase_starts: list[int],
+    phrases: tuple[tuple[str, ...], ...],
+) -> bool:
+    matched_indexes = set()
+    for phrase_start in phrase_starts:
+        for phrase in phrases:
+            if tokens[phrase_start : phrase_start + len(phrase)] == list(phrase):
+                matched_indexes.update(range(phrase_start, phrase_start + len(phrase)))
+                break
+    return all(
+        index in matched_indexes or token in _ACKNOWLEDGMENT_FILLERS
+        for index, token in enumerate(tokens)
     )
 
 
@@ -273,11 +251,13 @@ class DeterministicReplyPolicy:
             return ReplyDecision(ReplyDisposition.DRAFT, reason="negated_positive")
         if any(_is_negated(tokens, start) for start in thanks_starts):
             return ReplyDecision(ReplyDisposition.DRAFT, reason="negated_thanks")
-        if (thanks_starts or positive_starts) and _contains_request(tokens, normalized):
-            return ReplyDecision(ReplyDisposition.DRAFT, reason="mixed_request")
         if thanks_starts:
+            if not _is_pure_acknowledgment(tokens, thanks_starts, _THANKS_PHRASES):
+                return ReplyDecision(ReplyDisposition.DRAFT, reason="mixed_request")
             return self._template("thanks", normalized, platform, author_id)
         if positive_starts:
+            if not _is_pure_acknowledgment(tokens, positive_starts, _POSITIVE_PHRASES):
+                return ReplyDecision(ReplyDisposition.DRAFT, reason="mixed_request")
             return self._template("positive", normalized, platform, author_id)
         if normalized.endswith("?") or any(
             normalized.startswith(prefix) for prefix in _OPEN_ENDED_PREFIXES

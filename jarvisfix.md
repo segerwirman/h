@@ -7882,3 +7882,37 @@ Tidak ada live API, credential, test account, browser, atau outbound reply. Grap
 API tetap v19.0. Capability probe tetap belum diotorisasi dan tidak dijalankan.
 Commit fix ini tanpa push, lalu lakukan satu review offline terminal. Migrasi Graph
 API hanya boleh dibuka bila review tersebut hijau.
+
+## Checkpoint F follow-up 6 — bounded pure-acknowledgment grammar (2026-08-28)
+
+**Status review:** review offline commit `b4d4129` membuktikan enumerasi request verb
+tidak dapat menjadi gate lengkap: command baru seperti `archive`, `delete`, `forward`,
+`replace`, `close`, dan `hapus` tetap AUTO bila mengikuti thanks/positive. Finding ini
+direproduksi RED lalu diperbaiki sebagai slice terpisah.
+
+### Perubahan
+
+- Strategi blacklist request diganti menjadi allowlist fail-closed: thanks/positive
+  hanya AUTO bila seluruh token terdiri dari phrase acknowledgment eksplisit dan
+  filler bounded yang aman. Token tambahan apa pun menjadi DRAFT `mixed_request`.
+- Filler bounded menjaga positive controls umum (`Saya suka banget`, `Love it`,
+  `Thank you very much`, `Terima kasih banyak`) tetap AUTO tanpa membuka grammar
+  command bebas.
+- Arbitrary unseen commands diuji dengan probe tambahan dan semuanya DRAFT.
+
+### Bukti aktual
+
+- RED arbitrary mixed commands: **1 failed, 8 passed** (`0.58s`).
+- GREEN classifier setelah allowlist grammar: **9 passed** (`0.46s`).
+- Focused dua-file: **27 passed** (`0.86s`).
+- Broad offline social regression: **106 passed** (`2.69s`).
+- Ruff scoped + `py_compile`: lulus; FROZEN **OK** (`094b696`, 10 file).
+- Adversarial arbitrary-command probe + pure positive controls: **OK**.
+- Scoped `git diff --check`: tanpa whitespace error; warning LF→CRLF pada dua path.
+
+### Batas dan gate
+
+Tidak ada live API, browser, credential, test account, atau outbound reply. Graph
+API tetap v19.0 dan capability probe tetap belum diotorisasi/tidak dijalankan. Commit
+tanpa push, lalu review offline terminal. Migrasi Graph API hanya boleh dibuka bila
+review tersebut hijau.
