@@ -7967,3 +7967,23 @@ lolos. Keduanya direproduksi RED.
 Tidak ada live API, credential, test account, browser, atau outbound reply. Graph
 API tetap v19.0; capability probe belum diotorisasi dan tidak dijalankan. Commit
 tanpa push, lalu satu review offline terminal sebelum migrasi Graph API dibuka.
+
+## Checkpoint F follow-up 9 — final offline review green (2026-08-28)
+
+**Verdict:** review read-only/offline commit `f1adf5f` hijau untuk scope classifier
+acknowledgment/negation dan runtime social yang diminta. Diff committed memakai tabel
+exact full-message, memblokir question-mark sebelum template, dan tidak menambah
+network, provider, random, atau model path.
+
+- Focused final: **27 passed** (`0.84s`).
+- Broad offline social regression final: **106 passed** (`2.60s`).
+- Probe terminal untuk interrogative acknowledgment, malformed filler, arbitrary
+  unseen commands, mixed requests, serta positive controls: **OK**.
+- Production/test/evidence path commit bersih setelah commit; `git diff --check`
+  committed tidak menemukan whitespace error.
+- Full repository pytest/root Ruff tidak diklaim hijau: blocker unrelated yang sudah
+  dicatat sebelumnya tetap `voice_turn_guard` import saat collection dan dua S110.
+
+Dengan review scope ini hijau, migrasi Graph API boleh dibuka hanya sebagai slice
+offline terpisah. Capability probe live tetap memerlukan otorisasi baru, test
+account, read-only, dan tanpa mengirim balasan. Tidak ada push.
