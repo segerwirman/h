@@ -8055,3 +8055,25 @@ Stage tepat module base baru, empat adapter Meta, satu test path, dan evidence i
 commit tanpa push, lalu review commit read-only/offline. Capability probe tetap di
 luar scope dan memerlukan otorisasi baru; bila kelak diotorisasi gunakan test
 account, read-only, dan jangan mengirim balasan.
+
+## Checkpoint F follow-up 11 — Graph v26 commit review green (2026-08-28)
+
+**Verdict:** review read-only/offline commit `b3eb5d8` hijau untuk scope migrasi
+versi Meta Graph API. Commit berisi tepat tujuh path yang direncanakan: satu module
+base baru, empat adapter Meta, satu contract-test path, dan evidence. Inspeksi diff
+production menunjukkan hanya substitusi empat constant v19.0 dengan satu
+`GRAPH_API_BASE` v26.0; branching, method, suffix, params, fields, payload, timeout,
+permissions, dan fail-closed behavior tidak berubah.
+
+- Contract URL review: **4 passed, 18 deselected** (`0.56s`).
+- Broad offline social regression review: **110 passed** (`2.61s`).
+- Scoped Ruff: **All checks passed!**; scoped `py_compile`: lulus tanpa output.
+- FROZEN integrity: **OK** (10 files, baseline `094b696`).
+- Committed scoped search: **no v19.0 matches**.
+- `git show --check b3eb5d8`: tanpa whitespace error.
+- Dirty user files di luar tujuh path tetap dipertahankan; tidak ada push.
+
+Review ini tetap bukan live validation. Tidak ada Graph API request, account/token,
+credential read, capability probe, browser action, atau outbound reply. Langkah aman
+berikutnya adalah mempertahankan capability probe sebagai otorisasi terpisah; bila
+dibuka kelak, gunakan test account, read-only, dan jangan mengirim balasan.
