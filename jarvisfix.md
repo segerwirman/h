@@ -7916,3 +7916,29 @@ Tidak ada live API, browser, credential, test account, atau outbound reply. Grap
 API tetap v19.0 dan capability probe tetap belum diotorisasi/tidak dijalankan. Commit
 tanpa push, lalu review offline terminal. Migrasi Graph API hanya boleh dibuka bila
 review tersebut hijau.
+
+## Checkpoint F follow-up 7 — explicit acknowledgment patterns (2026-08-28)
+
+**Status review:** review offline commit `565d117` menemukan allowlist token filler
+masih terlalu permisif: susunan tidak lengkap seperti `Thanks, it`, `Thanks very`,
+`Love produk`, dan `Love saya` tetap AUTO. Kasus tersebut direproduksi RED sebelum
+fix grammar terpisah ini.
+
+### Perubahan dan bukti
+
+- Filler-token bebas diganti dengan prefix/suffix tuple eksplisit per kategori.
+  AUTO hanya untuk bentuk lengkap yang didukung, misalnya `Thanks`, `Thank you very
+  much`, `Terima kasih banyak`, `Saya suka banget`, `Love it`, dan `Love this`.
+- Susunan filler tidak lengkap, arbitrary commands, atau token lain menjadi DRAFT
+  `mixed_request` tanpa reply.
+- RED malformed filler grammar: **1 failed, 8 passed** (`0.59s`).
+- GREEN classifier: **9 passed** (`0.43s`).
+- Focused dua-file: **27 passed** (`0.85s`).
+- Broad offline social regression: **106 passed** (`2.60s`).
+- Ruff scoped + `py_compile`: lulus; FROZEN **OK** (`094b696`, 10 file).
+- Explicit-pattern adversarial probe: **OK**.
+- Scoped `git diff --check`: tanpa whitespace error; warning LF→CRLF pada dua path.
+
+Tidak ada live API, credential, test account, browser, atau outbound reply. Graph
+API tetap v19.0; capability probe tetap belum diotorisasi/tidak dijalankan. Commit
+tanpa push, lalu review offline final sebelum membuka migrasi Graph API.

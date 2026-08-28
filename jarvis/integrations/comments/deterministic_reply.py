@@ -123,21 +123,24 @@ _NEGATED_CONTRACTIONS = frozenset(
         "wouldn",
     }
 )
-_ACKNOWLEDGMENT_FILLERS = frozenset(
-    {
-        "banget",
-        "banyak",
-        "indeed",
-        "it",
-        "produk",
-        "saya",
-        "sekali",
-        "so",
-        "tersebut",
-        "this",
-        "very",
-        "much",
-    }
+_THANKS_SUFFIXES = (
+    (),
+    ("banyak",),
+    ("sekali",),
+    ("so", "much"),
+    ("very", "much"),
+)
+_POSITIVE_PREFIXES = ((), ("saya",))
+_POSITIVE_SUFFIXES = (
+    (),
+    ("banget",),
+    ("indeed",),
+    ("it",),
+    ("produk", "ini"),
+    ("sekali",),
+    ("so", "much"),
+    ("this",),
+    ("very", "much"),
 )
 _TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
 _OPEN_ENDED_PREFIXES = (
@@ -181,17 +184,19 @@ def _is_pure_acknowledgment(
     tokens: list[str],
     phrase_starts: list[int],
     phrases: tuple[tuple[str, ...], ...],
+    *,
+    prefixes: tuple[tuple[str, ...], ...] = ((),),
+    suffixes: tuple[tuple[str, ...], ...] = ((),),
 ) -> bool:
-    matched_indexes = set()
     for phrase_start in phrase_starts:
         for phrase in phrases:
-            if tokens[phrase_start : phrase_start + len(phrase)] == list(phrase):
-                matched_indexes.update(range(phrase_start, phrase_start + len(phrase)))
-                break
-    return all(
-        index in matched_indexes or token in _ACKNOWLEDGMENT_FILLERS
-        for index, token in enumerate(tokens)
-    )
+            if tokens[phrase_start : phrase_start + len(phrase)] != list(phrase):
+                continue
+            prefix = tuple(tokens[:phrase_start])
+            suffix = tuple(tokens[phrase_start + len(phrase) :])
+            if prefix in prefixes and suffix in suffixes:
+                return True
+    return False
 
 
 class DeterministicReplyPolicy:
@@ -252,11 +257,22 @@ class DeterministicReplyPolicy:
         if any(_is_negated(tokens, start) for start in thanks_starts):
             return ReplyDecision(ReplyDisposition.DRAFT, reason="negated_thanks")
         if thanks_starts:
-            if not _is_pure_acknowledgment(tokens, thanks_starts, _THANKS_PHRASES):
+            if not _is_pure_acknowledgment(
+                tokens,
+                thanks_starts,
+                _THANKS_PHRASES,
+                suffixes=_THANKS_SUFFIXES,
+            ):
                 return ReplyDecision(ReplyDisposition.DRAFT, reason="mixed_request")
             return self._template("thanks", normalized, platform, author_id)
         if positive_starts:
-            if not _is_pure_acknowledgment(tokens, positive_starts, _POSITIVE_PHRASES):
+            if not _is_pure_acknowledgment(
+                tokens,
+                positive_starts,
+                _POSITIVE_PHRASES,
+                prefixes=_POSITIVE_PREFIXES,
+                suffixes=_POSITIVE_SUFFIXES,
+            ):
                 return ReplyDecision(ReplyDisposition.DRAFT, reason="mixed_request")
             return self._template("positive", normalized, platform, author_id)
         if normalized.endswith("?") or any(

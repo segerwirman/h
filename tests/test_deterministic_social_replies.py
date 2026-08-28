@@ -145,10 +145,19 @@ def test_policy_matches_only_explicit_non_negated_acknowledgment_tokens():
         assert decision.disposition is ReplyDisposition.AUTO
         assert decision.reason == reason
 
-    lovely = policy.classify("What a lovely day", platform="instagram", author_id="a-1")
-    assert lovely.disposition is ReplyDisposition.DRAFT
-    assert lovely.reply == ""
-    assert lovely.reason == "ambiguous"
+    unsupported = (
+        "What a lovely day",
+        "Thanks, it",
+        "Thanks this",
+        "Thanks so",
+        "Thanks very",
+        "Love produk",
+        "Love saya",
+    )
+    for text in unsupported:
+        decision = policy.classify(text, platform="instagram", author_id="a-1")
+        assert decision.disposition is ReplyDisposition.DRAFT
+        assert decision.reply == ""
 
 
 def test_policy_never_auto_replies_to_acknowledgments_mixed_with_requests():
