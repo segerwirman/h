@@ -207,6 +207,7 @@ def test_meta_messaging_first_poll_watermarks_history_then_emits_only_new_inboun
         "enabled": True,
         "token_getter": lambda: "offline-meta-token",
         "client": client,
+        "clock": lambda: 12.0,
     }
     if adapter_type is FacebookMessagingAdapter:
         kwargs["page_id"] = account_id
@@ -223,21 +224,213 @@ def test_meta_messaging_first_poll_watermarks_history_then_emits_only_new_inboun
 
 
 @pytest.mark.parametrize(
-    ("client_type", "account_id", "author_name"),
+    ("adapter_type", "account_id", "permission"),
     [
-        (
-            "facebook",
-            "page-1",
-            "Offline Page User",
-        ),
-        (
-            "instagram",
-            "ig-1",
-            "Offline IG User",
-        ),
+        (FacebookMessagingAdapter, "page-1", "pages_messaging"),
+        (InstagramMessagingAdapter, "ig-1", "instagram_manage_messages"),
     ],
 )
-def test_meta_graph_clients_preserve_created_time(
+def test_meta_messaging_cutoff_rejects_unseen_history_and_ambiguous_timestamps(
+    adapter_type,
+    account_id,
+    permission,
+):
+    class _CutoffClient(_MetaClient):
+        def __init__(self) -> None:
+            super().__init__({permission})
+            self.responses = [
+                [
+                    {
+                        "id": "startup-visible",
+                        "author_id": "author-1",
+                        "author_name": "Offline User",
+                        "text": "halo",
+                        "timestamp": 90.0,
+                        "conversation_id": "conversation-1",
+                    }
+                ],
+                [
+                    {
+                        "id": "new-inbound",
+                        "author_id": "author-2",
+                        "author_name": "New User",
+                        "text": "halo",
+                        "timestamp": 101.0,
+                        "conversation_id": "conversation-2",
+                    },
+                    {
+                        "id": "old-unseen-history",
+                        "author_id": "author-2",
+                        "author_name": "New User",
+                        "text": "bagus",
+                        "timestamp": 80.0,
+                        "conversation_id": "conversation-2",
+                    },
+                    {
+                        "id": "at-cutoff",
+                        "author_id": "author-3",
+                        "author_name": "Boundary User",
+                        "text": "halo",
+                        "timestamp": 100.0,
+                        "conversation_id": "conversation-3",
+                    },
+                    {
+                        "id": "missing-timestamp",
+                        "author_id": "author-4",
+                        "author_name": "Unknown Time",
+                        "text": "halo",
+                        "conversation_id": "conversation-4",
+                    },
+                    {
+                        "id": "invalid-timestamp",
+                        "author_id": "author-5",
+                        "author_name": "Invalid Time",
+                        "text": "halo",
+                        "timestamp": "not-a-timestamp",
+                        "conversation_id": "conversation-5",
+                    },
+                    {
+                        "id": "non-finite-timestamp",
+                        "author_id": "author-6",
+                        "author_name": "Infinite Time",
+                        "text": "halo",
+                        "timestamp": float("inf"),
+                        "conversation_id": "conversation-6",
+                    },
+                    {
+                        "id": "new-self-message",
+                        "author_id": account_id,
+                        "author_name": "Managed Account",
+                        "text": "Terima kasih kembali!",
+                        "timestamp": 102.0,
+                        "conversation_id": "conversation-2",
+                    },
+                    {
+                        "id": "startup-visible",
+                        "author_id": "author-1",
+                        "author_name": "Offline User",
+                        "text": "halo",
+                        "timestamp": 103.0,
+                        "conversation_id": "conversation-1",
+                    },
+                ],
+                [
+                    {
+                        "id": "old-unseen-history",
+                        "author_id": "author-2",
+                        "author_name": "New User",
+                        "text": "bagus",
+                        "timestamp": 80.0,
+                        "conversation_id": "conversation-2",
+                    },
+                    {
+                        "id": "newer-inbound",
+                        "author_id": "author-7",
+                        "author_name": "Newest User",
+                        "text": "halo",
+                        "timestamp": 104.0,
+                        "conversation_id": "conversation-7",
+                    },
+                ],
+            ]
+
+        def poll_messages(self, requested_account_id: str, token: str) -> list[dict]:
+            assert requested_account_id == account_id
+            assert token == "offline-meta-token"
+            self.poll_calls += 1
+            return self.responses.pop(0)
+
+    kwargs = {
+        "enabled": True,
+        "token_getter": lambda: "offline-meta-token",
+        "client": _CutoffClient(),
+        "clock": lambda: 100.0,
+    }
+    if adapter_type is FacebookMessagingAdapter:
+        kwargs["page_id"] = account_id
+    else:
+        kwargs["account_id"] = account_id
+    adapter = adapter_type(**kwargs)
+
+    assert adapter.poll_comments() == []
+    second = adapter.poll_comments()
+    third = adapter.poll_comments()
+
+    assert [event.comment_id for event in second] == ["new-inbound"]
+    assert [event.comment_id for event in third] == ["newer-inbound"]
+
+
+@pytest.mark.parametrize(
+    ("adapter_type", "account_id", "permission"),
+    [
+        (FacebookMessagingAdapter, "page-1", "pages_messaging"),
+        (InstagramMessagingAdapter, "ig-1", "instagram_manage_messages"),
+    ],
+)
+def test_meta_messaging_failed_first_poll_does_not_commit_startup_cutoff(
+    adapter_type,
+    account_id,
+    permission,
+):
+    class _RecoveringClient(_MetaClient):
+        def __init__(self) -> None:
+            super().__init__({permission})
+            self.poll_attempts = 0
+
+        def poll_messages(self, requested_account_id: str, token: str) -> list[dict]:
+            assert requested_account_id == account_id
+            assert token == "offline-meta-token"
+            self.poll_attempts += 1
+            if self.poll_attempts == 1:
+                raise RuntimeError("offline first poll failure")
+            if self.poll_attempts == 2:
+                return [
+                    {
+                        "id": "recovery-history",
+                        "author_id": "author-1",
+                        "author_name": "Offline User",
+                        "text": "bagus",
+                        "timestamp": 150.0,
+                        "conversation_id": "conversation-1",
+                    }
+                ]
+            return [
+                {
+                    "id": "post-recovery",
+                    "author_id": "author-2",
+                    "author_name": "New User",
+                    "text": "halo",
+                    "timestamp": 201.0,
+                    "conversation_id": "conversation-2",
+                }
+            ]
+
+    clock_values = iter((100.0, 200.0, 300.0))
+    kwargs = {
+        "enabled": True,
+        "token_getter": lambda: "offline-meta-token",
+        "client": _RecoveringClient(),
+        "clock": lambda: next(clock_values),
+    }
+    if adapter_type is FacebookMessagingAdapter:
+        kwargs["page_id"] = account_id
+    else:
+        kwargs["account_id"] = account_id
+    adapter = adapter_type(**kwargs)
+
+    assert adapter.poll_comments() == []
+    assert adapter.poll_comments() == [], "first successful poll stays watermark-only"
+    assert [event.comment_id for event in adapter.poll_comments()] == ["post-recovery"]
+
+
+@pytest.mark.parametrize(
+    ("client_type", "account_id", "author_name"),
+    [
+        ("facebook", "page-1", "Offline Page User"),
+        ("instagram", "ig-1", "Offline IG User"),
+    ],
+)
+def test_meta_graph_clients_preserve_created_time_and_fail_closed_when_invalid(
     monkeypatch,
     client_type,
     account_id,
@@ -267,7 +460,18 @@ def test_meta_graph_clients_preserve_created_time(
                                     "from": author,
                                     "message": "halo",
                                     "created_time": "2026-08-28T10:00:00+0000",
-                                }
+                                },
+                                {
+                                    "id": "message-missing-time",
+                                    "from": author,
+                                    "message": "missing",
+                                },
+                                {
+                                    "id": "message-invalid-time",
+                                    "from": author,
+                                    "message": "invalid",
+                                    "created_time": "not-a-timestamp",
+                                },
                             ]
                         },
                     }
@@ -288,6 +492,8 @@ def test_meta_graph_clients_preserve_created_time(
     messages = client.poll_messages(account_id, "offline-meta-token")
 
     assert messages[0]["timestamp"] == 1787911200.0
+    assert messages[1]["timestamp"] is None
+    assert messages[2]["timestamp"] is None
 
 
 def test_meta_messaging_fails_closed_without_current_permission_or_token():

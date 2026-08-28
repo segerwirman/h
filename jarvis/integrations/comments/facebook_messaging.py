@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+import math
 import time
 
 from jarvis.core import config, log, secrets_store
@@ -95,6 +96,7 @@ class FacebookMessagingAdapter(PlatformAdapter):
         enabled: bool | None = None,
         token_getter=None,
         client=None,
+        clock=time.time,
     ) -> None:
         self._page_id = page_id or str(
             config.get("integrations.facebook_messaging.page_id", "")
@@ -102,8 +104,9 @@ class FacebookMessagingAdapter(PlatformAdapter):
         self._enabled = enabled
         self._token_getter = token_getter or (lambda: secrets_store.get(_TOKEN_KEY))
         self._client = client or _GraphMessagingClient()
+        self._clock = clock
         self._seen_ids: set[str] = set()
-        self._history_watermarked = False
+        self._startup_cutoff: float | None = None
         self._last_error = ""
         self._last_poll_ok: bool | None = None
 
@@ -167,9 +170,13 @@ class FacebookMessagingAdapter(PlatformAdapter):
         if not capabilities.can_read:
             return []
         try:
+            poll_started_at = _finite_timestamp(self._clock())
+            if poll_started_at is None:
+                raise ValueError("invalid poll clock")
             raw = self._client.poll_messages(self._page_id, self._token())
             events = []
-            watermark_only = not self._history_watermarked
+            watermark_only = self._startup_cutoff is None
+            cutoff = poll_started_at if watermark_only else self._startup_cutoff
             for item in raw:
                 message_id = str(item.get("id", ""))
                 author_id = str(item.get("author_id", ""))
@@ -177,7 +184,14 @@ class FacebookMessagingAdapter(PlatformAdapter):
                 if not message_id or message_id in self._seen_ids:
                     continue
                 self._seen_ids.add(message_id)
-                if watermark_only or author_id == self._page_id or not text:
+                timestamp = _finite_timestamp(item.get("timestamp"))
+                if (
+                    watermark_only
+                    or author_id == self._page_id
+                    or not text
+                    or timestamp is None
+                    or timestamp <= cutoff
+                ):
                     continue
                 events.append(
                     CommentEvent(
@@ -186,11 +200,12 @@ class FacebookMessagingAdapter(PlatformAdapter):
                         author_id=author_id,
                         author_name=str(item.get("author_name", "")),
                         text=text,
-                        timestamp=float(item.get("timestamp", time.time())),
+                        timestamp=timestamp,
                         stream_id=str(item.get("conversation_id", "")),
                     )
                 )
-            self._history_watermarked = True
+            if watermark_only:
+                self._startup_cutoff = poll_started_at
             self._last_poll_ok = True
             self._last_error = ""
             return events
@@ -226,15 +241,23 @@ class FacebookMessagingAdapter(PlatformAdapter):
         }
 
 
-def _timestamp(value) -> float:
-    if isinstance(value, (int, float)):
-        return float(value)
+def _timestamp(value) -> float | None:
     if isinstance(value, str) and value:
         try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+            value = datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
         except ValueError:
-            pass
-    return time.time()
+            return None
+    return _finite_timestamp(value)
+
+
+def _finite_timestamp(value) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        timestamp = float(value)
+    except (TypeError, ValueError):
+        return None
+    return timestamp if math.isfinite(timestamp) else None
 
 
 __all__ = ["FacebookMessagingAdapter"]

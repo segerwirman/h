@@ -7682,3 +7682,65 @@ juga belum dinaikkan dalam slice ini. Langkah aman berikutnya adalah review comm
 follow-up ini. Setelah review hijau, capability/version migration dapat dirancang
 offline; live probe hanya dengan otorisasi baru, test account, read-only, dan tanpa
 mengirim balasan.
+
+## Checkpoint F follow-up 2 — bounded negation + Meta startup cutoff (2026-08-28)
+
+**Status implementasi:** dua temuan review commit `2da3eb9` diperbaiki sebagai
+slice RED→GREEN terpisah dan hanya diuji dengan fake/offline data. Seluruh social
+lane tetap default-off. Tidak ada credential, test account, network, API call, atau
+outbound reply nyata yang digunakan.
+
+### Perubahan
+
+1. Classifier sekarang memakai token Unicode punctuation-aware dan phrase list
+   eksplisit untuk thanks/positive, bukan pencarian substring. Negasi bounded
+   diperiksa untuk semua match sebelum kategori AUTO dipilih, termasuk pesan campur
+   seperti `Thanks, but I do not love this`. `Saya tidak suka.`, `I never loved
+   this`, `no thanks`, dan `tidak terima kasih` semuanya DRAFT tanpa reply;
+   `lovely` tidak lagi salah cocok dengan `love`.
+2. Adapter Facebook/Instagram messaging menyimpan wall-clock cutoff dari poll sukses
+   pertama. Poll itu tetap watermark-only; poll gagal tidak menginisialisasi cutoff.
+   Poll berikutnya hanya menerbitkan inbound message dengan ID baru, bukan author
+   managed account, text nonempty, dan timestamp resmi finite yang strictly lebih
+   baru dari cutoff. History lama yang sebelumnya belum terlihat, timestamp tepat
+   di boundary, missing/invalid/non-finite timestamp semuanya dibuang fail closed.
+3. Parser `created_time` mempertahankan epoch resmi yang valid dan mengembalikan
+   `None` untuk nilai missing/invalid, bukan menggantinya dengan waktu lokal kini.
+
+### Bukti RED→GREEN aktual
+
+- RED focused final yang bersih: **8 failed, 18 passed** (`1.13s`). Failure
+  mereproduksi punctuation/substrings/negated thanks, constructor belum menerima
+  injected clock, history cutoff belum ada, dan invalid `created_time` masih
+  menjadi local-now.
+- Focused GREEN setelah final mixed-message hardening: **26 passed** (`0.84s`).
+- Broad offline social regression final: **105 passed** (`2.63s`).
+- Ruff scoped lima Python path: **All checks passed!**
+- `py_compile` lima Python path: lulus tanpa output.
+- `python scripts/verify_frozen.py`: **FROZEN integrity: OK** (10 files,
+  baseline `094b696`).
+- Probe offline tambahan untuk punctuation/negated-thanks, explicit token match,
+  dan unseen Meta history pada kedua lane: **OK**.
+- Scoped `git diff --check`: tanpa whitespace error; warning LF→CRLF pada lima
+  working-copy path dicatat dan bukan whitespace failure.
+
+### Batas jujur
+
+- Full repository pytest **dicoba tetapi tidak mencapai eksekusi suite**: collection
+  berhenti pada unrelated dirty `tests/test_voice_turn_guard.py` karena
+  `ImportError: cannot import name 'voice_turn_guard' from jarvis.integrations`
+  (**1 error**, `5.66s`). Tidak ada file voice user yang diubah untuk memaksa hijau.
+- Root-wide Ruff **dicoba dan gagal pada dua finding unrelated existing dirty work**:
+  `S110` di `jarvis/agent/communication_authorization.py:142` dan
+  `jarvis/agent/tools/whatsapp_web.py:364`. Scoped Ruff untuk slice ini hijau.
+- Graph API tetap hard-coded v19.0 dan **tidak dimigrasikan** dalam slice ini.
+- Capability probe test-account read-only tetap **belum diotorisasi dan tidak
+  dijalankan**. Endpoint, pagination/webhook behavior, account permissions,
+  timestamps live, dan outbound send nyata belum terbukti.
+
+### Langkah aman berikutnya
+
+Stage hanya tiga production path, dua test path, dan bagian evidence ini; commit
+tanpa push, lalu review commit baru read-only/offline. Graph API migration baru
+layak dimulai sebagai slice terpisah bila review tersebut hijau. Live capability
+probe tetap memerlukan otorisasi baru, test account, read-only, dan tanpa reply.

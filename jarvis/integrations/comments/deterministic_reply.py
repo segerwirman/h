@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 from enum import Enum
 from types import MappingProxyType
@@ -66,9 +67,31 @@ _NEGATIVE_TERMS = (
     "awful",
 )
 _GREETING_TERMS = frozenset({"halo", "hai", "hi", "hello", "pagi", "siang", "sore", "malam"})
-_THANKS_TERMS = ("terima kasih", "makasih", "thanks", "thank you", "thx")
-_POSITIVE_TERMS = ("bagus", "keren", "mantap", "suka", "love", "awesome", "hebat")
-_NEGATIONS = frozenset({"tidak", "tak", "bukan", "gak", "nggak", "ga", "not", "never"})
+_THANKS_PHRASES = (
+    ("terima", "kasih"),
+    ("makasih",),
+    ("thanks",),
+    ("thank", "you"),
+    ("thx",),
+)
+_POSITIVE_PHRASES = tuple(
+    (term,)
+    for term in (
+        "bagus",
+        "keren",
+        "mantap",
+        "suka",
+        "menyukai",
+        "love",
+        "loved",
+        "awesome",
+        "hebat",
+    )
+)
+_NEGATIONS = frozenset(
+    {"tidak", "tak", "bukan", "gak", "nggak", "ga", "no", "not", "never"}
+)
+_TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
 _OPEN_ENDED_PREFIXES = (
     "mengapa ",
     "kenapa ",
@@ -83,14 +106,21 @@ def _normalize(text: str) -> str:
     return " ".join(str(text or "").casefold().split())
 
 
-def _has_negated_positive(tokens: list[str]) -> bool:
-    for index, token in enumerate(tokens):
-        if not any(term == token for term in _POSITIVE_TERMS):
-            continue
-        start = max(0, index - 3)
-        if any(word in _NEGATIONS for word in tokens[start:index]):
-            return True
-    return False
+def _tokens(text: str) -> list[str]:
+    return _TOKEN_RE.findall(text)
+
+
+def _phrase_starts(tokens: list[str], phrases: tuple[tuple[str, ...], ...]) -> list[int]:
+    starts = []
+    for index in range(len(tokens)):
+        if any(tokens[index : index + len(phrase)] == list(phrase) for phrase in phrases):
+            starts.append(index)
+    return starts
+
+
+def _is_negated(tokens: list[str], phrase_start: int, *, lookback: int = 3) -> bool:
+    start = max(0, phrase_start - lookback)
+    return any(token in _NEGATIONS for token in tokens[start:phrase_start])
 
 
 class DeterministicReplyPolicy:
@@ -140,15 +170,19 @@ class DeterministicReplyPolicy:
                 self._faq[normalized],
                 "faq_exact",
             )
-        tokens = normalized.replace("!", " ").replace("?", " ").split()
+        tokens = _tokens(normalized)
         words = frozenset(tokens)
         if words and words <= _GREETING_TERMS:
             return self._template("greeting", normalized, platform, author_id)
-        if any(term in normalized for term in _THANKS_TERMS):
+        thanks_starts = _phrase_starts(tokens, _THANKS_PHRASES)
+        positive_starts = _phrase_starts(tokens, _POSITIVE_PHRASES)
+        if any(_is_negated(tokens, start) for start in positive_starts):
+            return ReplyDecision(ReplyDisposition.DRAFT, reason="negated_positive")
+        if any(_is_negated(tokens, start) for start in thanks_starts):
+            return ReplyDecision(ReplyDisposition.DRAFT, reason="negated_thanks")
+        if thanks_starts:
             return self._template("thanks", normalized, platform, author_id)
-        if any(term in normalized for term in _POSITIVE_TERMS):
-            if _has_negated_positive(tokens):
-                return ReplyDecision(ReplyDisposition.DRAFT, reason="negated_positive")
+        if positive_starts:
             return self._template("positive", normalized, platform, author_id)
         if normalized.endswith("?") or any(
             normalized.startswith(prefix) for prefix in _OPEN_ENDED_PREFIXES

@@ -97,18 +97,41 @@ def test_policy_sends_sensitive_negative_and_open_ended_text_to_human():
     assert unsupported.disposition is ReplyDisposition.MANUAL
 
 
-def test_policy_never_auto_replies_to_negated_positive_terms():
+def test_policy_never_auto_replies_to_bounded_negated_acknowledgments():
     policy = DeterministicReplyPolicy()
+    cases = {
+        "Saya tidak suka produk ini": "negated_positive",
+        "gak suka sama sekali": "negated_positive",
+        "I do not love this": "negated_positive",
+        "Saya tidak suka.": "negated_positive",
+        "I never loved this": "negated_positive",
+        "no thanks": "negated_thanks",
+        "tidak terima kasih": "negated_thanks",
+        "I do not love this, thanks": "negated_positive",
+        "Thanks, but I do not love this": "negated_positive",
+    }
 
-    for text in (
-        "Saya tidak suka produk ini",
-        "gak suka sama sekali",
-        "I do not love this",
-    ):
+    for text, reason in cases.items():
         decision = policy.classify(text, platform="instagram", author_id="a-1")
         assert decision.disposition is not ReplyDisposition.AUTO
         assert decision.reply == ""
-        assert decision.reason == "negated_positive"
+        assert decision.reason == reason
+
+
+def test_policy_matches_only_explicit_non_negated_acknowledgment_tokens():
+    policy = DeterministicReplyPolicy()
+
+    positive = policy.classify("Saya suka.", platform="instagram", author_id="a-1")
+    thanks = policy.classify("Thanks!", platform="instagram", author_id="a-1")
+    lovely = policy.classify("What a lovely day", platform="instagram", author_id="a-1")
+
+    assert positive.disposition is ReplyDisposition.AUTO
+    assert positive.reason == "positive"
+    assert thanks.disposition is ReplyDisposition.AUTO
+    assert thanks.reason == "thanks"
+    assert lovely.disposition is ReplyDisposition.DRAFT
+    assert lovely.reply == ""
+    assert lovely.reason == "ambiguous"
 
 
 def test_platform_manual_approval_forces_draft_even_when_auto_is_active():
