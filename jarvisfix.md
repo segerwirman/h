@@ -7494,3 +7494,144 @@ push, lalu bangkitkan prompt repository-derived melalui
 `scripts/next_phase_prompt.py`. Sesudah itu mulai Task 15 dengan pure deterministic
 reply classifier dan fake adapter/clock; jangan mengaktifkan auto-send atau API
 sosial nyata.
+
+## Checkpoint F — deterministic social replies + official lanes (2026-08-28)
+
+**Status:** Tasks 15–16 selesai dan `runtime-wired` dengan bukti **offline/fake**,
+`focused-tested`/`fixture-accepted`, belum `live-proven`. Seluruh runtime dan setiap
+platform tetap default-off; mode reply tetap DRAFT sampai aktivasi process-local
+per-platform yang eksplisit dan berbatas waktu. Tidak ada social API, browser,
+account, keyring credential, send eksternal, GUI, audio, provider, atau network
+nyata yang dijalankan.
+
+### Perubahan yang diselesaikan
+
+1. **Classifier murni dan deterministik.** Exact normalized FAQ, greeting,
+   thanks, dan positive marker menghasilkan acknowledgement bounded. Pilihan
+   template memakai SHA-256 atas category/platform/author/input, bukan random.
+   Empty/sensitive/negative menjadi MANUAL; open-ended dan ambiguous menjadi
+   DRAFT. Tidak ada LLM, agent loop, network, atau credential access.
+2. **CommentManager fail-closed.** `PlatformCapabilities.requires_manual_approval`
+   sekarang benar-benar memblok auto-send; AUTO hanya process-local, per-platform,
+   dan kedaluwarsa maksimal satu jam dengan audit satu kali. Global/per-platform
+   kill switch menghentikan send segera. Rate bucket terpisah per platform dan
+   cooldown terikat `(platform, author_id)`. Audit decision/send hanya membawa
+   metadata ID/disposition/reason bounded, bukan text/reply/token.
+3. **Retry dan runtime bounded.** Retry exponential deterministik menggunakan
+   injected sleeper di worker thread. `CommentRuntime` daemon hanya dapat start
+   sekali, interval divalidasi, handler error tidak membatalkan event lain, dan
+   production wait memakai `Event.wait()` sehingga `stop()` membangunkan runtime
+   tanpa menunggu poll interval penuh.
+4. **Official Meta DM/chat tetap lane terpisah.** `facebook_messaging` dan
+   `instagram_messaging` tidak menggantikan adapter comment lama. Keduanya memakai
+   Graph/Messaging client resmi, secret namespaced di `secrets_store`, dan hanya
+   mengaku read/reply bila current permission probe membuktikan `pages_messaging`
+   atau `instagram_manage_messages`. Token/permission/account yang hilang atau
+   probe exception gagal tertutup tanpa poll/send attempt.
+5. **YouTube ordinary comments terpisah dari live chat.** `youtube_comments`
+   membungkus `commentThreads.list`/`comments.insert` melalui helper yang sudah ada.
+   API key saja hanya memberi read; reply tetap false/manual sampai OAuth write
+   tersedia. Author channel ID dan timestamp ordinary comment kini dipertahankan
+   untuk cooldown/audit yang benar.
+6. **TikTok fail closed.** Adapter hanya aktif bila injected official client serta
+   current proof menyatakan official API, read, reply, dan kedua permission
+   `comments.read`/`comments.reply`. Default tidak memiliki client dan selalu
+   DRAFT/MANUAL; tidak ada Playwright, Selenium, browser, PyAutoGUI, atau fallback
+   unofficial.
+7. **Satu shared owner.** Factory membangun comment, DM, live-chat, ordinary-comment,
+   dan TikTok lanes sebagai platform ID berbeda tetapi melewatkannya ke satu
+   `CommentManager`, policy, rate/cooldown, audit, dan runtime. `jarvis.main`
+   memiliki boot helper default-off (`live_comments.enabled: false`) dan mendaftarkan
+   stop ke `RuntimeSupervisor` hanya setelah runtime berhasil start.
+8. **Config dan credential boundary.** YAML hanya menambah master/per-lane toggle
+   default false dan Page/account/video ID non-secret. Tidak ada token, API key,
+   client secret, FAQ reply secret, atau credential value yang ditambahkan.
+
+### RED-first dan koreksi rancangan
+
+- Task 15 RED collection gagal dengan dua `ModuleNotFoundError` untuk
+  `deterministic_reply` dan `runtime`. Setelah implementasi, selected regression
+  awal menjadi **43 passed**.
+- Runtime-drain RED menghasilkan **2 failed, 3 passed** karena constructor belum
+  menerima `handler`; setelah handler bounded ditambahkan, combined menjadi
+  **45 passed**.
+- Task 16 RED collection gagal dengan `ModuleNotFoundError` untuk
+  `facebook_messaging`; setelah official lanes/probe/factory diimplementasikan,
+  focused Task 16 menjadi **7 passed**, lalu berkembang menjadi **10 passed**.
+- Boot ownership test RED gagal `ImportError` karena
+  `_start_social_comments_runtime` belum ada; helper default-off + supervisor
+  ownership membuatnya GREEN.
+- Factory stop test menemukan production `time.sleep(5)` tidak interruptible:
+  `join(timeout=1)` false. Runtime sekarang memakai `Event.wait` bila sleeper tidak
+  diinjeksi; focused runtime menjadi **13 passed**.
+- Review concurrency menemukan audit dilakukan sambil memegang manager lock pada
+  cooldown path. Gate sekarang menentukan reason di bawah lock dan menulis audit
+  sesudah lock dilepas; selected regression tetap hijau.
+
+### Bukti offline aktual
+
+| Pemeriksaan | Hasil |
+|---|---:|
+| Task 15 RED collection | **2 errors** (`ModuleNotFoundError`) |
+| Task 15 GREEN + regression awal | **43 passed** (`1.94s`) |
+| Runtime-drain RED | **3 passed, 2 failed** |
+| Task 15 combined GREEN | **45 passed** (`1.71s`) |
+| Task 15 selected broad regression | **72 passed, 1 warning** (`3.56s`) |
+| Task 16 RED collection | **1 error** (`ModuleNotFoundError`) |
+| Task 16 official-lane focused awal | **7 passed** (`0.47s`) |
+| Factory interruptibility RED | **7 passed, 1 failed** (`1.70s`) |
+| Runtime + capability GREEN | **13 passed** (`0.71s`) |
+| Task 16 final focused | **10 passed** (`0.49s`) |
+| Final selected broad Checkpoint F regression | **82 passed, 1 warning** (`3.60s`) |
+| Staged-snapshot selected regression | **82 passed, 1 warning** (`4.79s`) |
+| `py_compile` seluruh Python path Checkpoint F | **lulus** (tanpa output) |
+| Ruff scoped seluruh Python path Checkpoint F | **All checks passed!** |
+| `python scripts/verify_frozen.py` | **FROZEN integrity: OK** (10 files, baseline `094b696`) |
+| Scoped `git diff --check` | **tanpa whitespace error**; warning LF→CRLF pada 2 path |
+
+Warning pytest berasal dari Starlette TestClient lama yang mendeprekasi `httpx`
+dan menyarankan `httpx2`; warning ini tidak disembunyikan dan tidak berasal dari
+jalur social reply baru.
+
+### Review keamanan eksplisit
+
+- Semua adapter memanggil `capabilities()` sebelum poll/send. Unknown, disabled,
+  missing token/ID/permission, dan probe exception tidak melakukan side effect.
+- Secret key baru namespaced (`jarvis/facebook_messaging/page_access_token`,
+  `jarvis/instagram_messaging/access_token`, dan
+  `jarvis/tiktok/comments_access_token`) dan hanya dibaca lewat `secrets_store`.
+- Test guard membaca source TikTok dan menolak nama Playwright/Selenium/browser/
+  PyAutoGUI; default probe juga dibuktikan tidak memanggil poll atau send.
+- Meta comments dan Meta DMs, YouTube live chat dan ordinary comments, tetap lane
+  berbeda; tidak ada browser automation lama yang dipakai sebagai fallback.
+- Auto-send tidak diaktifkan dari YAML atau boot. Capability support saja tidak
+  mengaktifkan AUTO; aktivasi eksplisit per runtime-session/per-platform tetap
+  wajib, bounded, audited, dan dapat dimatikan kill switch.
+
+### Batas jujur
+
+- **Full repository pytest tidak dijalankan.** Angka 82 adalah selected broad
+  Checkpoint F regression, bukan klaim seluruh mixed working tree hijau.
+- **Root Ruff penuh tidak dijalankan.** Ruff scoped seluruh Python path Checkpoint F
+  lulus. Percobaan yang keliru memasukkan `config.yaml` ke Ruff menghasilkan output
+  parser/noise YAML dan tidak dihitung sebagai Python lint; rerun Python-only hijau.
+- Tidak ada live validation. Endpoint Meta/YouTube/TikTok, permission response,
+  pagination/webhook behavior, OAuth refresh, API quota/rate semantics, account
+  ownership, outbound reply, dan boot runtime nyata belum dibuktikan.
+- TikTok sengaja tidak memiliki default official network client karena repository
+  belum membuktikan endpoint/permission resmi untuk account ini; adapter tetap
+  unsupported/manual sampai client resmi dan current permission proof tersedia.
+- Scoped `git diff --check` tidak menemukan whitespace error tetapi mengeluarkan
+  warning existing LF→CRLF untuk `base.py` dan `youtube_api.py`.
+- Banyak tracked/untracked file user tetap dirty. Tidak ada reset/restore/clean/
+  stash. Staging checkpoint harus memakai path/hunk eksplisit dan `git add .` /
+  `git add -A` tetap dilarang.
+
+### Langkah aman berikutnya
+
+Audit setiap path/hunk Checkpoint F, pisahkan hanya tambahan social config dari
+perubahan user lain di `config.yaml`, stage eksplisit, review cached diff, commit
+tanpa push, lalu bangkitkan prompt repository-derived melalui
+`scripts/next_phase_prompt.py`. Live social validation tetap membutuhkan otorisasi
+baru dan sebaiknya dimulai dari observation/capability probe pada test account,
+bukan send.

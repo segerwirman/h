@@ -723,6 +723,12 @@ integrations:                    # this-prompt §19-§24 — secrets via keyring
     allowlist: []
     rate_per_minute: 5
     daily_cap: 50
+  facebook_messaging:
+    enabled: false              # official Meta Page Messaging API; default-off
+    page_id: ""                 # non-secret Page ID; token tetap di keyring
+  instagram_messaging:
+    enabled: false              # official Instagram Messaging API; default-off
+    account_id: ""              # non-secret professional account ID
   youtube:
     # secret NAMES only — never the values (values live in the OS keyring via
     # jarvis.core.secrets_store). API key alone is read-only; OAuth is
@@ -750,6 +756,7 @@ providers:
         write: false
 
 live_comments:                   # jarvis.integrations.comments (redesign §15)
+  enabled: false                   # master runtime gate; every lane remains default-off
   default_reply_mode: draft        # draft | auto — auto requires explicit per-session activation
   poll_interval_s: 5.0
   queue_max: 500
@@ -764,6 +771,11 @@ live_comments:                   # jarvis.integrations.comments (redesign §15)
     youtube:
       enabled: false               # true only once credentials exist (see docs/YOUTUBE_API_SETUP.md)
       live_chat_id: ""             # from: python -m scripts.youtube_oauth_setup test-live <VIDEO_ID>
+    youtube_comments:
+      enabled: false               # ordinary video comments, separate from live chat
+      video_id: ""                 # public ID only; key/OAuth stay in keyring
+    tiktok:
+      enabled: false               # fail closed unless official read+reply proof exists
     x:
       enabled: false
     instagram:

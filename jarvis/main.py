@@ -141,6 +141,27 @@ def _register_browser_shutdown(supervisor: RuntimeSupervisor) -> None:
     supervisor.add_stop("browser_cdp", shutdown_browser_cdp)
 
 
+def _start_social_comments_runtime(
+    supervisor: RuntimeSupervisor,
+    *,
+    enabled: bool | None = None,
+    runtime_factory=None,
+):
+    """Start the shared social runtime only behind its default-off master gate."""
+    if enabled is None:
+        enabled = bool(config.get("live_comments.enabled", False))
+    if not enabled:
+        return None
+    if runtime_factory is None:
+        from jarvis.integrations.comments.factory import build_runtime
+        runtime_factory = build_runtime
+    _manager, runtime = runtime_factory()
+    if not runtime.start():
+        return None
+    supervisor.add_stop("social_comments", runtime.stop)
+    return runtime
+
+
 def _start_voice_pipeline(ui, *, stop_requested: threading.Event | None = None):
     """Run the legacy JarvisLive (Gemini Live audio) against the new UI."""
     logger = log.get("voice")
@@ -344,6 +365,13 @@ def run(no_voice: bool = False, *, ui_factory=None) -> int:
         cron_sched.start()
     except Exception as e:
         logger.warning("agent.cron_unavailable", error=str(e)[:150])
+
+    try:
+        comments_runtime = _start_social_comments_runtime(supervisor)
+        if comments_runtime is not None:
+            ui.write_log("SYS: Social reply runtime aktif (official lanes).")
+    except Exception as exc:                                 # noqa: BLE001
+        logger.warning("social_comments.unavailable", error=type(exc).__name__)
 
     # Phase 17H — separate monitor-only lifecycle; never reuses agent cron.
     monitor_worker = None

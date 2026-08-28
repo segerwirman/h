@@ -1,23 +1,16 @@
-"""Live Comment Assistant — platform-agnostic core (redesign §15).
+"""Live Comment Assistant — platform-agnostic, fail-closed core.
 
-``PlatformAdapter`` is the seam every platform (YouTube/X/Instagram/
-Facebook) implements. The adapter's ``capabilities()`` is the single source
-of truth for what that platform can actually do for the *currently
-configured* account — the manager never assumes a capability exists; it
-asks. An adapter that cannot read or reply reports that honestly instead of
-silently no-op'ing in a way that looks like success.
-
-``CommentManager`` owns the shared, testable plumbing: a bounded read
-queue, deduplication, a moderation/safety filter, a token-bucket rate
-limiter, retry with exponential backoff, connection-health tracking, and an
-audit log. None of this talks to the network directly — adapters do that —
-so the manager is fully unit-testable with a fake adapter.
+Adapters own network I/O. ``CommentManager`` owns bounded collection, explicit
+per-session auto activation, per-platform rate/cooldown gates, retries, kill
+switches, and audit metadata. Reply text classification lives in the pure
+``deterministic_reply`` module.
 """
 from __future__ import annotations
 
 import json
+import math
 import queue
-import random
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -63,9 +56,7 @@ class ReplyResult:
 
 @dataclass
 class PlatformCapabilities:
-    """Honest, per-account capability report. `can_read`/`can_reply` reflect
-    what will actually work right now, not what the API could theoretically
-    do with different permissions."""
+    """Honest capability report for the currently configured account."""
 
     can_read: bool
     can_reply: bool
@@ -74,9 +65,7 @@ class PlatformCapabilities:
 
 
 class PlatformAdapter:
-    """Base class every platform adapter implements. Nothing here performs
-    network I/O — subclasses do, and must fail closed (return a capability
-    report / ReplyResult, never raise into the manager loop)."""
+    """Base platform contract; subclasses own any network I/O."""
 
     name = "base"
 
@@ -87,8 +76,6 @@ class PlatformAdapter:
         return False
 
     def poll_comments(self) -> list[CommentEvent]:
-        """Returns newly-seen comments since the last call. Must never
-        raise — network/auth failures are reported via connection_health()."""
         return []
 
     def send_reply(self, comment: CommentEvent, text: str) -> ReplyResult:
@@ -98,117 +85,153 @@ class PlatformAdapter:
         return {"platform": self.name, "connected": False, "detail": "not implemented"}
 
 
-# ── shared, network-free plumbing ───────────────────────────────────────
-
 class Deduplicator:
-    def __init__(self, window_s: float):
+    def __init__(self, window_s: float, *, clock=time.time):
         self._window_s = window_s
+        self._clock = clock
         self._seen: dict[str, float] = {}
+        self._lock = threading.RLock()
 
     def seen_before(self, dedup_id: str) -> bool:
-        now = time.time()
-        self._evict(now)
-        if dedup_id in self._seen:
-            return True
-        self._seen[dedup_id] = now
-        return False
+        now = self._clock()
+        with self._lock:
+            self._evict(now)
+            if dedup_id in self._seen:
+                return True
+            self._seen[dedup_id] = now
+            return False
 
     def _evict(self, now: float) -> None:
         cutoff = now - self._window_s
-        stale = [k for k, ts in self._seen.items() if ts < cutoff]
-        for k in stale:
-            del self._seen[k]
+        stale = [key for key, timestamp in self._seen.items() if timestamp < cutoff]
+        for key in stale:
+            del self._seen[key]
 
 
 class RateLimiter:
-    """Simple token bucket — refills continuously, never bursts past cap."""
+    """Injected-clock token bucket; one instance scopes one platform."""
 
-    def __init__(self, max_per_min: float):
-        self._max = max(0.001, max_per_min)
+    def __init__(self, max_per_min: float, *, clock=time.monotonic):
+        self._max = max(0.001, float(max_per_min))
+        self._clock = clock
         self._tokens = self._max
-        self._last = time.monotonic()
+        self._last = self._clock()
+        self._lock = threading.RLock()
 
     def allow(self) -> bool:
-        now = time.monotonic()
-        elapsed = now - self._last
-        self._last = now
-        self._tokens = min(self._max, self._tokens + elapsed * (self._max / 60.0))
-        if self._tokens >= 1.0:
-            self._tokens -= 1.0
-            return True
-        return False
+        with self._lock:
+            now = self._clock()
+            elapsed = max(0.0, now - self._last)
+            self._last = now
+            self._tokens = min(
+                self._max,
+                self._tokens + elapsed * (self._max / 60.0),
+            )
+            if self._tokens >= 1.0:
+                self._tokens -= 1.0
+                return True
+            return False
 
 
 class RetryPolicy:
     def __init__(self, max_attempts: int, base_delay_s: float, max_delay_s: float):
-        self.max_attempts = max_attempts
-        self._base = base_delay_s
-        self._cap = max_delay_s
+        self.max_attempts = max(1, min(10, int(max_attempts)))
+        self._base = max(0.0, float(base_delay_s))
+        self._cap = max(self._base, float(max_delay_s))
 
     def next_delay(self, attempt: int) -> float:
-        delay = min(self._cap, self._base * (2 ** max(0, attempt - 1)))
-        return delay * (0.5 + random.random())  # jitter
+        return min(self._cap, self._base * (2 ** max(0, int(attempt) - 1)))
 
 
 _SPAM_MARKERS = ("http://bit.ly", "free followers", "click here now", "www.free-")
 
 
 class ModerationFilter:
-    """Minimal, dependency-free safety pass. Not a substitute for a real
-    moderation model — a deliberately conservative first line of defense
-    that blocks obvious spam/link-injection before anything reaches a
-    reply queue or spoken narration."""
-
     def is_safe(self, text: str) -> bool:
         low = text.lower()
-        if any(marker in low for marker in _SPAM_MARKERS):
-            return False
-        if len(text) > 2000:
-            return False
-        return True
+        return not any(marker in low for marker in _SPAM_MARKERS) and len(text) <= 2000
 
 
 class AuditLog:
-    def __init__(self, path_rel: str = "logs/comments_audit.jsonl"):
+    def __init__(self, path_rel: str = "logs/comments_audit.jsonl", *, clock=time.time):
         self._path = config.resolve_path(path_rel)
+        self._clock = clock
 
     def record(self, **fields) -> None:
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)
-            fields.setdefault("ts", time.time())
-            with open(self._path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(fields) + "\n")
-        except OSError:
-            pass
+            fields.setdefault("ts", self._clock())
+            with open(self._path, "a", encoding="utf-8") as file:
+                file.write(json.dumps(fields) + "\n")
+        except OSError as exc:
+            _logger.warning("comments.audit_write_failed", error=type(exc).__name__)
 
 
 class CommentManager:
-    """Orchestrates adapters behind bounded queues. Reading is continuous
-    (subject to Focus Mode pausing narration, not collection); replying
-    defaults to draft-only and only ever auto-sends when a caller has
-    explicitly enabled auto mode for this session+platform."""
+    """Own bounded collection and safe reply lifecycle for platform adapters."""
 
-    def __init__(self, adapters: list[PlatformAdapter] | None = None):
-        c = config.section("live_comments")
+    def __init__(
+        self,
+        adapters: list[PlatformAdapter] | None = None,
+        *,
+        clock=time.monotonic,
+        sleeper=time.sleep,
+        audit=None,
+        activation_ttl_s: float | None = None,
+        max_replies_per_min: float | None = None,
+        author_cooldown_s: float | None = None,
+        retry_policy: RetryPolicy | None = None,
+    ) -> None:
+        section = config.section("live_comments")
         self.adapters: list[PlatformAdapter] = adapters or []
-        self._queue_max = int(c.get("queue_max", 500))
-        self._read_queue: "queue.Queue[CommentEvent]" = queue.Queue(maxsize=self._queue_max)
-        self._dedup = Deduplicator(float(c.get("dedup_window_s", 120)))
+        self._clock = clock
+        self._sleeper = sleeper
+        self._lock = threading.RLock()
+        self._queue_max = max(1, int(section.get("queue_max", 500)))
+        self._read_queue: "queue.Queue[CommentEvent]" = queue.Queue(
+            maxsize=self._queue_max,
+        )
+        self._dedup = Deduplicator(
+            float(section.get("dedup_window_s", 120)),
+            clock=clock,
+        )
         self._moderation = ModerationFilter()
-        self._rate_limiter = RateLimiter(
-            float(c.get("rate_limit", {}).get("max_replies_per_min", 3)))
-        retry_cfg = c.get("retry", {}) or {}
-        self._retry = RetryPolicy(int(retry_cfg.get("max_attempts", 5)),
-                                  float(retry_cfg.get("base_delay_s", 1.0)),
-                                  float(retry_cfg.get("max_delay_s", 60.0)))
-        self._audit = AuditLog()
-        self._reply_mode: dict[str, ReplyMode] = {}
-        default_mode = ReplyMode(c.get("default_reply_mode", "draft"))
-        for a in self.adapters:
-            self._reply_mode[a.name] = default_mode
+        rate_config = section.get("rate_limit", {}) or {}
+        self._max_replies_per_min = _bounded_positive(
+            max_replies_per_min
+            if max_replies_per_min is not None
+            else rate_config.get("max_replies_per_min", 3),
+            default=3.0,
+            maximum=120.0,
+        )
+        self._author_cooldown_s = _bounded_non_negative(
+            author_cooldown_s
+            if author_cooldown_s is not None
+            else rate_config.get("author_cooldown_s", 30),
+            default=30.0,
+            maximum=86400.0,
+        )
+        self._activation_ttl_s = _bounded_positive(
+            activation_ttl_s
+            if activation_ttl_s is not None
+            else section.get("auto_activation_ttl_s", 900),
+            default=900.0,
+            maximum=3600.0,
+        )
+        retry_config = section.get("retry", {}) or {}
+        self._retry = retry_policy or RetryPolicy(
+            int(retry_config.get("max_attempts", 5)),
+            float(retry_config.get("base_delay_s", 1.0)),
+            float(retry_config.get("max_delay_s", 60.0)),
+        )
+        self._audit = audit or AuditLog()
+        self._reply_mode = {adapter.name: ReplyMode.DRAFT for adapter in self.adapters}
+        self._activation_expires: dict[str, float] = {}
+        self._rate_limiters: dict[str, RateLimiter] = {}
+        self._author_last_reply: dict[tuple[str, str], float] = {}
+        self._global_killed = False
+        self._platform_killed: set[str] = set()
         self._paused = False
-
-    # ── controls ──────────────────────────────────────────────────────
 
     def pause(self) -> None:
         self._paused = True
@@ -216,53 +239,106 @@ class CommentManager:
     def resume(self) -> None:
         self._paused = False
 
-    def enable_auto_reply(self, platform: str) -> None:
-        """Explicit, per-session, per-platform opt-in only — never the
-        default and never persisted across restarts."""
-        self._reply_mode[platform] = ReplyMode.AUTO
-        self._audit.record(event="auto_reply_enabled", platform=platform)
+    def enable_auto_reply(self, platform: str, *, ttl_s: float | None = None) -> bool:
+        target = str(platform or "").strip()
+        adapter = self._adapter(target)
+        if not target or adapter is None or self._killed(target):
+            return False
+        ttl = _bounded_positive(
+            self._activation_ttl_s if ttl_s is None else ttl_s,
+            default=self._activation_ttl_s,
+            maximum=3600.0,
+        )
+        with self._lock:
+            self._reply_mode[target] = ReplyMode.AUTO
+            self._activation_expires[target] = self._clock() + ttl
+        self._audit.record(
+            event="auto_reply_enabled",
+            platform=target,
+            expires_in_s=ttl,
+        )
+        return True
 
-    def disable_auto_reply(self, platform: str) -> None:
-        self._reply_mode[platform] = ReplyMode.DRAFT
+    def disable_auto_reply(self, platform: str, *, reason: str = "disabled") -> None:
+        target = str(platform or "").strip()
+        with self._lock:
+            self._reply_mode[target] = ReplyMode.DRAFT
+            self._activation_expires.pop(target, None)
+        self._audit.record(event="auto_reply_disabled", platform=target, reason=reason[:64])
 
     def reply_mode(self, platform: str) -> ReplyMode:
-        return self._reply_mode.get(platform, ReplyMode.DRAFT)
+        target = str(platform or "").strip()
+        with self._lock:
+            mode = self._reply_mode.get(target, ReplyMode.DRAFT)
+            expires_at = self._activation_expires.get(target, 0.0)
+            expired = mode is ReplyMode.AUTO and self._clock() >= expires_at
+            if expired:
+                self._reply_mode[target] = ReplyMode.DRAFT
+                self._activation_expires.pop(target, None)
+                mode = ReplyMode.DRAFT
+        if expired:
+            self._audit.record(event="auto_reply_expired", platform=target)
+        return mode
 
-    # ── polling (call periodically from a background worker, never GUI) ─
+    def set_global_kill_switch(self, enabled: bool = True) -> None:
+        with self._lock:
+            self._global_killed = bool(enabled)
+            if enabled:
+                self._activation_expires.clear()
+                for platform in tuple(self._reply_mode):
+                    self._reply_mode[platform] = ReplyMode.DRAFT
+        self._audit.record(event="reply_global_kill_switch", enabled=bool(enabled))
+
+    def set_platform_kill_switch(self, platform: str, enabled: bool = True) -> None:
+        target = str(platform or "").strip()
+        with self._lock:
+            if enabled:
+                self._platform_killed.add(target)
+                self._activation_expires.pop(target, None)
+                self._reply_mode[target] = ReplyMode.DRAFT
+            else:
+                self._platform_killed.discard(target)
+        self._audit.record(
+            event="reply_platform_kill_switch",
+            platform=target,
+            enabled=bool(enabled),
+        )
 
     def poll_once(self) -> list[CommentEvent]:
-        """Pulls new comments from every adapter, dedups, moderates, and
-        enqueues the survivors (bounded — oldest dropped on overflow, never
-        grows unbounded). Returns what was newly enqueued."""
         accepted: list[CommentEvent] = []
         for adapter in self.adapters:
-            caps = adapter.capabilities()
-            if not caps.can_read:
+            capabilities = adapter.capabilities()
+            if not capabilities.can_read:
                 continue
             try:
                 events = adapter.poll_comments()
-            except Exception as e:
-                _logger.warning("comments.poll_failed", platform=adapter.name, error=str(e)[:120])
+            except Exception as exc:
+                _logger.warning(
+                    "comments.poll_failed",
+                    platform=adapter.name,
+                    error=type(exc).__name__,
+                )
                 continue
-            for ev in events:
-                if self._dedup.seen_before(ev.dedup_id):
+            for event in events:
+                if self._dedup.seen_before(event.dedup_id):
                     continue
-                if not self._moderation.is_safe(ev.text):
-                    self._audit.record(event="moderation_blocked", platform=ev.platform,
-                                       comment_id=ev.comment_id)
+                if not self._moderation.is_safe(event.text):
+                    self._audit.record(
+                        event="moderation_blocked",
+                        platform=event.platform,
+                        comment_id=event.comment_id,
+                    )
                     continue
                 if self._read_queue.full():
                     try:
-                        self._read_queue.get_nowait()  # drop oldest, bounded
+                        self._read_queue.get_nowait()
                     except queue.Empty:
-                        pass
-                self._read_queue.put_nowait(ev)
-                accepted.append(ev)
+                        _logger.warning("comments.queue_drop_raced")
+                self._read_queue.put_nowait(event)
+                accepted.append(event)
         return accepted
 
     def next_for_narration(self) -> CommentEvent | None:
-        """Comments keep queuing during Focus Mode / narration pause — this
-        only gates whether the UI should *speak* them right now."""
         if self._paused or not FocusMode.get().should_narrate_comments():
             return None
         try:
@@ -273,41 +349,136 @@ class CommentManager:
     def queue_depth(self) -> int:
         return self._read_queue.qsize()
 
-    # ── replying ──────────────────────────────────────────────────────
-
     def reply(self, comment: CommentEvent, text: str, confirmed: bool = False) -> ReplyResult:
-        adapter = next((a for a in self.adapters if a.name == comment.platform), None)
+        adapter = self._adapter(comment.platform)
         if adapter is None:
             return ReplyResult(False, f"no adapter registered for {comment.platform}")
-        caps = adapter.capabilities()
-        if not caps.can_reply:
-            self._audit.record(event="reply_unsupported", platform=comment.platform,
-                               comment_id=comment.comment_id)
-            return ReplyResult(False, f"{comment.platform} reply not supported: {caps.notes}")
+        if self._killed(comment.platform):
+            self._audit.record(
+                event="reply_killed",
+                platform=comment.platform,
+                comment_id=comment.comment_id,
+            )
+            return ReplyResult(False, "reply kill switch active")
+        capabilities = adapter.capabilities()
+        if not capabilities.can_reply:
+            self._audit.record(
+                event="reply_unsupported",
+                platform=comment.platform,
+                comment_id=comment.comment_id,
+            )
+            return ReplyResult(
+                False,
+                f"{comment.platform} reply not supported: {capabilities.notes}",
+            )
+        if capabilities.requires_manual_approval and not confirmed:
+            self._audit.record(
+                event="reply_manual_required",
+                platform=comment.platform,
+                comment_id=comment.comment_id,
+            )
+            return ReplyResult(False, "manual approval required — draft only")
         mode = self.reply_mode(comment.platform)
-        if mode is ReplyMode.AUTO and not confirmed and not self._rate_limiter.allow():
-            return ReplyResult(False, "rate limit exceeded")
         if mode is ReplyMode.DRAFT and not confirmed:
-            self._audit.record(event="reply_drafted", platform=comment.platform,
-                               comment_id=comment.comment_id)
+            self._audit.record(
+                event="reply_drafted",
+                platform=comment.platform,
+                comment_id=comment.comment_id,
+            )
             return ReplyResult(False, "draft-only mode — awaiting explicit send confirmation")
+        if not confirmed:
+            gate = self._auto_gate(comment)
+            if gate is not None:
+                return gate
 
         last_error = ""
         for attempt in range(1, self._retry.max_attempts + 1):
             try:
                 result = adapter.send_reply(comment, text)
-            except Exception as e:
-                result = ReplyResult(False, str(e)[:200])
+            except Exception as exc:
+                result = ReplyResult(False, type(exc).__name__)
             if result.ok:
-                self._audit.record(event="reply_sent", platform=comment.platform,
-                                   comment_id=comment.comment_id, attempt=attempt)
+                if not confirmed:
+                    with self._lock:
+                        self._author_last_reply[
+                            (comment.platform, comment.author_id)
+                        ] = self._clock()
+                self._audit.record(
+                    event="reply_sent",
+                    platform=comment.platform,
+                    comment_id=comment.comment_id,
+                    attempt=attempt,
+                )
                 return result
-            last_error = result.detail
+            last_error = str(result.detail or "")[:200]
             if attempt < self._retry.max_attempts:
-                time.sleep(0)  # caller/worker thread controls real backoff timing in tests
-        self._audit.record(event="reply_failed", platform=comment.platform,
-                           comment_id=comment.comment_id, detail=last_error)
+                self._sleeper(self._retry.next_delay(attempt))
+        self._audit.record(
+            event="reply_failed",
+            platform=comment.platform,
+            comment_id=comment.comment_id,
+            detail=last_error,
+        )
         return ReplyResult(False, last_error or "retries exhausted")
 
     def connection_health(self) -> dict:
-        return {a.name: a.connection_health() for a in self.adapters}
+        return {adapter.name: adapter.connection_health() for adapter in self.adapters}
+
+    def _adapter(self, platform: str) -> PlatformAdapter | None:
+        return next((adapter for adapter in self.adapters if adapter.name == platform), None)
+
+    def _killed(self, platform: str) -> bool:
+        with self._lock:
+            return self._global_killed or platform in self._platform_killed
+
+    def _auto_gate(self, comment: CommentEvent) -> ReplyResult | None:
+        now = self._clock()
+        key = (comment.platform, comment.author_id)
+        with self._lock:
+            previous = self._author_last_reply.get(key)
+            if previous is not None and now - previous < self._author_cooldown_s:
+                blocked_by = "cooldown"
+            else:
+                limiter = self._rate_limiters.get(comment.platform)
+                if limiter is None:
+                    limiter = RateLimiter(
+                        self._max_replies_per_min,
+                        clock=self._clock,
+                    )
+                    self._rate_limiters[comment.platform] = limiter
+                blocked_by = "" if limiter.allow() else "rate_limit"
+        if blocked_by == "cooldown":
+            self._audit.record(
+                event="reply_author_cooldown",
+                platform=comment.platform,
+                comment_id=comment.comment_id,
+            )
+            return ReplyResult(False, "author cooldown active")
+        if blocked_by == "rate_limit":
+            self._audit.record(
+                event="reply_rate_limited",
+                platform=comment.platform,
+                comment_id=comment.comment_id,
+            )
+            return ReplyResult(False, "rate limit exceeded")
+        return None
+
+
+def _bounded_positive(value, *, default: float, maximum: float) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        result = default
+    if not math.isfinite(result) or result <= 0:
+        result = default
+    return min(maximum, result)
+
+
+def _bounded_non_negative(value, *, default: float, maximum: float) -> float:
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        result = default
+    if not math.isfinite(result) or result < 0:
+        result = default
+    return min(maximum, result)

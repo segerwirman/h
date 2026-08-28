@@ -95,8 +95,10 @@ def read_video_comments(video_id: str, max_results: int = 20) -> list[dict]:
             top = it.get("snippet", {}).get("topLevelComment", {})
             s = top.get("snippet", {})
             out.append({"comment_id": top.get("id", ""),
+                        "author_id": s.get("authorChannelId", {}).get("value", ""),
                         "author": s.get("authorDisplayName", ""),
                         "text": s.get("textDisplay", ""),
+                        "timestamp": s.get("publishedAt", ""),
                         "likes": s.get("likeCount", 0)})
         return out
     except Exception:
