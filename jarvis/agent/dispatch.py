@@ -397,6 +397,14 @@ def cancel_all() -> int:
     for h in handles:
         bg = h.bg_task
         if bg is not None:
+            _clear_captcha_handoff_session(
+                h.session.id,
+                "agent.tasks.cancel_all",
+            )
+            _release_screen_control_session(
+                h.session.id,
+                "agent.tasks.cancel_all",
+            )
             _revoke_execution_grants(bg.id)
             h.session.execution_grant_id = ""
             h.session.communication_grant_id = ""
@@ -420,6 +428,7 @@ def cancel_task(task_id: str) -> bool:
         handles = [h for h in _active.values()
                    if getattr(getattr(h, "bg_task", None), "id", None) == tid]
     for handle in handles:
+        _clear_captcha_handoff_session(handle.session.id, "task_cancelled")
         _release_screen_control_session(handle.session.id, "task_cancelled")
         _revoke_execution_grants(tid)
         handle.session.execution_grant_id = ""
@@ -769,6 +778,23 @@ def _release_screen_control_session(
     except Exception as exc:                                # noqa: BLE001
         _logger.warning(
             "agent.dispatch.screen_control_cleanup_failed",
+            session=str(session_id)[:32],
+            error=type(exc).__name__,
+        )
+
+
+def _clear_captcha_handoff_session(
+    session_id: str,
+    reason: str = "task_terminal",
+) -> None:
+    """Retire an opaque process-local handoff before task identity is erased."""
+    try:
+        from jarvis.agent.captcha_handoff import OWNER
+
+        OWNER.clear_session(session_id, reason)
+    except Exception as exc:                                # noqa: BLE001
+        _logger.warning(
+            "agent.dispatch.captcha_handoff_cleanup_failed",
             session=str(session_id)[:32],
             error=type(exc).__name__,
         )
@@ -1172,6 +1198,7 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
             _release_browser_session(session.id)
             _release_computer_session(session.id)
             _clear_desktop_safe_session(session.id)
+            _clear_captcha_handoff_session(session.id)
             _release_screen_control_session(session.id)
             _revoke_execution_grants(bg_task.id)
             session.execution_grant_id = ""

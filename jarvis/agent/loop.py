@@ -434,6 +434,34 @@ def _clear_pending_tool(bg_task) -> None:
         quiet.swallowed("agent.loop.clear_pending_tool_failed", exc)
 
 
+def _release_dynamic_resources(held) -> None:
+    """Release per-tool locks before any process-local human handoff wait."""
+    if not held:
+        return
+    from jarvis.agent.tasks import REGISTRY
+
+    REGISTRY.release_held(held)
+
+
+async def _finish_captcha_handoff(result, session, bg_task):
+    """Keep the opaque handoff outside ToolResult and model-visible state."""
+    try:
+        from jarvis.agent.captcha_handoff import OWNER
+
+        outcome = await OWNER.suspend_if_staged(session, bg_task)
+    except Exception as exc:                                    # noqa: BLE001
+        quiet.swallowed("agent.loop.captcha_handoff_failed", exc)
+        return ToolResult.fail("desktop_handoff_cancelled")
+    if outcome is None:
+        return result
+    if outcome == "resumed":
+        return ToolResult.success(
+            {"status": "captcha_handoff_completed"},
+            display="CAPTCHA handoff selesai; observasi desktop baru diperlukan",
+        )
+    return ToolResult.fail("desktop_handoff_cancelled")
+
+
 def _short_args(arguments) -> str:
     try:
         items = list(dict(arguments or {}).values())
@@ -496,9 +524,8 @@ async def _execute_calls(tool_calls, adapter, session, context, bg_task=None):
                 tc.name, tc.arguments, adapter, session, context)
         finally:
             _clear_pending_tool(bg_task)
-            if held:
-                from jarvis.agent.tasks import REGISTRY
-                REGISTRY.release_held(held)
+            _release_dynamic_resources(held)
+        result = await _finish_captcha_handoff(result, session, bg_task)
         if tc.name == "image_generate" and result.ok:
             paths = result.meta.get("paths", [])
             if isinstance(paths, list):

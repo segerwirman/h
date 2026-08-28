@@ -46,6 +46,13 @@ class CommandRoutingMixin:
     _CANCEL_WORDS = ("cancel", "batalkan aksi")
 
     def handle_command(self, text: str) -> None:
+        # This method is connected only to the local Qt command bar. Intercept
+        # before logging, ReplyFlow, clarification, routing, or any model lane.
+        from jarvis.agent.captcha_handoff import OWNER
+
+        if OWNER.complete_local(text):
+            self.write_log("SYS: CAPTCHA handoff dilanjutkan secara lokal.")
+            return
         # typed path routes here directly — the You: echo must not re-route
         # through the voice intercept in _append_log
         self._skip_next_intercept = True

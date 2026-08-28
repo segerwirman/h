@@ -33,6 +33,7 @@ class UnsafeTargetError(CuaSafetyError):
 class ConfirmationClass(str, Enum):
     ALLOW = "allow"
     CONFIRM = "confirm"
+    HANDOFF = "handoff"
     BLOCK = "block"
 
 
@@ -65,7 +66,10 @@ class SafetyDecision:
 
     @property
     def allowed(self) -> bool:
-        return self.classification is not ConfirmationClass.BLOCK
+        return self.classification not in {
+            ConfirmationClass.BLOCK,
+            ConfirmationClass.HANDOFF,
+        }
 
     @property
     def requires_confirmation(self) -> bool:
@@ -98,6 +102,54 @@ _SUPPORTED_ACTIONS = frozenset({
 })
 _TEXT_ENTRY_ROLES = frozenset({"text_field", "search_field", "textarea", "composer"})
 _MAX_TEXT_ENTRY_CHARS = 500
+_MAX_CAPTCHA_ELEMENTS = 500
+_MAX_CAPTCHA_VALUE_CHARS = 160
+_CAPTCHA_STATE_FIELDS = (
+    "_uia_control_type",
+    "_uia_class_name",
+    "_uia_automation_id",
+)
+_CAPTCHA_MARKERS = (
+    "captcha",
+    "recaptcha",
+    "hcaptcha",
+    "h-captcha",
+    "funcaptcha",
+    "arkose",
+    "cloudflare turnstile",
+    "cf-turnstile",
+    "challenge-stage",
+    "i'm not a robot",
+    "i am not a robot",
+    "verify you are human",
+    "verify that you are human",
+    "human verification challenge",
+)
+
+
+def _captcha_marker_present(tree: ScreenElementTree) -> bool:
+    """Inspect a bounded semantic snapshot without retaining source UI text."""
+    inspected = 0
+    for scope in tree.scopes():
+        for element in tree.by_scope(scope):
+            if inspected >= _MAX_CAPTCHA_ELEMENTS:
+                return True
+            inspected += 1
+            values = (
+                element.name,
+                element.label,
+                element.text,
+                element.elem_type,
+                element.role,
+                *(element.states.get(field, "") for field in _CAPTCHA_STATE_FIELDS),
+            )
+            for value in values:
+                normalized = " ".join(
+                    str(value or "")[:_MAX_CAPTCHA_VALUE_CHARS].casefold().split()
+                )
+                if any(marker in normalized for marker in _CAPTCHA_MARKERS):
+                    return True
+    return False
 
 
 def admit_text_entry(element: UIElement, text: str) -> TextEntryAdmission:
@@ -195,10 +247,25 @@ class CuaSafetyGate:
             parent_native_identity=str(element.states.get("_uia_parent_runtime_id", "") or ""),
         )
 
+    def classify_observation(self, observation: CuaObservation) -> SafetyDecision:
+        """Classify the full trusted snapshot before exposing any target refs."""
+        if _captcha_marker_present(observation.tree):
+            return SafetyDecision(
+                ConfirmationClass.HANDOFF,
+                "CAPTCHA memerlukan penyelesaian manusia lokal",
+            )
+        return SafetyDecision(
+            ConfirmationClass.ALLOW,
+            "observasi tidak memiliki marker CAPTCHA terbatas",
+        )
+
     def evaluate(self, ref: SemanticTargetRef, *, action: str,
                  now: float | None = None) -> SafetyDecision:
         """Fail closed for stale refs, unsupported actions, and sensitive UI."""
         observation = self._current(ref.observation_id, now=now)
+        observation_decision = self.classify_observation(observation)
+        if not observation_decision.allowed:
+            return observation_decision
         if observation.surface_id != ref.surface_id:
             raise UnsafeTargetError("surface ref tidak cocok dengan observasi")
         element = observation.tree._by_id.get(ref.element_id)

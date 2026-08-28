@@ -137,6 +137,16 @@ class ScreenCoordinateMapper:
         center = (x + width // 2, y + height // 2)
         return self.to_physical(center, source_space=source_space or self.uia_space)
 
+    def virtual_rect(self, *, space: CoordinateSpace) -> Rect:
+        """Return the bounding virtual desktop for one explicit coordinate space."""
+        normalized = _space(space)
+        rects = [monitor.rect_for(normalized) for monitor in self._monitors()]
+        left = min(rect[0] for rect in rects)
+        top = min(rect[1] for rect in rects)
+        right = max(rect[0] + rect[2] for rect in rects)
+        bottom = max(rect[1] + rect[3] for rect in rects)
+        return left, top, right - left, bottom - top
+
     def _monitors(self) -> tuple[MonitorGeometry, ...]:
         try:
             monitors = tuple(self._monitor_provider())

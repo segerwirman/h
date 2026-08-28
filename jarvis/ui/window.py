@@ -352,6 +352,11 @@ class MainWindow(
         BUS.subscribe("vision.gesture", self._on_gesture, ui=True)
         BUS.subscribe("vision.status", self._on_vision_status, ui=True)
         BUS.subscribe("notify", self._on_notify, ui=True)
+        BUS.subscribe(
+            "captcha.handoff.required",
+            self._on_captcha_handoff_required,
+            ui=True,
+        )
         BUS.subscribe("info.card", self._on_info_card_shown, ui=True)
         BUS.subscribe("intent", self._on_intent_event, ui=True)
         BUS.subscribe("confirm", self._on_confirm, ui=True)

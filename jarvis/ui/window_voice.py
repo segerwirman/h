@@ -69,6 +69,16 @@ class WindowVoiceMixin:
         self.write_log(f"SYS: ◈ {d.get('title','')}: {d.get('body','')[:120]}")
         self.notifications.push(d.get("title", ""), d.get("body", ""), "info")
 
+    def _on_captcha_handoff_required(self, _data: dict) -> None:
+        """Render fixed local copy; never trust or display source observation data."""
+        title = "CAPTCHA memerlukan tindakan"
+        body = (
+            "Selesaikan CAPTCHA secara manual, lalu ketik "
+            "‘CAPTCHA selesai’ di aplikasi lokal."
+        )
+        self.write_log(f"SYS: ◈ {title}: {body}")
+        self.notifications.push(title, body, "warning")
+
     def _on_bus_log(self, d: dict) -> None:
         msg = d.get("message", "")
         src = d.get("source", "")

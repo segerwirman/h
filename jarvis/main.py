@@ -257,6 +257,7 @@ def run(no_voice: bool = False, *, ui_factory=None) -> int:
     try:
         from jarvis.ui import screen_control
         screen_control.install(ui._win.__class__)
+        screen_control.install_overlay()
         supervisor.add_stop("screen_control", screen_control.shutdown)
     except Exception as exc:                                 # noqa: BLE001
         logger.warning("screen_control.ui_teardown_unavailable", error=str(exc)[:120])

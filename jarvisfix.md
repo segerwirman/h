@@ -7360,3 +7360,137 @@ Audit dan stage hanya path/hunk Tasks 10–12, commit Checkpoint D tanpa push, l
 bangkitkan prompt lanjutan melalui `scripts/next_phase_prompt.py`. Sesudah itu
 mulai Task 13 dengan test Qt offscreen untuk overlay click-through dan capture
 exclusion/fallback hide-around-capture; jangan menjalankan desktop nyata.
+
+## Checkpoint E — click-through overlay + human-only CAPTCHA handoff (2026-08-28)
+
+**Status:** Tasks 13–14 selesai dan `runtime-wired` dengan bukti
+**offline/fake**, `focused-tested`/`fixture-accepted`, belum `live-proven`.
+Tidak ada desktop/screen capture nyata, input pointer/keyboard, browser, CAPTCHA
+nyata, network eksternal, solver, credential/keyring, Telegram/WhatsApp,
+perangkat audio, Gemini Live/provider, atau social API yang dijalankan.
+
+### Perubahan yang diselesaikan
+
+1. **Overlay hanya visual dan click-through.** Top-level Qt overlay memakai
+   `WindowTransparentForInput`/`WA_TransparentForMouseEvents`, shared virtual
+   desktop geometry, dan tidak memiliki input handler atau import automation.
+   Coordinator saja yang mengirim state/cursor/target; revocation membersihkan
+   seluruh visual.
+2. **Capture exclusion fail-closed.** Windows
+   `SetWindowDisplayAffinity(WDA_EXCLUDEFROMCAPTURE)` dipakai bila tersedia.
+   Fallback menyembunyikan overlay sinkron pada Qt owner thread selama capture
+   UIA/visual; worker-thread fallback atau pause failure menolak capture, bukan
+   membiarkan overlay masuk observasi.
+3. **HANDOFF benar-benar non-executable.** `SafetyDecision.allowed` hanya benar
+   untuk ALLOW/CONFIRM; BLOCK dan HANDOFF salah. Marker CAPTCHA diperiksa pada
+   seluruh trusted bounded semantic tree sebelum target/action classification.
+   Overflow batas 500 elemen gagal tertutup sebagai HANDOFF. Metadata UIA private
+   yang dibutuhkan deteksi dibatasi 160 karakter dan tidak masuk descriptor agent.
+4. **Semua referensi dicabut sebelum handoff.** `DesktopObserve` membersihkan
+   seluruh session observation/ref, tidak mengeluarkan label/source/observation ID/
+   element ID/RuntimeId/token, lalu hanya men-stage owner process-local yang terikat
+   exact `Session.registry_task_id`, Screen Control task, session, dan authority.
+5. **WAITING memakai TaskRegistry yang sudah ada.** `registry.execute()` selesai,
+   dynamic desktop resource dilepas oleh `loop.py`, baru continuation opaque
+   diregistrasikan dan exact task dipindah RUNNING→WAITING dengan safe reason
+   `captcha_handoff`. Slot dan resource statis ikut dilepas oleh TaskRegistry;
+   tidak ada queue persisten kedua.
+6. **Hanya UI teks lokal yang dapat melanjutkan.** Exact stripped/casefolded
+   `CAPTCHA selesai` di command bar diintercept sebelum logging, ReplyFlow,
+   clarification, typed action, routing, gateway, atau model. Voice, Telegram,
+   gateway, dispatch, dan native voice tools tidak memiliki completion hook.
+   Notifikasi merender copy lokal tetap dan mengabaikan semua payload event.
+7. **Resume selalu fresh.** Exact continuation reacquires TaskRegistry slot/static
+   resource, Screen Control authority, dan dynamic desktop exclusivity, lalu capture
+   baru. Semua ref fresh-validation juga dibuang. Marker masih ada kembali WAITING
+   tanpa action dan membutuhkan completion lokal kedua; marker hilang baru
+   meretire continuation dengan hasil generik.
+8. **Semua terminal boundary membatalkan aman.** Timeout, background cancel,
+   emergency stop, cancel-all, window close, shutdown, matching task terminal,
+   Screen Control expiry, resume mismatch/missing continuation, capture failure,
+   dan dispatch `cancel_task` membersihkan continuation/ref/authority dan membatalkan
+   exact task. Cleanup dibuat idempotent sebelum `TaskRegistry.cancel()` agar
+   publication `task.finished` sinkron tidak mengulang cleanup.
+
+### RED-first dan koreksi rancangan
+
+- Baseline safety Task 14: **4 failed** karena HANDOFF/classify-observation belum
+  ada dan descriptor biasa masih keluar dari snapshot CAPTCHA. Implementasi
+  menambahkan enum/allowed semantics, observation-first classification, full-session
+  clear, dan descriptor suppression; focused safety kemudian **21 passed**.
+- Baseline lifecycle: **4 failed** karena owner handoff belum ada. Setelah owner
+  dibuat, run berikutnya **5 passed, 3 failed** (authority fake tanpa
+  `clear_session`, local text belum diintercept, dan test memakai singleton/owner
+  berbeda). Seam dibuat defensif dan test ownership dibetulkan. Run berikutnya
+  **6 passed, 2 failed** karena singleton state bocor dari test gagal; temporary
+  owner berhenti subscribe global BUS. Focused menjadi **21 passed**.
+- Edge-case RED menghasilkan **2 failed, 14 passed**: Screen Control expiry belum
+  proaktif membatalkan handoff, dan synchronous `task.finished` membuat cleanup
+  reentrant/duplikat. Owner kini subscribe perubahan Screen Control dan meretire
+  request atomik sebelum memanggil registry cancel. Focused menjadi **16 passed**.
+- Broad regression pertama menghasilkan **156 passed, 3 failed**. Private UIA
+  metadata menambah key kosong/control-type pada exact state dictionaries slider,
+  dropdown option, dan checkbox. Metadata kini hanya disimpan bila bernilai dan
+  control type hanya diperlukan untuk role unknown; broad rerun **159 passed**.
+- Ruff scoped awal menemukan **2 S110** pada cleanup ref. Keduanya diberi log
+  bounded berisi jenis exception saja; rerun `All checks passed!`.
+
+### Bukti offline aktual
+
+| Pemeriksaan | Hasil |
+|---|---:|
+| Focused overlay + CAPTCHA sebelum edge expansion | **21 passed** (`1.11s`) |
+| Edge-case RED | **14 passed, 2 failed** (`1.14s`) |
+| Edge-case GREEN | **16 passed** (`0.92s`) |
+| Expanded focused overlay + CAPTCHA | **34 passed** (`1.32s`) |
+| Broad desktop/UIA/Screen Control regression awal | **156 passed, 3 failed** (`4.05s`) |
+| Broad regression setelah metadata fix | **159 passed** (`3.92s`) |
+| CAPTCHA cancellation focused | **24 passed** (`1.08s`) |
+| Final selected broad Checkpoint E regression | **236 passed** (`15.60s`) |
+| `py_compile` target Checkpoint E | **lulus** (tanpa output) |
+| Ruff scoped seluruh Python path Checkpoint E | **All checks passed!** |
+| `python scripts/verify_frozen.py` | **FROZEN integrity: OK** (10 files, baseline `094b696`) |
+| Whole-tree `git diff --check` | **clean**; hanya warning konversi LF→CRLF |
+
+Final selected run mencakup HANDOFF/property semantics, full-tree marker detection,
+trusted UIA metadata, DesktopObserve privacy/ref revocation, TaskRegistry WAITING,
+slot/static/dynamic resource lifecycle, local-only completion, repeat handoff,
+timeout/cancel/terminal/expiry/mismatch, coordinator/overlay/capture exclusion,
+semantic actions/identity, dispatch cancellation, dan window routing. Seluruhnya
+menggunakan fake/injected seams dan Qt offscreen.
+
+### Review keamanan eksplisit
+
+- `ALLOW.allowed=True`, `CONFIRM.allowed=True` dan memerlukan confirmation,
+  `BLOCK.allowed=False`, `HANDOFF.allowed=False` tanpa confirmation side effect.
+- Pencarian kode tidak menemukan network client di `captcha_handoff.py` dan test
+  guard menolak nama solver/network eksternal. Tidak ada CAPTCHA solving, bypass,
+  click-through, outsourcing, external solver, screenshot export, atau reuse ref.
+- Hanya fixed title/body lokal yang dipublish; source label, text, descriptor,
+  screenshot, observation/element ID, RuntimeId, dan continuation tidak dipublish,
+  diserialisasi, diaudit, atau dikirim ke model/remote lane.
+
+### Batas jujur
+
+- **Full repository pytest tidak dijalankan.** Angka 236 adalah selected broad
+  regression Checkpoint E, bukan klaim seluruh mixed working tree hijau.
+- **Root Ruff penuh tidak dijalankan.** Ruff scoped pada seluruh Python path
+  Checkpoint E lulus; ini tidak disebut root lint green.
+- Tidak ada live validation. Overlay belum dilihat pada monitor/DPI/Windows capture
+  nyata; UIA capture, Screen Control action, CAPTCHA situs nyata, timeout manusia
+  10 menit, dan local command UX belum dibuktikan pada aplikasi berjalan.
+- `git diff --check` tidak melaporkan whitespace error, tetapi mengeluarkan warning
+  existing LF→CRLF pada beberapa dirty path; warning dicatat, tidak disamarkan.
+- Banyak tracked/untracked file user tetap dirty. Tidak ada reset/restore/clean/
+  stash, dan tidak ada staging broad. Commit checkpoint wajib memakai path/hunk
+  eksplisit; `git add .` / `git add -A` tetap dilarang.
+
+### Langkah aman berikutnya
+
+Audit staged/unstaged diff per path dan pisahkan hunk Task 13–14 dari perubahan
+user lain, khususnya `dispatch.py`, `uia_capture.py`, `screen_control.py`, dan
+window modules. Stage eksplisit, review cached diff, commit Checkpoint E tanpa
+push, lalu bangkitkan prompt repository-derived melalui
+`scripts/next_phase_prompt.py`. Sesudah itu mulai Task 15 dengan pure deterministic
+reply classifier dan fake adapter/clock; jangan mengaktifkan auto-send atau API
+sosial nyata.

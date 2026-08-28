@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Callable
 
@@ -39,7 +40,7 @@ class ScreenControlCoordinator:
     """Own one bounded desktop lease and its task/session binding."""
 
     def __init__(self, *, desktop=DESKTOP, bus=BUS, clock=time.monotonic,
-                 scheduler=None) -> None:
+                 scheduler=None, overlay=None) -> None:
         self._desktop = desktop
         self._bus = bus
         self._clock = clock
@@ -51,6 +52,7 @@ class ScreenControlCoordinator:
         self._expires_at = 0.0
         self._timer = None
         self._generation = 0
+        self._overlay = overlay
         self._subscribe()
 
     def _subscribe(self) -> None:
@@ -78,6 +80,70 @@ class ScreenControlCoordinator:
 
     def active(self) -> bool:
         return self.snapshot().state == ACTIVE
+
+    def attach_overlay(self, overlay) -> bool:
+        """Attach one visualization-only overlay while Screen Control is off."""
+        required = (
+            "show_state",
+            "update_visual",
+            "clear",
+            "pause_for_capture",
+            "resume_after_capture",
+        )
+        if overlay is None or not all(
+            callable(getattr(overlay, name, None)) for name in required
+        ):
+            return False
+        with self._lock:
+            if self._state != OFF:
+                return False
+            previous = self._overlay
+            self._overlay = overlay
+        if previous is not None and previous is not overlay:
+            self._overlay_call(previous, "clear")
+        self._overlay_call(overlay, "clear")
+        return True
+
+    def update_visual(
+        self,
+        *,
+        cursor=None,
+        target_rect=None,
+        status: str = "",
+    ) -> bool:
+        with self._lock:
+            if self._state == OFF or self._overlay is None:
+                return False
+            overlay = self._overlay
+        return self._overlay_call(
+            overlay,
+            "update_visual",
+            cursor=cursor,
+            target_rect=target_rect,
+            status=str(status or "")[:64],
+        )
+
+    @contextmanager
+    def capture_pause(self):
+        """Synchronously retire overlay pixels when native exclusion is absent."""
+        with self._lock:
+            overlay = self._overlay
+        paused = False
+        if overlay is not None:
+            try:
+                paused = bool(overlay.pause_for_capture())
+            except Exception as exc:
+                _logger.warning(
+                    "screen_control.overlay_capture_pause_failed",
+                    error=type(exc).__name__,
+                )
+                raise RuntimeError("screen_control_capture_exclusion_unavailable") from exc
+        try:
+            yield
+        finally:
+            if overlay is not None and paused:
+                if not self._overlay_call(overlay, "resume_after_capture"):
+                    self.revoke("capture_resume_failed")
 
     def activate(self, session_id: str, task_id: str, *, ttl_s: float) -> bool:
         session = str(session_id or "").strip()
@@ -124,10 +190,20 @@ class ScreenControlCoordinator:
             if self._state != ACTIVE or self._task_id != target:
                 return False
             owner = self._session_id
+            overlay = self._overlay
             self._desktop.release_authority(owner)
             self._state = HANDING_OFF
             snapshot = self.snapshot()
             generation = self._generation
+        if overlay is not None:
+            # Pre-CAPTCHA cursor and target rectangles are permanently retired.
+            self._overlay_call(
+                overlay,
+                "update_visual",
+                cursor=None,
+                target_rect=None,
+                status="handoff",
+            )
         self._publish_if_current(snapshot, generation, "handoff")
         return True
 
@@ -223,14 +299,27 @@ class ScreenControlCoordinator:
                             generation: int, reason: str) -> None:
         with self._lock:
             current = self._generation == generation
+            overlay = self._overlay
         if not current:
             return
+        status = str(reason or "")[:64]
+        if overlay is not None:
+            if snapshot.state == OFF:
+                self._overlay_call(overlay, "clear")
+            else:
+                self._overlay_call(
+                    overlay,
+                    "show_state",
+                    mode=snapshot.state,
+                    expires_at=snapshot.expires_at,
+                    status=status,
+                )
         try:
             self._bus.publish(
                 "screen_control.changed",
                 state=snapshot.state,
                 active=snapshot.state == ACTIVE,
-                reason=str(reason or "")[:64],
+                reason=status,
                 expires_at=snapshot.expires_at,
             )
         except Exception as exc:
@@ -238,6 +327,19 @@ class ScreenControlCoordinator:
                 "screen_control.state_publish_failed",
                 error=type(exc).__name__,
             )
+
+    @staticmethod
+    def _overlay_call(overlay, method: str, *args, **kwargs) -> bool:
+        try:
+            getattr(overlay, method)(*args, **kwargs)
+            return True
+        except Exception as exc:
+            _logger.warning(
+                "screen_control.overlay_update_failed",
+                operation=method[:32],
+                error=type(exc).__name__,
+            )
+            return False
 
 
 COORDINATOR = ScreenControlCoordinator()
@@ -249,6 +351,61 @@ def default_ttl_s() -> float:
     except (TypeError, ValueError):
         value = 900.0
     return min(_MAX_TTL_S, max(1.0, value))
+
+
+def install_overlay(*, coordinates=None, capture_exclusion=None) -> bool:
+    """Create the top-level Qt overlay from the shared coordinate seam."""
+    try:
+        from jarvis.automation.screen_coordinates import (
+            MonitorGeometry,
+            ScreenCoordinateMapper,
+        )
+        from jarvis.ui.screen_cursor_overlay import ScreenCursorOverlay
+
+        mapper = coordinates or ScreenCoordinateMapper(
+            lambda: _qt_monitor_geometry(MonitorGeometry),
+            uia_space="physical",
+        )
+        overlay = ScreenCursorOverlay(
+            coordinates=mapper,
+            capture_exclusion=capture_exclusion,
+            clock=time.monotonic,
+        )
+        if not COORDINATOR.attach_overlay(overlay):
+            overlay.close()
+            return False
+        return True
+    except Exception as exc:
+        _logger.warning(
+            "screen_control.overlay_install_failed",
+            error=type(exc).__name__,
+        )
+        return False
+
+
+def _qt_monitor_geometry(monitor_type) -> tuple:
+    from PyQt6.QtGui import QGuiApplication
+
+    monitors = []
+    for index, screen in enumerate(QGuiApplication.screens()):
+        rect = screen.geometry()
+        scale = float(screen.devicePixelRatio())
+        logical = (rect.x(), rect.y(), rect.width(), rect.height())
+        physical = (
+            int(round(rect.x() * scale)),
+            int(round(rect.y() * scale)),
+            int(round(rect.width() * scale)),
+            int(round(rect.height() * scale)),
+        )
+        monitors.append(
+            monitor_type(
+                screen.name() or f"screen-{index}",
+                logical,
+                physical,
+                scale,
+            )
+        )
+    return tuple(monitors)
 
 
 def install(window_class) -> bool:
@@ -287,5 +444,6 @@ __all__ = [
     "ScreenControlSnapshot",
     "default_ttl_s",
     "install",
+    "install_overlay",
     "shutdown",
 ]

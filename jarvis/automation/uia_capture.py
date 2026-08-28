@@ -8,6 +8,7 @@ one left click through ``SafeClickPlan`` while holding the desktop lease.
 from __future__ import annotations
 
 import math
+from contextlib import nullcontext
 from dataclasses import dataclass
 
 from jarvis.automation.cua_safe_click import CaptureAdapter, CaptureFrame, SafeClickPlan, SafeClickOutcome
@@ -52,24 +53,29 @@ class UIACaptureBackend:
     """
 
     def __init__(self, desktop=None, *, max_elements: int = 500, driver=None,
-                 coordinates=None):
+                 coordinates=None, capture_pause=None):
         self._desktop = desktop
         self._real_desktop = desktop is None
         self._max_elements = max(1, int(max_elements))
         self._driver = driver or DRIVER
         self._coordinates = coordinates or COORDINATES
+        self._capture_pause = capture_pause or _screen_control_capture_pause
 
     def capture(self) -> CaptureFrame:
-        window = self._active_window()
-        identity = self._identity(window)
-        if is_denylisted(identity.title, identity.title):
-            return CaptureFrame(identity.surface_id, ScreenElementTree(), "redacted")
-        tree = ScreenElementTree()
-        for index, control in enumerate(_descendants(window)[:self._max_elements], start=1):
-            element = _element_from_control(control, index)
-            if element is not None:
-                tree.add(element)
-        return CaptureFrame(identity.surface_id, tree, "normal")
+        with self._capture_pause():
+            window = self._active_window()
+            identity = self._identity(window)
+            if is_denylisted(identity.title, identity.title):
+                return CaptureFrame(identity.surface_id, ScreenElementTree(), "redacted")
+            tree = ScreenElementTree()
+            for index, control in enumerate(
+                _descendants(window)[:self._max_elements],
+                start=1,
+            ):
+                element = _element_from_control(control, index)
+                if element is not None:
+                    tree.add(element)
+            return CaptureFrame(identity.surface_id, tree, "normal")
 
     def click_semantic(self, ref: SemanticTargetRef) -> None:
         """Click only the matching current UIA target; ref identity is mandatory."""
@@ -360,6 +366,14 @@ class UIASafeClickService:
         self._audit(event, **fields)
 
 
+def _screen_control_capture_pause():
+    try:
+        from jarvis.ui.screen_control import COORDINATOR
+        return COORDINATOR.capture_pause()
+    except Exception:
+        return nullcontext()
+
+
 def _descendants(window) -> list:
     try:
         return list(window.descendants())
@@ -420,6 +434,14 @@ def _element_from_control(control, index: int) -> UIElement | None:
     if width <= 0 or height <= 0:
         return None
     states = {"disabled": not enabled}
+    for key, value in (
+        ("_uia_control_type", raw_kind if role == "unknown" else ""),
+        ("_uia_class_name", getattr(info, "class_name", "")),
+        ("_uia_automation_id", getattr(info, "automation_id", "")),
+    ):
+        bounded = _bounded_private_uia_value(value)
+        if bounded:
+            states[key] = bounded
     if role in {"button", "link", "scrollbar", "slider", "checkbox", "dropdown_option"}:
         runtime_id = _uia_runtime_identity(control)
         if not runtime_id:
@@ -519,6 +541,11 @@ def _element_from_control(control, index: int) -> UIElement | None:
         provenance="uia",
         states=states,
     )
+
+
+def _bounded_private_uia_value(value, limit: int = 160) -> str:
+    """Keep trusted detection metadata bounded and process-local."""
+    return str(value or "")[: max(1, int(limit))]
 
 
 def _range_bound(pattern, current_name: str, legacy_name: str) -> float:

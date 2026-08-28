@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import Callable
 
 from jarvis.automation.cua_safety import (
-    ConfirmationClass,
     CuaObservation,
     CuaSafetyGate,
     SemanticTargetRef,
@@ -89,7 +88,7 @@ class SafeClickPlan:
             decision = self._gate.evaluate(ref, action="click")
         except Exception as exc:  # gate is the fail-closed authority
             return SafeClickOutcome(False, False, False, False, str(exc))
-        if decision.classification is ConfirmationClass.BLOCK:
+        if not decision.allowed:
             return SafeClickOutcome(False, False, False, False, decision.reason)
         if decision.requires_confirmation:
             return SafeClickOutcome(False, False, False, True, decision.reason)

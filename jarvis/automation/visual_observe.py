@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from contextlib import nullcontext
 
 from jarvis.core.privacy_denylist import is_denylisted
 
@@ -9,10 +10,12 @@ from jarvis.core.privacy_denylist import is_denylisted
 class VisualObserveService:
     """Capture one desktop frame only after privacy gate; return coarse categories."""
 
-    def __init__(self, *, foreground=None, capture=None, denylisted=None):
+    def __init__(self, *, foreground=None, capture=None, denylisted=None,
+                 capture_pause=None):
         self._foreground = foreground or _foreground_window
         self._capture = capture or _grab
         self._denylisted = denylisted or is_denylisted
+        self._capture_pause = capture_pause or _screen_control_capture_pause
 
     def observe(self, *, session_id: str) -> dict | None:
         foreground = self._foreground()
@@ -25,7 +28,11 @@ class VisualObserveService:
             return None  # identitas foreground tidak cukup — tolak sebelum capture
         if self._denylisted(title, app):
             return None
-        image = self._capture()
+        try:
+            with self._capture_pause():
+                image = self._capture()
+        except Exception:
+            return None
         if image is None:
             return None
         try:
@@ -33,6 +40,14 @@ class VisualObserveService:
         finally:
             # Do not retain an image reference, bytes, path, or OCR output.
             del image
+
+
+def _screen_control_capture_pause():
+    try:
+        from jarvis.ui.screen_control import COORDINATOR
+        return COORDINATOR.capture_pause()
+    except Exception:
+        return nullcontext()
 
 
 def _foreground_window() -> tuple[str, str] | None:

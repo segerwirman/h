@@ -40,8 +40,22 @@ class DesktopObserve(Tool):
             return ToolResult.fail(context_error)
         authority = self._session or desktop_safe_session()
         session_id = str(getattr(_session, "id", "") or "desktop-safe-click")
+        task_id = str(getattr(_session, "registry_task_id", "") or "").strip()
         try:
             observation = await asyncio.to_thread(authority.observe_for, session_id)
+            decision = authority.gate.classify_observation(observation)
+            if not decision.allowed:
+                authority.clear_session(session_id)
+                if not task_id:
+                    return ToolResult.fail("desktop_handoff_unavailable")
+                from jarvis.agent.captcha_handoff import OWNER
+
+                OWNER.stage(
+                    session_id=session_id,
+                    task_id=task_id,
+                    authority=authority,
+                )
+                return ToolResult.fail("desktop_handoff_required")
             elements = []
             for scope in observation.tree.scopes():
                 for element in observation.tree.by_scope(scope):
