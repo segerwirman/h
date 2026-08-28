@@ -7942,3 +7942,28 @@ fix grammar terpisah ini.
 Tidak ada live API, credential, test account, browser, atau outbound reply. Graph
 API tetap v19.0; capability probe tetap belum diotorisasi/tidak dijalankan. Commit
 tanpa push, lalu review offline final sebelum membuka migrasi Graph API.
+
+## Checkpoint F follow-up 8 — exact full-message acknowledgment table (2026-08-28)
+
+**Status review:** review offline commit `4fe2c25` menemukan dua exception tersisa:
+interrogative acknowledgment (`Thanks?`, `Love it?`) masih AUTO karena punctuation
+hilang saat tokenisasi, dan kombinasi silang prefix/suffix (`Saya love this`) masih
+lolos. Keduanya direproduksi RED.
+
+### Perubahan dan bukti
+
+- Question mark kini diblokir sebelum pemilihan template acknowledgment.
+- Grammar prefix/suffix kombinatorial disederhanakan menjadi tabel exact full-message
+  per kategori. Hanya tuple yang terdaftar eksplisit dapat AUTO; seluruh token ekstra,
+  kombinasi silang, malformed filler, dan arbitrary command menjadi DRAFT.
+- RED final review: **2 failed, 7 passed** (`0.60s`).
+- GREEN classifier exact-pattern: **9 passed** (`0.43s`).
+- Focused dua-file: **27 passed** (`0.86s`).
+- Broad offline social regression: **106 passed** (`2.61s`).
+- Ruff scoped + `py_compile`: lulus; FROZEN **OK** (`094b696`, 10 file).
+- Exact full-message adversarial/positive probe: **OK**.
+- Scoped `git diff --check`: tanpa whitespace error; warning LF→CRLF pada dua path.
+
+Tidak ada live API, credential, test account, browser, atau outbound reply. Graph
+API tetap v19.0; capability probe belum diotorisasi dan tidak dijalankan. Commit
+tanpa push, lalu satu review offline terminal sebelum migrasi Graph API dibuka.

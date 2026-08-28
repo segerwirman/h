@@ -153,6 +153,7 @@ def test_policy_matches_only_explicit_non_negated_acknowledgment_tokens():
         "Thanks very",
         "Love produk",
         "Love saya",
+        "Saya love this",
     )
     for text in unsupported:
         decision = policy.classify(text, platform="instagram", author_id="a-1")
@@ -163,6 +164,9 @@ def test_policy_matches_only_explicit_non_negated_acknowledgment_tokens():
 def test_policy_never_auto_replies_to_acknowledgments_mixed_with_requests():
     policy = DeterministicReplyPolicy()
     cases = (
+        "Thanks?",
+        "Love it?",
+        "Thanks?!",
         "Thanks, but where is my refund?",
         "Thanks, can you explain what happened?",
         "I love it, but how do I return it?",
