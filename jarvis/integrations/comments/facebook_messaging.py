@@ -1,6 +1,7 @@
 """Official Facebook Page messaging lane, separate from Page comments."""
 from __future__ import annotations
 
+from datetime import datetime
 import time
 
 from jarvis.core import config, log, secrets_store
@@ -56,7 +57,7 @@ class _GraphMessagingClient:
                         "author_id": author.get("id", ""),
                         "author_name": author.get("name", ""),
                         "text": item.get("message", ""),
-                        "timestamp": time.time(),
+                        "timestamp": _timestamp(item.get("created_time")),
                         "conversation_id": conversation_id,
                     }
                 )
@@ -102,6 +103,7 @@ class FacebookMessagingAdapter(PlatformAdapter):
         self._token_getter = token_getter or (lambda: secrets_store.get(_TOKEN_KEY))
         self._client = client or _GraphMessagingClient()
         self._seen_ids: set[str] = set()
+        self._history_watermarked = False
         self._last_error = ""
         self._last_poll_ok: bool | None = None
 
@@ -167,23 +169,28 @@ class FacebookMessagingAdapter(PlatformAdapter):
         try:
             raw = self._client.poll_messages(self._page_id, self._token())
             events = []
+            watermark_only = not self._history_watermarked
             for item in raw:
                 message_id = str(item.get("id", ""))
+                author_id = str(item.get("author_id", ""))
                 text = str(item.get("text", ""))
-                if not message_id or message_id in self._seen_ids or not text:
+                if not message_id or message_id in self._seen_ids:
                     continue
                 self._seen_ids.add(message_id)
+                if watermark_only or author_id == self._page_id or not text:
+                    continue
                 events.append(
                     CommentEvent(
                         platform=self.name,
                         comment_id=message_id,
-                        author_id=str(item.get("author_id", "")),
+                        author_id=author_id,
                         author_name=str(item.get("author_name", "")),
                         text=text,
                         timestamp=float(item.get("timestamp", time.time())),
                         stream_id=str(item.get("conversation_id", "")),
                     )
                 )
+            self._history_watermarked = True
             self._last_poll_ok = True
             self._last_error = ""
             return events
@@ -217,6 +224,17 @@ class FacebookMessagingAdapter(PlatformAdapter):
             "authenticated": self.is_authenticated(),
             "detail": self._last_error,
         }
+
+
+def _timestamp(value) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value:
+        try:
+            return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            pass
+    return time.time()
 
 
 __all__ = ["FacebookMessagingAdapter"]

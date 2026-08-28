@@ -52,6 +52,7 @@ class ReplyResult:
     ok: bool
     detail: str = ""
     reply_id: str = ""
+    retryable: bool = False
 
 
 @dataclass
@@ -393,6 +394,10 @@ class CommentManager:
 
         last_error = ""
         for attempt in range(1, self._retry.max_attempts + 1):
+            if attempt > 1:
+                safety_block = self._retry_safety_gate(comment, adapter, confirmed)
+                if safety_block is not None:
+                    return safety_block
             try:
                 result = adapter.send_reply(comment, text)
             except Exception as exc:
@@ -411,8 +416,9 @@ class CommentManager:
                 )
                 return result
             last_error = str(result.detail or "")[:200]
-            if attempt < self._retry.max_attempts:
-                self._sleeper(self._retry.next_delay(attempt))
+            if not result.retryable or attempt >= self._retry.max_attempts:
+                break
+            self._sleeper(self._retry.next_delay(attempt))
         self._audit.record(
             event="reply_failed",
             platform=comment.platform,
@@ -430,6 +436,28 @@ class CommentManager:
     def _killed(self, platform: str) -> bool:
         with self._lock:
             return self._global_killed or platform in self._platform_killed
+
+    def _retry_safety_gate(
+        self,
+        comment: CommentEvent,
+        adapter: PlatformAdapter,
+        confirmed: bool,
+    ) -> ReplyResult | None:
+        if self._killed(comment.platform):
+            self._audit.record(
+                event="reply_retry_killed",
+                platform=comment.platform,
+                comment_id=comment.comment_id,
+            )
+            return ReplyResult(False, "reply kill switch active")
+        capabilities = adapter.capabilities()
+        if not capabilities.can_reply:
+            return ReplyResult(False, f"reply no longer supported: {capabilities.notes}")
+        if capabilities.requires_manual_approval and not confirmed:
+            return ReplyResult(False, "manual approval required — retry stopped")
+        if not confirmed and self.reply_mode(comment.platform) is not ReplyMode.AUTO:
+            return ReplyResult(False, "auto activation expired — retry stopped")
+        return None
 
     def _auto_gate(self, comment: CommentEvent) -> ReplyResult | None:
         now = self._clock()

@@ -7635,3 +7635,50 @@ tanpa push, lalu bangkitkan prompt repository-derived melalui
 `scripts/next_phase_prompt.py`. Live social validation tetap membutuhkan otorisasi
 baru dan sebaiknya dimulai dari observation/capability probe pada test account,
 bukan send.
+
+## Checkpoint F follow-up — fail-closed external social sends (2026-08-28)
+
+**Status:** tiga risiko review commit `93055ce` diperbaiki dalam slice terpisah
+menggunakan RED→GREEN dan verifikasi **offline/fake**. Seluruh master/per-lane
+config tetap default-off; tidak ada credential, social API, test account, network,
+atau outbound reply nyata yang digunakan.
+
+### Perubahan
+
+1. `ReplyResult` membawa `retryable=False` secara default. Kegagalan write yang
+   ambigu/permanen berhenti setelah satu attempt; hanya adapter/result yang secara
+   eksplisit membuktikan safe pre-send failure boleh retry. Sebelum setiap retry,
+   manager memeriksa ulang kill switch, current capability, manual-approval gate,
+   serta expiry AUTO. Kill switch yang aktif selama backoff menghentikan retry.
+2. Adapter Facebook/Instagram messaging menjadikan poll sukses pertama sebagai
+   watermark-only, sehingga history yang sudah ada tidak diproses saat startup.
+   Poll berikutnya menolak message yang author ID-nya sama dengan managed Page/
+   account ID. `created_time` resmi diparse dan dipertahankan sebagai timestamp
+   event, bukan diganti waktu poll lokal.
+3. Classifier memeriksa negasi bounded sebelum positive AUTO. Frasa `tidak suka`,
+   `gak suka`, dan `not love` kini DRAFT dengan reason `negated_positive`, tanpa
+   reply otomatis.
+
+### Bukti RED→GREEN aktual
+
+- RED focused: **8 failed, 20 passed** (`1.50s`). Kegagalan mereproduksi retry
+  ambigu, tidak adanya metadata retryable, kill-switch tidak diperiksa ulang,
+  negasi salah-AUTO, history/self Meta lolos, dan `created_time` dibuang.
+- GREEN focused: **28 passed** (`1.36s`).
+- Broad offline social regression: **100 passed** (`2.83s`) pada tiga suite baru
+  plus `test_redesign_p1_p2.py` dan `test_phase2_youtube.py`.
+- Ruff scoped tujuh path: **All checks passed!**
+- `py_compile` tujuh path: lulus tanpa output.
+- `python scripts/verify_frozen.py`: **FROZEN integrity: OK** (10 files,
+  baseline `094b696`).
+- Scoped `git diff --check`: tanpa whitespace error; warning line-ending
+  LF→CRLF pada tujuh working-copy path dicatat dan bukan whitespace failure.
+
+### Batas jujur dan langkah aman berikutnya
+
+Full repository pytest dan root-wide Ruff tidak dijalankan. Capability probe test
+account read-only tetap **belum diotorisasi dan tidak dijalankan**; Graph API v19
+juga belum dinaikkan dalam slice ini. Langkah aman berikutnya adalah review commit
+follow-up ini. Setelah review hijau, capability/version migration dapat dirancang
+offline; live probe hanya dengan otorisasi baru, test account, read-only, dan tanpa
+mengirim balasan.

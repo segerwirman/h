@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from jarvis.integrations.comments.base import (
     CommentEvent,
     CommentManager,
@@ -108,14 +110,184 @@ def test_meta_messaging_lanes_are_separate_and_permission_proven():
         "official Instagram Messaging API; current instagram_manage_messages permission proven",
     )
 
-    facebook_event = facebook.poll_comments()[0]
-    instagram_event = instagram.poll_comments()[0]
-    assert facebook_event.platform == "facebook_messaging"
-    assert instagram_event.platform == "instagram_messaging"
+    assert facebook.poll_comments() == []
+    assert instagram.poll_comments() == []
+    facebook_event = CommentEvent(
+        "facebook_messaging",
+        "message-2",
+        "author-1",
+        "Offline User",
+        "halo",
+        11.0,
+    )
+    instagram_event = CommentEvent(
+        "instagram_messaging",
+        "message-2",
+        "author-1",
+        "Offline User",
+        "halo",
+        11.0,
+    )
     assert facebook.send_reply(facebook_event, "Halo juga!").ok is True
     assert instagram.send_reply(instagram_event, "Halo juga!").ok is True
     assert facebook_client.poll_calls == facebook_client.send_calls == 1
     assert instagram_client.poll_calls == instagram_client.send_calls == 1
+
+
+@pytest.mark.parametrize(
+    ("adapter_type", "account_id", "permission"),
+    [
+        (FacebookMessagingAdapter, "page-1", "pages_messaging"),
+        (InstagramMessagingAdapter, "ig-1", "instagram_manage_messages"),
+    ],
+)
+def test_meta_messaging_first_poll_watermarks_history_then_emits_only_new_inbound(
+    adapter_type,
+    account_id,
+    permission,
+):
+    class _HistoryClient(_MetaClient):
+        def __init__(self) -> None:
+            super().__init__({permission})
+            self.responses = [
+                [
+                    {
+                        "id": "history-inbound",
+                        "author_id": "author-1",
+                        "author_name": "Offline User",
+                        "text": "bagus",
+                        "timestamp": 10.0,
+                        "conversation_id": "conversation-1",
+                    },
+                    {
+                        "id": "history-outbound",
+                        "author_id": account_id,
+                        "author_name": "Managed Account",
+                        "text": "Terima kasih kembali!",
+                        "timestamp": 11.0,
+                        "conversation_id": "conversation-1",
+                    },
+                ],
+                [
+                    {
+                        "id": "history-inbound",
+                        "author_id": "author-1",
+                        "author_name": "Offline User",
+                        "text": "bagus",
+                        "timestamp": 10.0,
+                        "conversation_id": "conversation-1",
+                    },
+                    {
+                        "id": "new-outbound",
+                        "author_id": account_id,
+                        "author_name": "Managed Account",
+                        "text": "Terima kasih kembali!",
+                        "timestamp": 12.0,
+                        "conversation_id": "conversation-1",
+                    },
+                    {
+                        "id": "new-inbound",
+                        "author_id": "author-2",
+                        "author_name": "New User",
+                        "text": "halo",
+                        "timestamp": 13.0,
+                        "conversation_id": "conversation-2",
+                    },
+                ],
+            ]
+
+        def poll_messages(self, requested_account_id: str, token: str) -> list[dict]:
+            assert requested_account_id == account_id
+            assert token == "offline-meta-token"
+            self.poll_calls += 1
+            return self.responses.pop(0)
+
+    client = _HistoryClient()
+    kwargs = {
+        "enabled": True,
+        "token_getter": lambda: "offline-meta-token",
+        "client": client,
+    }
+    if adapter_type is FacebookMessagingAdapter:
+        kwargs["page_id"] = account_id
+    else:
+        kwargs["account_id"] = account_id
+    adapter = adapter_type(**kwargs)
+
+    assert adapter.poll_comments() == [], "startup history must be watermark-only"
+    events = adapter.poll_comments()
+
+    assert [event.comment_id for event in events] == ["new-inbound"]
+    assert events[0].author_id == "author-2"
+    assert events[0].timestamp == 13.0
+
+
+@pytest.mark.parametrize(
+    ("client_type", "account_id", "author_name"),
+    [
+        (
+            "facebook",
+            "page-1",
+            "Offline Page User",
+        ),
+        (
+            "instagram",
+            "ig-1",
+            "Offline IG User",
+        ),
+    ],
+)
+def test_meta_graph_clients_preserve_created_time(
+    monkeypatch,
+    client_type,
+    account_id,
+    author_name,
+):
+    from jarvis.integrations.comments import (
+        facebook_messaging,
+        instagram_messaging,
+    )
+
+    class _Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            author = {"id": "author-1", "name": author_name}
+            if client_type == "instagram":
+                author["username"] = author_name
+            return {
+                "data": [
+                    {
+                        "id": "conversation-1",
+                        "messages": {
+                            "data": [
+                                {
+                                    "id": "message-1",
+                                    "from": author,
+                                    "message": "halo",
+                                    "created_time": "2026-08-28T10:00:00+0000",
+                                }
+                            ]
+                        },
+                    }
+                ]
+            }
+
+    def fake_get(*_args, **_kwargs):
+        return _Response()
+
+    import requests
+
+    monkeypatch.setattr(requests, "get", fake_get)
+    if client_type == "facebook":
+        client = facebook_messaging._GraphMessagingClient()
+    else:
+        client = instagram_messaging._InstagramMessagingClient()
+
+    messages = client.poll_messages(account_id, "offline-meta-token")
+
+    assert messages[0]["timestamp"] == 1787911200.0
 
 
 def test_meta_messaging_fails_closed_without_current_permission_or_token():

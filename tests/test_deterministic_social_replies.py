@@ -97,6 +97,20 @@ def test_policy_sends_sensitive_negative_and_open_ended_text_to_human():
     assert unsupported.disposition is ReplyDisposition.MANUAL
 
 
+def test_policy_never_auto_replies_to_negated_positive_terms():
+    policy = DeterministicReplyPolicy()
+
+    for text in (
+        "Saya tidak suka produk ini",
+        "gak suka sama sekali",
+        "I do not love this",
+    ):
+        decision = policy.classify(text, platform="instagram", author_id="a-1")
+        assert decision.disposition is not ReplyDisposition.AUTO
+        assert decision.reply == ""
+        assert decision.reason == "negated_positive"
+
+
 def test_platform_manual_approval_forces_draft_even_when_auto_is_active():
     clock = _Clock()
     audit = _Audit()

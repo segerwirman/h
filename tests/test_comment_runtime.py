@@ -51,11 +51,59 @@ def _comment() -> CommentEvent:
     return CommentEvent("fake", "c-1", "u-1", "Offline", "halo", 1.0)
 
 
+def test_ambiguous_external_write_failure_is_never_retried():
+    adapter = _Adapter(
+        [
+            ReplyResult(False, "ReadTimeout"),
+            ReplyResult(True, "duplicate would have been sent"),
+        ]
+    )
+    delays: list[float] = []
+    manager = CommentManager(
+        [adapter],
+        sleeper=delays.append,
+        retry_policy=RetryPolicy(5, 1.0, 10.0),
+    )
+
+    result = manager.reply(_comment(), "Halo!", confirmed=True)
+
+    assert result.ok is False
+    assert result.detail == "ReadTimeout"
+    assert len(adapter.send_threads) == 1
+    assert delays == []
+
+
+def test_kill_switch_is_rechecked_before_an_explicitly_retryable_attempt():
+    adapter = _Adapter(
+        [
+            ReplyResult(False, "safe pre-send failure", retryable=True),
+            ReplyResult(True, "sent despite kill switch"),
+        ]
+    )
+    manager = None
+
+    def activate_kill_switch(_delay: float) -> None:
+        assert manager is not None
+        manager.set_global_kill_switch(True)
+
+    manager = CommentManager(
+        [adapter],
+        sleeper=activate_kill_switch,
+        retry_policy=RetryPolicy(2, 1.0, 1.0),
+    )
+
+    result = manager.reply(_comment(), "Halo!", confirmed=True)
+
+    assert result.ok is False
+    assert "kill switch" in result.detail
+    assert len(adapter.send_threads) == 1
+
+
 def test_retry_policy_waits_real_injected_delays_off_main_thread():
     adapter = _Adapter(
         [
-            ReplyResult(False, "first"),
-            ReplyResult(False, "second"),
+            ReplyResult(False, "first", retryable=True),
+            ReplyResult(False, "second", retryable=True),
             ReplyResult(True, "sent"),
         ]
     )

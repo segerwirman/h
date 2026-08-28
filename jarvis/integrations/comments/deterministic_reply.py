@@ -68,6 +68,7 @@ _NEGATIVE_TERMS = (
 _GREETING_TERMS = frozenset({"halo", "hai", "hi", "hello", "pagi", "siang", "sore", "malam"})
 _THANKS_TERMS = ("terima kasih", "makasih", "thanks", "thank you", "thx")
 _POSITIVE_TERMS = ("bagus", "keren", "mantap", "suka", "love", "awesome", "hebat")
+_NEGATIONS = frozenset({"tidak", "tak", "bukan", "gak", "nggak", "ga", "not", "never"})
 _OPEN_ENDED_PREFIXES = (
     "mengapa ",
     "kenapa ",
@@ -80,6 +81,16 @@ _OPEN_ENDED_PREFIXES = (
 
 def _normalize(text: str) -> str:
     return " ".join(str(text or "").casefold().split())
+
+
+def _has_negated_positive(tokens: list[str]) -> bool:
+    for index, token in enumerate(tokens):
+        if not any(term == token for term in _POSITIVE_TERMS):
+            continue
+        start = max(0, index - 3)
+        if any(word in _NEGATIONS for word in tokens[start:index]):
+            return True
+    return False
 
 
 class DeterministicReplyPolicy:
@@ -129,12 +140,15 @@ class DeterministicReplyPolicy:
                 self._faq[normalized],
                 "faq_exact",
             )
-        words = frozenset(normalized.replace("!", " ").replace("?", " ").split())
+        tokens = normalized.replace("!", " ").replace("?", " ").split()
+        words = frozenset(tokens)
         if words and words <= _GREETING_TERMS:
             return self._template("greeting", normalized, platform, author_id)
         if any(term in normalized for term in _THANKS_TERMS):
             return self._template("thanks", normalized, platform, author_id)
         if any(term in normalized for term in _POSITIVE_TERMS):
+            if _has_negated_positive(tokens):
+                return ReplyDecision(ReplyDisposition.DRAFT, reason="negated_positive")
             return self._template("positive", normalized, platform, author_id)
         if normalized.endswith("?") or any(
             normalized.startswith(prefix) for prefix in _OPEN_ENDED_PREFIXES
