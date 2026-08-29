@@ -8277,8 +8277,21 @@ yang revoke share. `MainWindow` memiliki sheet ini, sedangkan ActionPanel tetap 
 - Full repository pytest/root Ruff belum dijalankan dan tidak diklaim hijau; blocker
   unrelated yang sudah dicatat tetap di luar scope.
 
-### Langkah aman berikutnya
+### Hasil Task 4 — SELESAI OFFLINE 2026-08-30
 
-Isolasi owned Task 4 hunks dari pre-existing user hunks, review staged diff, commit scoped
-Task 4 checkpoint, lalu mulai Task 5 dengan RED fake semantic-observation/privacy tests.
-Jangan mengaktifkan Chrome live; inventaris kandidat tetap local-UI-only.
+Commit scoped `0833e77` — `Screen Control: select one Chrome tab` memuat hanya sebelas
+path Task 4. Post-commit `git show --check` bersih; source search commit tidak menemukan
+`pyautogui`, `NativeCUADriver`, `cua_driver`, atau desktop-authority claim pada lane ini.
+Hunk user `cancel` pada `action_hint.py` dan emergency-stop pada `window_panels.py` tetap
+unstaged; tidak masuk commit. Post-commit focused + adjacent suite menghasilkan
+**129 passed** (`4.41s`); FROZEN integrity **OK** (10 files, baseline `094b696`).
+
+Broad check dicoba, bukan disembunyikan: full pytest berhenti saat collection karena
+unrelated missing `jarvis.integrations.voice_turn_guard` (**1 error**, exit 2), dan root
+Ruff tetap melaporkan dua existing S110 pada `communication_authorization.py:142` dan
+`whatsapp_web.py:364`. Tidak ada blocker unrelated yang diperbaiki untuk memaksa hijau.
+Tidak ada push atau live Chrome/Desktop validation.
+
+Prompt lanjutan repository-generated ditulis ke `.claude/next_phase_prompt_task5.md`.
+Langkah aman berikutnya: mulai Task 5 dengan RED fake semantic-observation/privacy tests;
+jangan mengaktifkan Chrome live dan pertahankan inventaris kandidat sebagai local-UI-only.
