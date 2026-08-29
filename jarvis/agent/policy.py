@@ -31,10 +31,10 @@ def decide(context: ExecutionContext, *, capability: str, risk: str) -> PolicyDe
             return PolicyDecision(False, False, "selected_tab_local_source_required")
         if "selected_tab" not in context.toolsets:
             return PolicyDecision(False, False, "selected_tab_toolset_required")
-        # Schema visibility is deliberately separate from execution authority.
-        # The selected-tab surface owner added in the next slice performs the
-        # exact task/session/target binding before this branch can allow calls.
-        return PolicyDecision(False, False, "selected_tab_share_required")
+        # Runtime execution still needs the exact active lease check in
+        # ``selected_tab_context_error``; this decision validates only the
+        # immutable local execution context.
+        return PolicyDecision(True, False, "selected_tab_context_allowed")
     required_toolsets = {
         "agent": "agent",
         "files": "files_write" if risk.lower() in {"high", "critical"}
@@ -66,7 +66,7 @@ def desktop_safe_context_error(context, *, capability: str, risk: str = "medium"
 
 def screen_control_context_error(context, *, capability: str,
                                  risk: str = "medium", runtime_session=None) -> str:
-    """Require exact process-local Screen Control session and task ownership."""
+    """Require exact process-local native desktop session/task ownership."""
     context_error = desktop_safe_context_error(
         context,
         capability=capability,
@@ -87,8 +87,47 @@ def screen_control_context_error(context, *, capability: str,
         return "screen_control_state_unavailable"
     if snapshot.state != screen_control.ACTIVE:
         return "screen_control_not_active"
+    surface_kind = str(getattr(snapshot, "surface_kind", "") or "")
+    if surface_kind and surface_kind != screen_control.DESKTOP_SURFACE:
+        return "screen_control_desktop_surface_required"
     if str(snapshot.session_id or "") != runtime_session_id:
         return "screen_control_session_mismatch"
     if str(snapshot.task_id or "") != runtime_task_id:
         return "screen_control_task_mismatch"
     return ""
+
+
+def selected_tab_context_error(context, *, capability: str,
+                               risk: str = "medium", runtime_session=None) -> str:
+    """Require the exact active browser-tab lease for a local parent task."""
+    if not isinstance(context, ExecutionContext):
+        return "selected_tab_execution_context_required"
+    runtime_session_id = str(getattr(runtime_session, "id", "") or "")
+    if runtime_session is not None and runtime_session_id != str(context.session_id or ""):
+        return "selected_tab_context_session_mismatch"
+    decision = decide(context, capability=capability, risk=risk)
+    if not decision.allowed:
+        return f"selected_tab_policy_denied:{decision.reason}"
+    runtime_task_id = str(getattr(runtime_session, "registry_task_id", "") or "")
+    if not runtime_session_id or not runtime_task_id:
+        return "selected_tab_runtime_task_binding_required"
+    try:
+        from jarvis.ui import screen_control
+
+        coordinator = screen_control.COORDINATOR
+        snapshot = coordinator.snapshot()
+    except Exception:
+        return "selected_tab_state_unavailable"
+    if snapshot.state != screen_control.ACTIVE:
+        return "selected_tab_not_active"
+    if str(getattr(snapshot, "surface_kind", "") or "") != screen_control.BROWSER_TAB_SURFACE:
+        return "selected_tab_surface_mismatch"
+    if str(snapshot.session_id or "") != runtime_session_id:
+        return "selected_tab_session_mismatch"
+    if str(snapshot.task_id or "") != runtime_task_id:
+        return "selected_tab_task_mismatch"
+    try:
+        lease_error = coordinator.selected_tab_binding_error()
+    except Exception:
+        return "selected_tab_state_unavailable"
+    return str(lease_error or "")

@@ -215,7 +215,7 @@ def test_selected_tab_execution_requires_matching_overlay_binding(monkeypatch):
     assert tool.calls == []
 
 
-def test_matching_overlay_reaches_policy_but_share_policy_stays_closed(monkeypatch):
+def test_matching_overlay_reaches_runtime_share_gate_and_stays_closed(monkeypatch):
     from jarvis.agent import registry
 
     tool = _install_selected_tab_capability(monkeypatch)
@@ -235,7 +235,7 @@ def test_matching_overlay_reaches_policy_but_share_policy_stays_closed(monkeypat
     ))
 
     assert result.ok is False
-    assert "policy" in (result.error or "").casefold()
+    assert result.error == "selected_tab_not_active"
     assert tool.calls == []
 
 

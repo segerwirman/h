@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from jarvis.automation.desktop_service import DESKTOP
+from jarvis.automation.selected_tab_session import SELECTED_TABS
 from jarvis.core import config, log
 from jarvis.core.bus import BUS
 
@@ -17,6 +18,8 @@ _logger = log.get("ui.screen_control")
 OFF = "off"
 ACTIVE = "active"
 HANDING_OFF = "handing_off"
+DESKTOP_SURFACE = "desktop"
+BROWSER_TAB_SURFACE = "browser_tab"
 _MAX_TTL_S = 3600.0
 
 
@@ -26,6 +29,9 @@ class ScreenControlSnapshot:
     session_id: str = ""
     task_id: str = ""
     expires_at: float = 0.0
+    surface_kind: str = ""
+    surface_id: str = ""
+    surface_generation: int = 0
 
 
 class _ThreadScheduler:
@@ -37,11 +43,24 @@ class _ThreadScheduler:
 
 
 class ScreenControlCoordinator:
-    """Own one bounded desktop lease and its task/session binding."""
+    """Own one bounded Screen Control surface and its exact task binding."""
 
-    def __init__(self, *, desktop=DESKTOP, bus=BUS, clock=time.monotonic,
-                 scheduler=None, overlay=None) -> None:
+    def __init__(
+        self,
+        *,
+        desktop=DESKTOP,
+        selected_tabs=SELECTED_TABS,
+        bus=BUS,
+        clock=time.monotonic,
+        scheduler=None,
+        overlay=None,
+        selected_tab_scope_check=None,
+    ) -> None:
         self._desktop = desktop
+        self._selected_tabs = selected_tabs
+        self._selected_tab_scope_check = (
+            selected_tab_scope_check or self._live_selected_tab_scope
+        )
         self._bus = bus
         self._clock = clock
         self._scheduler = scheduler or _ThreadScheduler()
@@ -50,6 +69,9 @@ class ScreenControlCoordinator:
         self._session_id = ""
         self._task_id = ""
         self._expires_at = 0.0
+        self._surface_kind = ""
+        self._surface_id = ""
+        self._surface_generation = 0
         self._timer = None
         self._generation = 0
         self._overlay = overlay
@@ -76,6 +98,9 @@ class ScreenControlCoordinator:
                 session_id=self._session_id,
                 task_id=self._task_id,
                 expires_at=self._expires_at,
+                surface_kind=self._surface_kind,
+                surface_id=self._surface_id,
+                surface_generation=self._surface_generation,
             )
 
     def active(self) -> bool:
@@ -172,6 +197,9 @@ class ScreenControlCoordinator:
                 self._session_id = session
                 self._task_id = task
                 self._expires_at = self._clock() + ttl
+                self._surface_kind = DESKTOP_SURFACE
+                self._surface_id = ""
+                self._surface_generation = 0
                 self._timer = self._scheduler.call_later(
                     ttl,
                     lambda: self._expire(generation),
@@ -184,14 +212,141 @@ class ScreenControlCoordinator:
         self._publish_if_current(snapshot, generation, "activated")
         return True
 
+    def activate_browser_tab(
+        self,
+        session_id: str,
+        task_id: str,
+        *,
+        target_id: str,
+        target_generation: int,
+        ttl_s: float,
+    ) -> bool:
+        session = str(session_id or "").strip()
+        task = str(task_id or "").strip()
+        target = str(target_id or "").strip()
+        try:
+            ttl = float(ttl_s)
+        except (TypeError, ValueError):
+            return False
+        if (
+            not session
+            or not task
+            or not target
+            or type(target_generation) is not int
+            or target_generation <= 0
+            or not math.isfinite(ttl)
+            or ttl <= 0
+            or ttl > _MAX_TTL_S
+        ):
+            return False
+        if not self._selected_tab_scope_check(session, task):
+            return False
+        with self._lock:
+            if self._state != OFF:
+                return False
+            if not self._selected_tab_scope_check(session, task):
+                return False
+            if not self._selected_tabs.activate(
+                session,
+                task,
+                target,
+                target_generation=target_generation,
+                ttl_s=ttl,
+            ):
+                return False
+            try:
+                self._generation += 1
+                generation = self._generation
+                lease = self._selected_tabs.snapshot()
+                self._state = ACTIVE
+                self._session_id = session
+                self._task_id = task
+                self._expires_at = lease.expires_at
+                self._surface_kind = BROWSER_TAB_SURFACE
+                self._surface_id = target
+                self._surface_generation = target_generation
+                self._timer = self._scheduler.call_later(
+                    ttl,
+                    lambda: self._expire(generation),
+                )
+            except Exception:
+                self._selected_tabs.release_session(
+                    session,
+                    "activation_failed",
+                )
+                self._clear_locked()
+                return False
+            snapshot = self.snapshot()
+        self._publish_if_current(snapshot, generation, "activated")
+        return True
+
+    @staticmethod
+    def _live_selected_tab_scope(session_id: str, task_id: str) -> bool:
+        try:
+            from jarvis.agent import dispatch
+            from jarvis.agent.tasks import REGISTRY, TaskStatus
+
+            scope = dispatch.screen_control_scope()
+            view = REGISTRY.get(task_id)
+        except Exception:
+            return False
+        return bool(
+            scope is not None
+            and scope.session_id == session_id
+            and scope.task_id == task_id
+            and view is not None
+            and view.status == TaskStatus.RUNNING
+            and view.active
+            and not view.cancelled
+            and view.session_id == session_id
+        )
+
+    def selected_tab_binding_error(
+        self,
+        *,
+        session_id: str = "",
+        task_id: str = "",
+        target_id: str = "",
+        target_generation: int = 0,
+    ) -> str:
+        with self._lock:
+            if self._state != ACTIVE:
+                return "selected_tab_not_active"
+            if self._surface_kind != BROWSER_TAB_SURFACE:
+                return "selected_tab_surface_mismatch"
+            expected_session = self._session_id
+            expected_task = self._task_id
+            expected_target = self._surface_id
+            expected_generation = self._surface_generation
+        requested_session = str(session_id or expected_session).strip()
+        requested_task = str(task_id or expected_task).strip()
+        requested_target = str(target_id or expected_target).strip()
+        requested_generation = target_generation or expected_generation
+        if requested_session != expected_session:
+            return "selected_tab_lease_session_mismatch"
+        if requested_task != expected_task:
+            return "selected_tab_lease_task_mismatch"
+        if requested_target != expected_target:
+            return "selected_tab_lease_target_mismatch"
+        if requested_generation != expected_generation:
+            return "selected_tab_lease_generation_mismatch"
+        return self._selected_tabs.binding_error(
+            session_id=requested_session,
+            task_id=requested_task,
+            target_id=requested_target,
+            target_generation=requested_generation,
+        )
+
     def begin_handoff(self, task_id: str) -> bool:
         target = str(task_id or "").strip()
         with self._lock:
             if self._state != ACTIVE or self._task_id != target:
                 return False
             owner = self._session_id
+            surface_kind = self._surface_kind
             overlay = self._overlay
-            self._desktop.release_authority(owner)
+            if surface_kind == DESKTOP_SURFACE:
+                self._desktop.release_authority(owner)
             self._state = HANDING_OFF
             snapshot = self.snapshot()
             generation = self._generation
@@ -216,7 +371,19 @@ class ScreenControlCoordinator:
                 generation = None
             else:
                 owner = self._session_id
-                if not self._desktop.claim_authority(owner):
+                if self._surface_kind == DESKTOP_SURFACE:
+                    if not self._desktop.claim_authority(owner):
+                        return False
+                elif self._surface_kind == BROWSER_TAB_SURFACE:
+                    lease_error = self._selected_tabs.binding_error(
+                        session_id=owner,
+                        task_id=self._task_id,
+                        target_id=self._surface_id,
+                        target_generation=self._surface_generation,
+                    )
+                    if lease_error:
+                        return False
+                else:
                     return False
                 self._state = ACTIVE
                 snapshot = self.snapshot()
@@ -252,15 +419,17 @@ class ScreenControlCoordinator:
             if self._state == OFF or not matches():
                 return False
             owner = self._session_id
-            held = self._state == ACTIVE
+            surface_kind = self._surface_kind
             timer = self._timer
             self._generation += 1
             retired_generation = self._generation
-            if held:
+            if surface_kind == DESKTOP_SURFACE and self._state == ACTIVE:
                 # Retire the pinned lease before exposing OFF. Otherwise the
                 # same session could reactivate in the gap and have its newer
                 # reservation cleared by this stale cleanup.
                 self._desktop.release_authority(owner)
+            elif surface_kind == BROWSER_TAB_SURFACE:
+                self._selected_tabs.release_session(owner, reason)
             self._clear_locked()
         if timer is not None:
             try:
@@ -282,6 +451,9 @@ class ScreenControlCoordinator:
         self._session_id = ""
         self._task_id = ""
         self._expires_at = 0.0
+        self._surface_kind = ""
+        self._surface_id = ""
+        self._surface_generation = 0
         self._timer = None
 
     def _expire(self, generation: int) -> None:
@@ -321,6 +493,9 @@ class ScreenControlCoordinator:
                 active=snapshot.state == ACTIVE,
                 reason=status,
                 expires_at=snapshot.expires_at,
+                surface_kind=snapshot.surface_kind,
+                surface_id=snapshot.surface_id,
+                surface_generation=snapshot.surface_generation,
             )
         except Exception as exc:
             _logger.warning(
@@ -437,7 +612,9 @@ def shutdown() -> None:
 
 __all__ = [
     "ACTIVE",
+    "BROWSER_TAB_SURFACE",
     "COORDINATOR",
+    "DESKTOP_SURFACE",
     "HANDING_OFF",
     "OFF",
     "ScreenControlCoordinator",

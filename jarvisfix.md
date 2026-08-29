@@ -8140,3 +8140,62 @@ RED tests pertama harus membuktikan browser-tab activation tidak pernah mengklai
 `DesktopService`, native desktop tool ditolak pada browser-tab mode, selected-tab tool
 ditolak pada desktop mode, dan mismatch/expiry/revocation task-session-target gagal
 tertutup. Tetap gunakan fake owner/service; jangan lakukan live Chrome attach.
+
+## Task 3 — browser-tab surface + exact selected-target lease (2026-08-30)
+
+**Status implementasi:** lease process-local `SelectedTabSessionOwner` sekarang memiliki
+exact session ID, TaskRegistry task ID, opaque target ID, target generation, dan bounded
+TTL. `ScreenControlCoordinator` memisahkan `desktop` dari `browser_tab`; activation
+browser-tab memeriksa exact live RUNNING dispatch scope sebelum dan di dalam admission
+lock, lalu mengikat selected-target lease tanpa memanggil `DesktopService`.
+
+Native desktop activation tetap memakai kontrak lama dan satu-satunya lane yang dapat
+mengklaim/release `DesktopService`. Handoff, timer expiry, cancel-all, emergency stop,
+unsafe boundary, task finish, window close, application shutdown, explicit stop, serta
+dispatch terminal cleanup mencabut browser-tab lease tanpa native desktop claim.
+Policy menolak cross-surface authority dan registry sekarang memeriksa exact active
+selected-tab share setelah immutable overlay/context validation tetapi sebelum
+confirmation atau tool execution.
+
+### Bukti RED → GREEN aktual
+
+- RED awal sebelum source seam ada: focused test menghasilkan **8 failed, 4 errors**
+  karena module selected-tab lease belum ada dan policy masih
+  `selected_tab_share_required`.
+- RED behavior setelah skeletal owner dibuat: **2 failed, 6 passed, 4 errors**. Failure
+  menunjukkan owner belum dapat activate, coordinator belum menerima selected-tab
+  owner/surface, dan policy browser-tab masih tertutup.
+- Final focused + adjacent command:
+  `.venv/Scripts/python.exe -m pytest tests/test_selected_tab_session.py
+  tests/test_screen_control_coordinator.py tests/test_selected_tab_capabilities.py
+  tests/test_desktop_safe_policy.py tests/test_desktop_safe_semantic_actions.py
+  -q -p no:randomly` → **89 passed** (`3.32s`).
+- Scoped Ruff enam path: **All checks passed!**.
+- Scoped `py_compile`: lulus tanpa output.
+- Scoped `git diff --check`: tidak menemukan whitespace error. Status command hanya
+  melaporkan empat modified path dan dua new Task 3 files; working-tree warning LF→CRLF
+  tidak dinormalisasi secara massal.
+
+### Batas bukti dan dirty-tree safety
+
+- Semua Task 3 tests memakai fake desktop owner, selected-target owner, timer, BUS, dan
+  dispatch cleanup seam. Tidak ada Chrome launch/attach, live tab inventory, screenshot,
+  Playwright/CDP object, credential read, browser action, pointer movement, atau native
+  desktop action.
+- Statusnya `source-present`, `focused-tested`, dan `runtime-wired-with-offline-fakes`.
+  Chrome live attach, real tab visibility, target health/disconnect event, dan tindakan
+  pada situs nyata tetap `unproven-live`.
+- Pre-existing user hunk pada `registry.py` (path/media telemetry redaction) tetap berada
+  di working tree dan bukan milik Task 3; ia tidak boleh ikut staged/commit. Dirty files
+  lain dan `config.yaml` juga tetap dipertahankan.
+- Full repository pytest/root Ruff belum dijalankan untuk Task 3 dan tidak diklaim hijau;
+  blocker unrelated yang sudah diketahui tetap di luar scope.
+- Staging dilakukan hanya pada dua new files, owned Task 3 files/hunks, dan evidence;
+  hunk `registry.py` dibangun dari blob `HEAD` agar path-redaction user hunk tetap
+  unstaged. Tidak ada push atau live validation pada checkpoint ini.
+
+### Langkah aman berikutnya
+
+Isolasi dan review hanya hunk Task 3 dari shared dirty files, commit scoped checkpoint
+bila index terbukti bersih, lalu mulai Task 4 dengan RED fake-CDP host/picker tests.
+Jangan attach ke Chrome live atau membuka native desktop authority untuk browser-tab.

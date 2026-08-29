@@ -370,6 +370,18 @@ async def execute(name: str, args: dict, adapter=None,
         if not decision.allowed and not (decision.needs_approval and approved_id):
             return ToolResult.fail(f"policy menolak tool: {decision.reason}")
 
+    if descriptor.toolset == "selected_tab":
+        from jarvis.agent.policy import selected_tab_context_error
+
+        context_error = selected_tab_context_error(
+            context,
+            capability=descriptor.id,
+            risk=descriptor.risk,
+            runtime_session=session,
+        )
+        if context_error:
+            return ToolResult.fail(context_error)
+
     # konfirmasi tool berbahaya — via adapter; sesi cron menolak otomatis
     try:
         needs = tool.needs_confirmation(**args)
