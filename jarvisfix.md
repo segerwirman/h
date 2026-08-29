@@ -8196,6 +8196,11 @@ confirmation atau tool execution.
 
 ### Langkah aman berikutnya
 
-Isolasi dan review hanya hunk Task 3 dari shared dirty files, commit scoped checkpoint
-bila index terbukti bersih, lalu mulai Task 4 dengan RED fake-CDP host/picker tests.
-Jangan attach ke Chrome live atau membuka native desktop authority untuk browser-tab.
+Task 3 sudah diisolasi dan committed sebagai `dd72b41` —
+`Screen Control: bind selected Chrome tab lease`. Post-commit `git show --check` bersih;
+scoped search commit tidak menemukan user path-redaction symbols atau native pointer
+paths; focused + adjacent review ulang menghasilkan **89 passed** (`3.20s`). User hunk
+`registry.py` tetap unstaged dan tidak masuk commit; tidak ada push.
+
+Mulai Task 4 dengan RED fake-CDP host/picker tests. Jangan attach ke Chrome live atau
+membuka native desktop authority untuk browser-tab.
