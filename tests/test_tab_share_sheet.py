@@ -48,6 +48,7 @@ class _Host:
         self.selected = []
         self.stopped = []
         self.selected_matches_result = True
+        self.selection_checks = 0
         self.picker = PickerResult(
             True,
             "tabs_available",
@@ -80,8 +81,12 @@ class _Host:
         )
 
     def selection_is_active(self, target_id, target_generation):
+        self.selection_checks += 1
+        matches = self.selected_matches_result
+        if isinstance(matches, list):
+            matches = matches.pop(0)
         return bool(
-            self.selected_matches_result
+            matches
             and target_id == "target-opaque"
             and target_generation == 7
         )
@@ -134,6 +139,22 @@ class _Coordinator:
         self.revocations.append((reason, threading.get_ident()))
         self.current = screen_control.ScreenControlSnapshot()
         return True
+
+    def revoke_browser_tab(
+        self,
+        *,
+        target_id,
+        target_generation,
+        reason,
+    ):
+        current = self.current
+        if (
+            current.surface_kind != screen_control.BROWSER_TAB_SURFACE
+            or current.surface_id != target_id
+            or current.surface_generation != target_generation
+        ):
+            return False
+        return self.revoke(reason)
 
 
 def _sheet(*, host=None, coordinator=None):
@@ -207,6 +228,35 @@ def test_target_that_closes_before_activation_never_becomes_screen_control_activ
 
         assert _wait_until(lambda: sheet.state == "closed")
         assert coordinator.activations == []
+        assert coordinator.snapshot().state == screen_control.OFF
+        assert sheet.active_target_id == ""
+    finally:
+        parent.close()
+        _APP.processEvents()
+
+
+def test_target_close_during_activation_gap_revokes_new_orphan_authority():
+    host = _Host()
+    host.selected_matches_result = [True, False]
+    coordinator = _Coordinator()
+    parent, sheet = _sheet(host=host, coordinator=coordinator)
+    try:
+        sheet.present(SimpleNamespace(session_id="session-a", task_id="T-a"), 900, 700)
+        assert _wait_until(lambda: sheet.state == "tabs_available")
+        sheet._candidates.setCurrentRow(0)
+        sheet._candidates.itemClicked.emit(sheet._candidates.currentItem())
+        sheet.share_selected()
+
+        assert _wait_until(lambda: sheet.state == "closed")
+        assert host.selection_checks == 2
+        assert coordinator.activations[0][:5] == (
+            "session-a",
+            "T-a",
+            "target-opaque",
+            7,
+            30.0,
+        )
+        assert coordinator.revocations[-1][0] == "selected_tab_target_closed"
         assert coordinator.snapshot().state == screen_control.OFF
         assert sheet.active_target_id == ""
     finally:

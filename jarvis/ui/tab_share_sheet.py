@@ -252,6 +252,20 @@ class TabShareSheet(QWidget):
                         "stopped",
                         "Tab tidak dibagikan: tugas atau lease tidak lagi cocok.",
                     )
+                elif not self._host.selection_is_active(
+                    result.target.target_id,
+                    result.target.target_generation,
+                ):
+                    self._coordinator.revoke_browser_tab(
+                        target_id=result.target.target_id,
+                        target_generation=result.target.target_generation,
+                        reason="selected_tab_target_closed",
+                    )
+                    result = type(result)(
+                        False,
+                        "closed",
+                        "Tab ditutup saat authority sedang diaktifkan.",
+                    )
             self._share_ready.emit(generation, result)
 
         threading.Thread(

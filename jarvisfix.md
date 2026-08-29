@@ -8292,6 +8292,16 @@ Ruff tetap melaporkan dua existing S110 pada `communication_authorization.py:142
 `whatsapp_web.py:364`. Tidak ada blocker unrelated yang diperbaiki untuk memaksa hijau.
 Tidak ada push atau live Chrome/Desktop validation.
 
+Post-commit review menemukan race berisiko tinggi: target dapat close setelah pre-activation
+host check tetapi sebelum coordinator activation, sehingga callback close melihat coordinator
+OFF lalu activation membuat orphan authority. RED deterministic menghasilkan **1 failed,
+10 passed**. Fix menambah post-activation exact host check; jika target sudah retired,
+coordinator mencabut exact target/generation dan UI melaporkan `closed`. Focused lifecycle
+GREEN menghasilkan **68 passed** (`1.47s`); final focused + adjacent regression menghasilkan
+**130 passed** (`4.37s`), scoped Ruff hijau, dan `py_compile` lulus. Follow-up scoped commit
+dan review wajib selesai sebelum Task 5.
+
 Prompt lanjutan repository-generated ditulis ke `.claude/next_phase_prompt_task5.md`.
-Langkah aman berikutnya: mulai Task 5 dengan RED fake semantic-observation/privacy tests;
-jangan mengaktifkan Chrome live dan pertahankan inventaris kandidat sebagai local-UI-only.
+Langkah aman berikutnya setelah follow-up review hijau: mulai Task 5 dengan RED fake
+semantic-observation/privacy tests; jangan mengaktifkan Chrome live dan pertahankan
+inventaris kandidat sebagai local-UI-only.
