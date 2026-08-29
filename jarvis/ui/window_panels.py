@@ -185,7 +185,15 @@ class WindowPanelsMixin:
 
         snapshot = screen_control.COORDINATOR.snapshot()
         if snapshot.state != screen_control.OFF:
-            screen_control.COORDINATOR.revoke("toggle_off")
+            sheet = getattr(self, "tab_share_sheet", None)
+            central = self.centralWidget()
+            if sheet is None or central is None or not sheet.present_manage(
+                snapshot,
+                central.width(),
+                central.height(),
+            ):
+                self.write_log(
+                    "SYS: Surface Screen Control aktif tidak dapat dikelola dari pemilih tab.")
             return
         if not bool(config.get("screen_control.enabled", False)):
             self.write_log(
@@ -200,27 +208,41 @@ class WindowPanelsMixin:
             self.notifications.push(
                 "Screen Control", "Tidak ada satu tugas aktif yang jelas", "warning")
             return
-        if not screen_control.COORDINATOR.activate(
-            scope.session_id,
-            scope.task_id,
-            ttl_s=screen_control.default_ttl_s(),
-        ):
-            self.write_log(
-                "SYS: Screen Control gagal mengambil otoritas desktop.")
+        sheet = getattr(self, "tab_share_sheet", None)
+        if sheet is None:
+            self.write_log("SYS: Pemilih tab Screen Control tidak tersedia.")
             self.notifications.push(
-                "Screen Control", "Desktop sedang digunakan", "warning")
+                "Screen Control", "Pemilih tab tidak tersedia", "warning")
+            return
+        central = self.centralWidget()
+        if central is None:
+            return
+        if not sheet.present(scope, central.width(), central.height()):
+            self.write_log("SYS: Pemilih tab Screen Control sedang digunakan.")
+            self.notifications.push(
+                "Screen Control", "Pemilih tab sedang digunakan", "warning")
 
     def _on_screen_control_changed(self, data: dict) -> None:
+        sheet = getattr(self, "tab_share_sheet", None)
+        if sheet is not None:
+            sheet.apply_screen_control_state(data)
         active = bool(data.get("active", False))
+        surface = str(data.get("surface_kind") or "")
+        browser_tab = surface == "browser_tab"
         self.action_panel.set_indicator("screen_control", active)
         self.action_panel.set_button_state(
             "screen_control",
-            "Screen Control — AKTIF (klik untuk nonaktif)"
-            if active else "Screen Control — kontrol desktop semantik lokal",
+            "Screen Control — TAB DIBAGIKAN (klik untuk kelola)"
+            if active and browser_tab
+            else "Screen Control — surface aktif (klik untuk kelola)"
+            if active
+            else "Screen Control — pilih satu tab Chrome",
         )
         reason = str(data.get("reason") or "")
-        if active:
-            message = "AKTIF untuk tugas agent lokal."
+        if active and browser_tab:
+            message = "satu tab Chrome dibagikan untuk tugas agent lokal."
+        elif active:
+            message = "surface aktif untuk tugas agent lokal."
         elif reason != "activated":
             message = "nonaktif."
         else:

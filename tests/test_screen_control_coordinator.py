@@ -426,7 +426,8 @@ def test_window_close_wrapper_publishes_revocation_before_legacy_close(monkeypat
     assert screen_control.install(Window) is True
 
 
-def test_shutdown_publishes_application_boundary(monkeypatch):
+def test_shutdown_publishes_application_boundary_and_retires_tab_host(monkeypatch):
+    from jarvis.integrations import selected_tab_browser
     from jarvis.ui import screen_control
 
     calls = []
@@ -435,10 +436,15 @@ def test_shutdown_publishes_application_boundary(monkeypatch):
         "publish",
         lambda topic, **_data: calls.append(topic),
     )
+    monkeypatch.setattr(
+        selected_tab_browser,
+        "shutdown_host",
+        lambda: calls.append("selected_tab_host") or True,
+    )
 
     screen_control.shutdown()
 
-    assert calls == ["application.shutdown"]
+    assert calls == ["application.shutdown", "selected_tab_host"]
 
 
 def test_canonical_main_registers_screen_control_supervisor_stop():
@@ -456,10 +462,14 @@ def test_screen_control_indicator_reflects_active_state():
     tooltips = []
     logs = []
     notices = []
+    sheet_states = []
     host = SimpleNamespace(
         action_panel=SimpleNamespace(
             set_indicator=lambda *args: indicators.append(args),
             set_button_state=lambda *args: tooltips.append(args),
+        ),
+        tab_share_sheet=SimpleNamespace(
+            apply_screen_control_state=lambda data: sheet_states.append(data)
         ),
         write_log=logs.append,
         notifications=SimpleNamespace(
@@ -469,7 +479,11 @@ def test_screen_control_indicator_reflects_active_state():
 
     WindowPanelsMixin._on_screen_control_changed(
         host,
-        {"active": True, "reason": "activated"},
+        {
+            "active": True,
+            "reason": "activated",
+            "surface_kind": "browser_tab",
+        },
     )
     WindowPanelsMixin._on_screen_control_changed(
         host,
@@ -477,10 +491,11 @@ def test_screen_control_indicator_reflects_active_state():
     )
 
     assert indicators == [("screen_control", True), ("screen_control", False)]
-    assert "AKTIF" in tooltips[0][1]
-    assert "kontrol desktop semantik lokal" in tooltips[1][1]
+    assert [state["active"] for state in sheet_states] == [True, False]
+    assert "TAB DIBAGIKAN" in tooltips[0][1]
+    assert "pilih satu tab Chrome" in tooltips[1][1]
     assert logs == [
-        "SYS: Screen Control AKTIF untuk tugas agent lokal.",
+        "SYS: Screen Control satu tab Chrome dibagikan untuk tugas agent lokal.",
         "SYS: Screen Control nonaktif.",
     ]
     assert notices[0][2] == "info"
@@ -530,14 +545,32 @@ def test_toggle_screen_control_requires_one_unambiguous_live_task(monkeypatch):
     assert notices[-1][1] == "Tidak ada satu tugas aktif yang jelas"
 
 
-def test_toggle_screen_control_activates_one_task_then_toggles_off(monkeypatch):
+def test_toggle_screen_control_opens_picker_then_manage_without_native_authority(
+    monkeypatch,
+):
     from jarvis.agent.dispatch import ScreenControlScope
     from jarvis.ui import screen_control
     from jarvis.ui.window_panels import WindowPanelsMixin
 
     state = [screen_control.ScreenControlSnapshot()]
     calls = []
+    central = SimpleNamespace(width=lambda: 900, height=lambda: 700)
     host = SimpleNamespace(
+        centralWidget=lambda: central,
+        tab_share_sheet=SimpleNamespace(
+            present=lambda scope, width, height: calls.append(
+                ("present", scope.session_id, scope.task_id, width, height)
+            ) or True,
+            present_manage=lambda snapshot, width, height: calls.append(
+                (
+                    "manage",
+                    snapshot.surface_id,
+                    snapshot.surface_generation,
+                    width,
+                    height,
+                )
+            ) or True,
+        ),
         write_log=lambda _message: None,
         notifications=SimpleNamespace(push=lambda *_args: None),
     )
@@ -547,30 +580,34 @@ def test_toggle_screen_control_activates_one_task_then_toggles_off(monkeypatch):
         "jarvis.agent.dispatch.screen_control_scope",
         lambda: ScreenControlScope("session-a", "T-a"),
     )
-
-    def activate(session_id, task_id, *, ttl_s):
-        calls.append(("activate", session_id, task_id, ttl_s))
-        state[0] = screen_control.ScreenControlSnapshot(
-            screen_control.ACTIVE,
-            session_id,
-            task_id,
-            130.0,
-        )
-        return True
-
-    def revoke(reason):
-        calls.append(("revoke", reason))
-        state[0] = screen_control.ScreenControlSnapshot()
-        return True
-
-    monkeypatch.setattr(screen_control.COORDINATOR, "activate", activate)
-    monkeypatch.setattr(screen_control.COORDINATOR, "revoke", revoke)
-    monkeypatch.setattr(screen_control, "default_ttl_s", lambda: 30.0)
+    monkeypatch.setattr(
+        screen_control.COORDINATOR,
+        "activate",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("icon must not claim native desktop authority")
+        ),
+    )
+    monkeypatch.setattr(
+        screen_control.COORDINATOR,
+        "revoke",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("active icon must not stop without explicit click")
+        ),
+    )
 
     WindowPanelsMixin._toggle_screen_control(host)
+    state[0] = screen_control.ScreenControlSnapshot(
+        screen_control.ACTIVE,
+        "session-a",
+        "T-a",
+        130.0,
+        screen_control.BROWSER_TAB_SURFACE,
+        "target-a",
+        5,
+    )
     WindowPanelsMixin._toggle_screen_control(host)
 
     assert calls == [
-        ("activate", "session-a", "T-a", 30.0),
-        ("revoke", "toggle_off"),
+        ("present", "session-a", "T-a", 900, 700),
+        ("manage", "target-a", 5, 900, 700),
     ]

@@ -394,6 +394,25 @@ class ScreenControlCoordinator:
         self._publish_if_current(snapshot, generation, "resumed")
         return True
 
+    def revoke_browser_tab(
+        self,
+        *,
+        target_id: str,
+        target_generation: int,
+        reason: str,
+    ) -> bool:
+        target = str(target_id or "").strip()
+        if not target or type(target_generation) is not int or target_generation <= 0:
+            return False
+        return self._revoke_matching(
+            reason,
+            lambda: (
+                self._surface_kind == BROWSER_TAB_SURFACE
+                and self._surface_id == target
+                and self._surface_generation == target_generation
+            ),
+        )
+
     def release_session(self, session_id: str,
                         reason: str = "task_terminal") -> bool:
         owner = str(session_id or "").strip()
@@ -608,6 +627,15 @@ def shutdown() -> None:
         BUS.publish("application.shutdown")
     except Exception:
         COORDINATOR.revoke("application_shutdown")
+    try:
+        from jarvis.integrations.selected_tab_browser import shutdown_host
+
+        shutdown_host()
+    except Exception as exc:
+        _logger.warning(
+            "screen_control.selected_tab_host_shutdown_failed",
+            error=type(exc).__name__,
+        )
 
 
 __all__ = [

@@ -8204,3 +8204,81 @@ paths; focused + adjacent review ulang menghasilkan **89 passed** (`3.20s`). Use
 
 Mulai Task 4 dengan RED fake-CDP host/picker tests. Jangan attach ke Chrome live atau
 membuka native desktop authority untuk browser-tab.
+
+## Task 4 — fake CDP host + local selected-tab share sheet (2026-08-30)
+
+**Status implementasi:** `SelectedTabBrowserHost` kini memiliki seluruh fake/production
+Playwright sync objects pada satu dedicated owner thread. Caller hanya menerima immutable
+local-UI metadata dan opaque picker/candidate/target IDs. Satu picker lease menyimpan map
+candidate→exact Page object; reorder tab tidak mengubah identity, dan popup/new tab tidak
+diam-diam menjadi target. Kandidat hanya `http`/`https`, origin sudah dibatasi tanpa path,
+query, fragment, atau userinfo; `chrome://`, DevTools, extension, file, about, Window, dan
+Entire Screen tidak ditawarkan.
+
+Pemilihan exact satu candidate memindahkan Browser/Page yang sama ke active host lease
+dengan target generation. Cancel/close sebelum share atau disconnect saat picker aktif
+meretire inventory dan menutup fake browser; stale picker IDs fail-closed. Selected Page
+close dan Browser disconnect meretire exact host lease lalu mencabut exact matching
+ScreenControlCoordinator + SelectedTabSessionOwner lease. Stale disconnect connection dan
+target/generation mismatch tidak dapat mencabut share yang lebih baru. Share aktif tidak
+dapat rebound ke candidate lain. Process singleton dibuat lazy dan dihentikan pada shutdown.
+
+`TabShareSheet` adalah surface lokal nonblocking: attach/list/select/activate/stop bekerja
+di worker request sementara Qt hanya menerima queued signals. Ikon Screen Control OFF
+sekarang membuka picker dan tidak lagi memanggil native `COORDINATOR.activate`; saat
+browser-tab ACTIVE ikon membuka manage view, dan hanya tombol eksplisit **STOP SHARING**
+yang revoke share. `MainWindow` memiliki sheet ini, sedangkan ActionPanel tetap signal-only.
+
+### Bukti RED → GREEN aktual
+
+- RED import awal host: **6 failed** karena module belum ada. Sesudah skeletal module,
+  behavioral RED tetap **6 failed** pada assertion inventory/identity/thread/unavailable.
+- Host GREEN + legacy everyday-Chrome regression:
+  `.venv/Scripts/python.exe -m pytest tests/test_user_browser.py
+  tests/test_selected_tab_host.py -q -p no:randomly` → **25 passed**.
+- RED sheet/wiring: **7 failed** karena sheet belum ada dan icon masih langsung memanggil
+  native desktop activation.
+- Sheet GREEN: `QT_QPA_PLATFORM=offscreen ... tests/test_tab_share_sheet.py` →
+  **7 passed**. Target-close contract kemudian dibuktikan RED (**1 failed, 6 passed**)
+  dan GREEN (**7 passed**).
+- Lifecycle hardening RED: callback seam belum ada menghasilkan **8 failed**; lazy shutdown
+  RED menghasilkan **1 failed, 10 passed**; pre-activation close RED menghasilkan
+  **1 failed, 7 passed**; closed/disconnected manage-state RED menghasilkan
+  **2 failed, 8 passed**. Minimal GREEN menambahkan exact lifecycle callback, disconnect
+  connection identity, pre-activation active check, lazy host shutdown, dan truthful UI state.
+- Final focused + adjacent command setelah semua lifecycle hardening:
+  `.venv/Scripts/python.exe -m pytest tests/test_user_browser.py
+  tests/test_selected_tab_host.py tests/test_tab_share_sheet.py
+  tests/test_screen_control_coordinator.py tests/test_selected_tab_session.py
+  tests/test_selected_tab_capabilities.py tests/test_desktop_safe_policy.py
+  tests/test_desktop_safe_semantic_actions.py -q -p no:randomly`
+  → **129 passed** (`4.38s`).
+- Scoped Ruff sepuluh production/test paths: **All checks passed!**.
+- Scoped `py_compile`: lulus tanpa output.
+- Forbidden native-pointer grep pada selected-tab host/sheet/tests: nol hasil.
+- Scoped `git diff --check`: tidak menemukan whitespace error; hanya warning LF→CRLF
+  pada existing working copies, tanpa normalisasi massal.
+
+### Batas bukti dan dirty-tree safety
+
+- Seluruh browser, Page, Context, Qt, coordinator, dan timing dependencies bersifat fake
+  atau offscreen. Tidak ada Chrome launch, live CDP attach, tab/screenshot nyata, browser
+  input, credential, `DesktopService` claim, atau pointer OS/native action. Fake Page-close
+  dan Browser-disconnect bukan bukti event Playwright tersebut bekerja pada Chrome nyata.
+- Status Task 4: `source-present`, `focused-tested`, dan
+  `runtime-wired-with-offline-fakes`. Attach ke Chrome nyata, tab nyata dapat dilihat,
+  thumbnail/preview nyata, target disconnect live, dan kontrol situs nyata tetap
+  `unproven-live`; tidak ada klaim sebaliknya.
+- `config.yaml`, browser user setting, default-off gate, credential flow, dan isolated
+  Jarvis-owned Chromium lane tidak diubah.
+- Existing user hunks pada `window_panels.py`, `action_hint.py`, serta dirty files lain
+  harus tetap dipertahankan dan dipisahkan saat staging. Tidak ada `git add .`, push, atau
+  live validation.
+- Full repository pytest/root Ruff belum dijalankan dan tidak diklaim hijau; blocker
+  unrelated yang sudah dicatat tetap di luar scope.
+
+### Langkah aman berikutnya
+
+Isolasi owned Task 4 hunks dari pre-existing user hunks, review staged diff, commit scoped
+Task 4 checkpoint, lalu mulai Task 5 dengan RED fake semantic-observation/privacy tests.
+Jangan mengaktifkan Chrome live; inventaris kandidat tetap local-UI-only.

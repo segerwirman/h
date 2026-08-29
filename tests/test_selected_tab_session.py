@@ -336,7 +336,7 @@ def test_selected_tab_policy_requires_exact_active_browser_binding(
 def test_selected_tab_coordinator_rejects_wrong_target_and_generation(
     browser_authority,
 ):
-    coordinator, _selected_tabs, _desktop, _bus, _scheduler, _now = browser_authority
+    coordinator, selected_tabs, _desktop, _bus, _scheduler, _now = browser_authority
     assert coordinator.activate_browser_tab(
         "session-a",
         "T-a",
@@ -357,6 +357,26 @@ def test_selected_tab_coordinator_rejects_wrong_target_and_generation(
         target_id="target-a",
         target_generation=6,
     ) == "selected_tab_lease_generation_mismatch"
+    assert coordinator.revoke_browser_tab(
+        target_id="target-other",
+        target_generation=5,
+        reason="selected_tab_target_closed",
+    ) is False
+    assert coordinator.revoke_browser_tab(
+        target_id="target-a",
+        target_generation=6,
+        reason="selected_tab_target_closed",
+    ) is False
+    assert coordinator.snapshot().state == "active"
+    assert selected_tabs.snapshot().active is True
+
+    assert coordinator.revoke_browser_tab(
+        target_id="target-a",
+        target_generation=5,
+        reason="selected_tab_target_closed",
+    ) is True
+    assert coordinator.snapshot().state == "off"
+    assert selected_tabs.snapshot().active is False
 
 
 def test_cross_surface_policy_denies_native_and_selected_tab_authority():

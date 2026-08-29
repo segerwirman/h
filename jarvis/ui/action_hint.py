@@ -35,7 +35,7 @@ HINT_TEXT: dict[str, str] = {
     # lewat opt-in config.yaml, jadi hint-nya sengaja dipertahankan.
     "awareness": "Kesadaran Layar",
     "focus_mode": "Mode Fokus (F7)",
-    "screen_control": "Kontrol Layar",
+    "screen_control": "Bagikan Tab Chrome",
     "palette": "Tema",
     "timeline": "Linimasa (F5)",
     "capabilities": "Skill & Tool",

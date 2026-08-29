@@ -267,6 +267,9 @@ class MainWindow(
         from jarvis.ui.remote_setup_sheet import RemoteSetupSheet
         self.remote_setup_sheet = RemoteSetupSheet(None, central)
         self.remote_setup_sheet.hide()
+        from jarvis.ui.tab_share_sheet import TabShareSheet
+        self.tab_share_sheet = TabShareSheet(parent=central)
+        self.tab_share_sheet.hide()
         from jarvis.ui.monitor_source_sheet import MonitorSourceSheet
         self.monitor_source_sheet = MonitorSourceSheet(parent=central)
         self.monitor_source_sheet.hide()
