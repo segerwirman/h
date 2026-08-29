@@ -32,9 +32,12 @@ class ExecutionContext:
                    secrets=dict(secrets or {}))
 
     def for_child(self, *, toolsets=None) -> "ExecutionContext":
-        """Create a sub-agent context with desktop-safe authority removed."""
+        """Create a child context without local control authority."""
         inherited = self.toolsets if toolsets is None else toolsets
-        child_toolsets = frozenset(str(item) for item in inherited) - {"desktop_safe"}
+        child_toolsets = frozenset(str(item) for item in inherited) - {
+            "desktop_safe",
+            "selected_tab",
+        }
         return ExecutionContext.create(
             source="delegation", actor_id=self.actor_id,
             session_id=self.session_id, surface=self.surface,

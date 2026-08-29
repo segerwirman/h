@@ -8077,3 +8077,66 @@ Review ini tetap bukan live validation. Tidak ada Graph API request, account/tok
 credential read, capability probe, browser action, atau outbound reply. Langkah aman
 berikutnya adalah mempertahankan capability probe sebagai otorisasi terpisah; bila
 dibuka kelak, gunakan test account, read-only, dan jangan mengirim balasan.
+
+## Checkpoint A — selected-tab protected overlay + real dispatch binding (2026-08-30)
+
+**Status implementasi:** Task 1–2 untuk lane Screen Share tab terpilih selesai pada
+kontrak capability/dispatch offline. Empat descriptor `selected_tab` sekarang
+protected: schema tidak terlihat pada context-less/delegated run, dan execution
+memerlukan immutable process-local overlay yang cocok dengan exact `Session.id`,
+TaskRegistry task ID, serta trusted local UI adapter. Dispatch mint overlay hanya
+setelah real session/task binding; loop snapshot schema satu kali dan meneruskan
+object overlay yang sama ke execution/replay. Child context menghapus
+`desktop_safe` dan `selected_tab`.
+
+Policy tetap sengaja fail-closed dengan `selected_tab_share_required`. Checkpoint ini
+**belum** membuat browser-tab lease, tidak mengaktifkan Screen Control browser-tab,
+dan belum menyediakan tool observe/click/type/scroll. Jadi capability pre-exposed
+pada parent lokal tetapi belum executable sebelum Task 3 menyediakan exact active
+share.
+
+### Bukti RED → GREEN aktual
+
+- RED Task 1: focused capability suite menghasilkan **4 failed, 7 passed**. Failure
+  membuktikan schema selected-tab masih terlihat tanpa overlay/delegation, explicit
+  context dapat mencapai tool tanpa overlay, dan child masih mewarisi authority.
+- GREEN Task 1: focused capability regressions menghasilkan **14 passed**.
+- RED Task 2: loop menolak argumen `overlay` (`TypeError`) dan dispatch tidak
+  meneruskan overlay (`KeyError`). Setelah wiring loop/dispatch/replay, focused suite
+  menghasilkan **37 passed**.
+- RED hardening schema: overlay internal yang dikonstruksi dengan nama tool unrelated
+  membocorkan `unrelated_writer`; focused suite menghasilkan **1 failed, 9 passed**.
+  Registry kemudian memotong overlay whitelist hanya ke descriptor enabled dengan
+  `toolset == "selected_tab"`.
+- Final Task 1–2 command:
+  `.venv/Scripts/python.exe -m pytest tests/test_selected_tab_capabilities.py
+  tests/test_execution_context.py tests/test_agent_tasks.py -q -p no:randomly`
+  → **38 passed** (`4.34s`).
+- Scoped Ruff delapan path Python: **All checks passed!**.
+- Scoped `py_compile`: lulus tanpa output.
+- Scoped `git diff --check`: tidak menemukan whitespace error; hanya warning
+  LF→CRLF pada dua existing working-copy path, tanpa normalisasi massal.
+
+### Batas jujur dan perlindungan dirty tree
+
+- Seluruh test memakai fake tool/model/adapter/TaskRegistry dan tidak attach ke Chrome,
+  membaca tab/screenshot live, menjalankan Playwright/CDP, menyentuh pointer OS,
+  mengakses credential, atau melakukan browser/desktop action.
+- Hasil ini berstatus `source-present` dan `focused-tested`; Chrome attach, tab nyata,
+  target visibility, browser action, serta UI picker tetap `unproven-live` dan memang
+  belum diimplementasikan.
+- Pre-existing user hunks tetap terlihat di `capabilities.py` (dua descriptor video),
+  `registry.py` (path redaction), dan `dispatch.py` (quiet communication-grant revoke).
+  Hunk tersebut bukan selected-tab work dan tidak boleh ikut staged/commit.
+- Tidak ada staging, commit, push, perubahan `config.yaml`, live validation, atau
+  perbaikan blocker unrelated pada checkpoint ini. Full repository pytest/root Ruff
+  tidak diklaim hijau; blocker unrelated `voice_turn_guard` dan dua S110 yang sudah
+  dicatat tetap di luar scope.
+
+### Langkah aman berikutnya
+
+Mulai Task 3 secara TDD dengan lease process-local untuk exact browser-tab surface.
+RED tests pertama harus membuktikan browser-tab activation tidak pernah mengklaim
+`DesktopService`, native desktop tool ditolak pada browser-tab mode, selected-tab tool
+ditolak pada desktop mode, dan mismatch/expiry/revocation task-session-target gagal
+tertutup. Tetap gunakan fake owner/service; jangan lakukan live Chrome attach.

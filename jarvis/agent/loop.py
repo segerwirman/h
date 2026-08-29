@@ -121,7 +121,7 @@ async def run(task: str, adapter: Adapter | None = None,
               allowed_tools: list[str] | None = None,
               max_iterations: int | None = None,
               model_profile: str = "heavy", context=None,
-              bg_task=None) -> RunResult:
+              bg_task=None, overlay=None) -> RunResult:
     """``bg_task`` — ``jarvis.agent.tasks.Task`` opsional (AUDIT §8.3).
 
     Bila diberikan, loop melaporkan progres ke registry dan menghormati
@@ -182,6 +182,11 @@ async def run(task: str, adapter: Adapter | None = None,
 
             allowed_tools = select_tool_names(task, registry.all_tools())
             if allowed_tools is not None:
+                # The parent-run overlay is minted after real task/session
+                # binding. Its protected schemas must survive the normal local
+                # shortlist because schemas are snapshotted only once.
+                overlay_names = set(getattr(overlay, "tool_names", ()) or ())
+                allowed_tools = sorted(set(allowed_tools) | overlay_names)
                 _logger.info(
                     "agent.tools.shortlisted",
                     count=len(allowed_tools),
@@ -191,8 +196,12 @@ async def run(task: str, adapter: Adapter | None = None,
             _logger.warning(
                 "agent.tool_selection_failed", error=str(e)[:100]
             )
-    tool_schemas = registry.schemas(allowed=allowed_tools, exclude=exclude, context=context) \
-        if context is not None else registry.schemas(allowed=allowed_tools, exclude=exclude)
+    tool_schemas = registry.schemas(
+        allowed=allowed_tools,
+        exclude=exclude,
+        context=context,
+        overlay=overlay,
+    )
 
     messages: list[dict] = [
         {"role": "system", "content": _system_prompt(
@@ -284,8 +293,14 @@ async def run(task: str, adapter: Adapter | None = None,
         if resp.content:
             session.record_turn("assistant", resp.content)
 
-        results = await _execute_calls(resp.tool_calls, adapter, session,
-                                       context, bg_task)
+        results = await _execute_calls(
+            resp.tool_calls,
+            adapter,
+            session,
+            context,
+            bg_task,
+            overlay=overlay,
+        )
         latency.mark(session.id, "first_tool")
         for tc, res in zip(resp.tool_calls, results):
             messages.append({"role": "tool", "tool_call_id": tc.id,
@@ -497,7 +512,15 @@ async def _acquire_for(bg_task, tool_name: str):
         await asyncio.sleep(0.02)
 
 
-async def _execute_calls(tool_calls, adapter, session, context, bg_task=None):
+async def _execute_calls(
+    tool_calls,
+    adapter,
+    session,
+    context,
+    bg_task=None,
+    *,
+    overlay=None,
+):
     """Read-only → paralel; ada penulis → semuanya serial berurutan (aman)."""
     tools = registry.all_tools()
 
@@ -521,7 +544,13 @@ async def _execute_calls(tool_calls, adapter, session, context, bg_task=None):
         _mark_pending_tool(bg_task, tc.name, tools)
         try:
             result = await registry.execute(
-                tc.name, tc.arguments, adapter, session, context)
+                tc.name,
+                tc.arguments,
+                adapter,
+                session,
+                context,
+                overlay=overlay,
+            )
         finally:
             _clear_pending_tool(bg_task)
             _release_dynamic_resources(held)

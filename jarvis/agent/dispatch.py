@@ -533,7 +533,15 @@ def _collect_plan(session, steps: list[dict]) -> None:
     session.record_plan = _record
 
 
-async def _replay_plan(task: str, *, adapter, session, context, allowed):
+async def _replay_plan(
+    task: str,
+    *,
+    adapter,
+    session,
+    context,
+    allowed,
+    overlay=None,
+):
     """Jalankan rencana yang sudah terbukti. ``None`` = tetap pakai model.
 
     Lewat ``registry.execute`` dengan sengaja: konfirmasi, policy, dan audit
@@ -556,9 +564,14 @@ async def _replay_plan(task: str, *, adapter, session, context, allowed):
 
     spoken = ""
     for index, step in enumerate(steps):
-        result = await registry.execute(step["tool"], dict(step["args"]),
-                                        adapter=adapter, session=session,
-                                        context=context)
+        result = await registry.execute(
+            step["tool"],
+            dict(step["args"]),
+            adapter=adapter,
+            session=session,
+            context=context,
+            overlay=overlay,
+        )
         if not getattr(result, "ok", False):
             error = str(getattr(result, "error", "") or "gagal")
             _logger.info("agent.replay.step_failed", tool=step["tool"],
@@ -1003,6 +1016,25 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
         except Exception as exc:                               # noqa: BLE001
             _logger.warning("agent.dispatch.adapter_scope_failed",
                             error=type(exc).__name__)
+    capability_overlay = None
+    try:
+        from jarvis.agent.local_run_capabilities import (
+            mint_selected_tab_overlay,
+        )
+
+        capability_overlay = mint_selected_tab_overlay(
+            session_id=session.id,
+            task_id=bg_task.id,
+            adapter=adapter,
+        )
+    except ValueError:
+        # Remote/headless/non-UI dispatch is expected and stays unchanged.
+        capability_overlay = None
+    except Exception as exc:                                  # noqa: BLE001
+        _logger.warning(
+            "agent.dispatch.selected_tab_overlay_unavailable",
+            error=type(exc).__name__,
+        )
     metadata = TaskMetadata(
         id=bg_task.id,
         session_id=session.id,
@@ -1092,8 +1124,13 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
                 # §25 — perintah yang PERSIS sama dan sudah terbukti berhasil
                 # dijalankan langsung, tanpa satu pun panggilan model.
                 shortcut = await _replay_plan(
-                    task, adapter=run_adapter, session=session,
-                    context=context, allowed=effective_tools)
+                    task,
+                    adapter=run_adapter,
+                    session=session,
+                    context=context,
+                    allowed=effective_tools,
+                    overlay=capability_overlay,
+                )
                 if shortcut is not None:
                     replayed = True
                     return shortcut
@@ -1104,7 +1141,7 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
                     max_iterations=int(config.get(
                         "agent.interactive_max_iterations", 12)),
                     model_profile="heavy", context=context,
-                    bg_task=bg_task)
+                    bg_task=bg_task, overlay=capability_overlay)
 
             result = asyncio.run(asyncio.wait_for(
                 _execute(), timeout=hard_timeout))

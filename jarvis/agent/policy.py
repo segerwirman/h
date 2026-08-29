@@ -24,6 +24,17 @@ def decide(context: ExecutionContext, *, capability: str, risk: str) -> PolicyDe
         if "desktop_safe" not in context.toolsets:
             return PolicyDecision(False, False, "desktop_safe_toolset_required")
         return PolicyDecision(True, False, "desktop_safe_allowed")
+    if group == "selected_tab":
+        if context.surface != "browser_tab":
+            return PolicyDecision(False, False, "selected_tab_surface_required")
+        if context.source != "ui":
+            return PolicyDecision(False, False, "selected_tab_local_source_required")
+        if "selected_tab" not in context.toolsets:
+            return PolicyDecision(False, False, "selected_tab_toolset_required")
+        # Schema visibility is deliberately separate from execution authority.
+        # The selected-tab surface owner added in the next slice performs the
+        # exact task/session/target binding before this branch can allow calls.
+        return PolicyDecision(False, False, "selected_tab_share_required")
     required_toolsets = {
         "agent": "agent",
         "files": "files_write" if risk.lower() in {"high", "critical"}

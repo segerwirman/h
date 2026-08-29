@@ -239,9 +239,12 @@ def _discover() -> dict[str, Tool]:
 
 
 def schemas(allowed: list[str] | None = None,
-            exclude: list[str] | None = None, context=None) -> list[dict]:
-    """Schema gaya OpenAI; context membatasi schema pada capability terizinkan."""
+            exclude: list[str] | None = None, context=None,
+            overlay=None) -> list[dict]:
+    """Schema gaya OpenAI; protected local tools need an exact overlay."""
     from jarvis.agent.capabilities import REGISTRY as capability_registry
+    from jarvis.agent.local_run_capabilities import LocalRunCapabilityOverlay
+
     context_allowed = None
     if context is not None:
         context_allowed = set(capability_registry.exposed_tool_names(context))
@@ -252,13 +255,33 @@ def schemas(allowed: list[str] | None = None,
     # 103-item: 16,5 ms di setiap ``schemas()``. Indeksnya lokal dan mati saat
     # fungsi ini selesai, jadi tidak ada jawaban basi yang bisa bertahan.
     descriptors_by_tool = capability_registry.by_tool_name()
+    overlay_allowed = (
+        {
+            name
+            for name in overlay.tool_names
+            if (descriptor := descriptors_by_tool.get(name)) is not None
+            and descriptor.enabled
+            and descriptor.toolset == "selected_tab"
+        }
+        if isinstance(overlay, LocalRunCapabilityOverlay)
+        else set()
+    )
+    protected_toolsets = {"desktop_safe", "selected_tab"}
     for name, tool in sorted(all_tools().items()):
         descriptor = descriptors_by_tool.get(name)
-        if context is None and descriptor is not None and descriptor.toolset == "desktop_safe":
-            continue
+        if descriptor is not None and descriptor.toolset in protected_toolsets:
+            if descriptor.toolset == "selected_tab":
+                if name not in overlay_allowed:
+                    continue
+            elif context is None:
+                continue
         if allowed is not None and name not in allowed:
             continue
-        if context_allowed is not None and name not in context_allowed:
+        if (
+            context_allowed is not None
+            and name not in context_allowed
+            and name not in overlay_allowed
+        ):
             continue
         if exclude and name in exclude:
             continue
@@ -267,7 +290,7 @@ def schemas(allowed: list[str] | None = None,
 
 
 async def execute(name: str, args: dict, adapter=None,
-                  session=None, context=None,
+                  session=None, context=None, overlay=None,
                   _approved_request_id: str = "") -> ToolResult:
     """Jalankan satu tool dengan seluruh guardrail. Tidak pernah raise."""
     tool = get(name)
@@ -284,6 +307,17 @@ async def execute(name: str, args: dict, adapter=None,
         return ToolResult.fail("capability tidak terdaftar untuk execution context")
     if descriptor.toolset == "desktop_safe" and context is None:
         return ToolResult.fail("desktop_safe membutuhkan execution context desktop-local")
+    if descriptor.toolset == "selected_tab":
+        from jarvis.agent.local_run_capabilities import selected_tab_context
+
+        context, overlay_error = selected_tab_context(
+            overlay,
+            tool_name=name,
+            session=session,
+            adapter=adapter,
+        )
+        if overlay_error:
+            return ToolResult.fail(overlay_error)
     communication_allowed, communication_override = _communication_admission(
         descriptor,
         session,
@@ -328,7 +362,7 @@ async def execute(name: str, args: dict, adapter=None,
                     is_approved=lambda: store.approved_for(
                         request.id, context.trace_id, descriptor.id),
                     runner=lambda: execute(
-                        name, args, adapter, session, context,
+                        name, args, adapter, session, context, overlay,
                         _approved_request_id=request.id),
                 )
                 return ToolResult.fail(
