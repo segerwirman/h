@@ -18,6 +18,7 @@ class _OwnedPage:
         self._owner = owner
         self._url = url
         self._title = title
+        self.closed = False
         self.touches: list[tuple[str, int]] = []
         self.listeners: dict[str, list] = {}
 
@@ -54,12 +55,17 @@ class _OwnedPage:
         self._touch("title")
         return self._title
 
+    def is_closed(self) -> bool:
+        self._touch("is_closed")
+        return self.closed
+
 
 class _AsyncOwnedPage:
     def __init__(self, owner: int, url: str, title: str) -> None:
         self._owner = owner
         self._url = url
         self._title = title
+        self.closed = False
         self.touches: list[tuple[str, int]] = []
         self.listeners: dict[str, list] = {}
 
@@ -85,6 +91,10 @@ class _AsyncOwnedPage:
     async def title(self) -> str:
         self._touch("title")
         return self._title
+
+    def is_closed(self) -> bool:
+        self._touch("is_closed")
+        return self.closed
 
 
 class _OwnedContext:
@@ -164,6 +174,22 @@ class _GatedSelectionPage(_AsyncOwnedPage):
 
     def release_selection_title(self) -> None:
         self._release_selection_title.set()
+
+
+class _GatedInventoryPage(_AsyncOwnedPage):
+    def __init__(self, owner: int, url: str, title: str) -> None:
+        super().__init__(owner, url, title)
+        self.inventory_title_entered = threading.Event()
+        self._release_inventory_title = asyncio.Event()
+
+    async def title(self) -> str:
+        self._touch("title")
+        self.inventory_title_entered.set()
+        await self._release_inventory_title.wait()
+        return self._title
+
+    def release_inventory_title(self) -> None:
+        self._release_inventory_title.set()
 
 
 class _AsyncOwnedBrowser:
@@ -320,6 +346,168 @@ def _wait_until(predicate, timeout=2.0):
     return bool(predicate())
 
 
+def test_disconnect_during_picker_inventory_cannot_publish_stale_candidates():
+    from jarvis.integrations.selected_tab_browser import SelectedTabBrowserHost
+
+    created = []
+
+    async def connect(_port):
+        owner = threading.get_ident()
+        page = _GatedInventoryPage(owner, "https://safe.test/start", "Safe")
+        browser = _AsyncOwnedBrowser(owner, [page])
+        created.append((browser, page))
+        return browser
+
+    ids = iter(("picker", "candidate"))
+    host = SelectedTabBrowserHost(
+        connector=connect,
+        enabled_check=lambda: True,
+        port_provider=lambda: 9222,
+        id_factory=lambda: next(ids),
+    )
+    result_box = []
+    try:
+        worker = threading.Thread(
+            target=lambda: result_box.append(host.begin_picker())
+        )
+        worker.start()
+        assert _wait_until(lambda: bool(created))
+        browser, page = created[0]
+        assert page.inventory_title_entered.wait(2)
+        assert host._loop is not None
+
+        def disconnect_and_release() -> None:
+            browser.emit_soon("disconnected")
+            page.release_inventory_title()
+
+        host._loop.call_soon_threadsafe(disconnect_and_release)
+        worker.join(timeout=2)
+
+        assert not worker.is_alive()
+        assert result_box[0].ok is False
+        assert result_box[0].state == "unavailable"
+        assert result_box[0].candidates == ()
+        assert browser.closed is True
+    finally:
+        if created:
+            loop = host._loop
+            if loop is not None:
+                loop.call_soon_threadsafe(created[0][1].release_inventory_title)
+        host.shutdown()
+
+
+def test_page_close_event_during_selection_cannot_promote_stale_picker():
+    from jarvis.integrations.selected_tab_browser import SelectedTabBrowserHost
+
+    created = []
+
+    async def connect(_port):
+        owner = threading.get_ident()
+        page = _GatedSelectionPage(owner, "https://safe.test/start", "Safe")
+        browser = _AsyncOwnedBrowser(owner, [page])
+        created.append((browser, page))
+        return browser
+
+    ids = iter(("picker", "candidate", "target"))
+    host = SelectedTabBrowserHost(
+        connector=connect,
+        enabled_check=lambda: True,
+        port_provider=lambda: 9222,
+        id_factory=lambda: next(ids),
+    )
+    result_box = []
+    try:
+        picker = host.begin_picker()
+        browser, page = created[0]
+        worker = threading.Thread(
+            target=lambda: result_box.append(
+                host.select_candidate(
+                    picker.picker_id,
+                    picker.candidates[0].candidate_id,
+                )
+            )
+        )
+        worker.start()
+        assert page.selection_title_entered.wait(2)
+        assert host._loop is not None
+
+        def close_and_release() -> None:
+            page.closed = True
+            for callback in tuple(page.listeners.get("close", ())):
+                callback()
+            page.release_selection_title()
+
+        host._loop.call_soon_threadsafe(close_and_release)
+        worker.join(timeout=2)
+
+        assert not worker.is_alive()
+        assert result_box[0].ok is False
+        assert result_box[0].state == "closed"
+        assert host.active_snapshot().active is False
+        assert browser.closed is True
+    finally:
+        if created:
+            loop = host._loop
+            if loop is not None:
+                loop.call_soon_threadsafe(created[0][1].release_selection_title)
+        host.shutdown()
+
+
+def test_closed_page_without_close_event_cannot_be_promoted():
+    from jarvis.integrations.selected_tab_browser import SelectedTabBrowserHost
+
+    created = []
+
+    async def connect(_port):
+        owner = threading.get_ident()
+        page = _GatedSelectionPage(owner, "https://safe.test/start", "Safe")
+        browser = _AsyncOwnedBrowser(owner, [page])
+        created.append((browser, page))
+        return browser
+
+    ids = iter(("picker", "candidate", "target"))
+    host = SelectedTabBrowserHost(
+        connector=connect,
+        enabled_check=lambda: True,
+        port_provider=lambda: 9222,
+        id_factory=lambda: next(ids),
+    )
+    result_box = []
+    try:
+        picker = host.begin_picker()
+        browser, page = created[0]
+        worker = threading.Thread(
+            target=lambda: result_box.append(
+                host.select_candidate(
+                    picker.picker_id,
+                    picker.candidates[0].candidate_id,
+                )
+            )
+        )
+        worker.start()
+        assert page.selection_title_entered.wait(2)
+        assert host._loop is not None
+
+        def close_without_event_and_release() -> None:
+            page.closed = True
+            page.release_selection_title()
+
+        host._loop.call_soon_threadsafe(close_without_event_and_release)
+        worker.join(timeout=2)
+
+        assert not worker.is_alive()
+        assert result_box[0].ok is False
+        assert result_box[0].state == "closed"
+        assert host.active_snapshot().active is False
+        assert browser.closed is True
+    finally:
+        if created:
+            loop = host._loop
+            if loop is not None:
+                loop.call_soon_threadsafe(created[0][1].release_selection_title)
+        host.shutdown()
+
+
 def test_selection_rejects_navigation_delivered_while_title_is_awaited():
     from jarvis.integrations.selected_tab_browser import SelectedTabBrowserHost
 
@@ -428,6 +616,54 @@ def test_disconnect_during_selection_cannot_promote_stale_picker():
         host.shutdown()
 
 
+def test_public_call_timeout_cancels_connected_picker_and_releases_browser(
+    monkeypatch,
+):
+    import concurrent.futures
+    from concurrent.futures import TimeoutError as FutureTimeoutError
+
+    from jarvis.integrations import selected_tab_browser
+
+    created = []
+
+    async def connect(_port):
+        owner = threading.get_ident()
+        page = _GatedInventoryPage(owner, "https://safe.test/start", "Safe")
+        browser = _AsyncOwnedBrowser(owner, [page])
+        created.append((browser, page))
+        return browser
+
+    original_result = concurrent.futures.Future.result
+
+    def short_result(self, timeout=None):
+        if timeout == 10.0:
+            return original_result(self, timeout=0.05)
+        return original_result(self, timeout=timeout)
+
+    monkeypatch.setattr(
+        concurrent.futures.Future,
+        "result",
+        short_result,
+    )
+    host = selected_tab_browser.SelectedTabBrowserHost(
+        connector=connect,
+        enabled_check=lambda: True,
+        port_provider=lambda: 9222,
+        id_factory=lambda: "picker",
+    )
+    try:
+        with pytest.raises(FutureTimeoutError):
+            host.begin_picker()
+        assert _wait_until(lambda: bool(created) and created[0][0].closed)
+        assert host.active_snapshot().active is False
+    finally:
+        if created:
+            loop = host._loop
+            if loop is not None:
+                loop.call_soon_threadsafe(created[0][1].release_inventory_title)
+        host.shutdown()
+
+
 def test_default_connector_stops_playwright_when_cdp_attach_is_cancelled(
     monkeypatch,
 ):
@@ -466,6 +702,46 @@ def test_default_connector_stops_playwright_when_cdp_attach_is_cancelled(
 
     asyncio.run(exercise())
     assert playwright_stopped.is_set()
+
+
+def test_shutdown_during_picker_inventory_releases_connected_browser():
+    from jarvis.integrations.selected_tab_browser import SelectedTabBrowserHost
+
+    created = []
+
+    async def connect(_port):
+        owner = threading.get_ident()
+        page = _GatedInventoryPage(owner, "https://safe.test/start", "Safe")
+        browser = _AsyncOwnedBrowser(owner, [page])
+        created.append((browser, page))
+        return browser
+
+    host = SelectedTabBrowserHost(
+        connector=connect,
+        enabled_check=lambda: True,
+        port_provider=lambda: 9222,
+        id_factory=lambda: "picker",
+    )
+    result_box = []
+
+    def begin_picker() -> None:
+        try:
+            result_box.append(host.begin_picker())
+        except BaseException as exc:
+            result_box.append(exc)
+
+    worker = threading.Thread(target=begin_picker)
+    worker.start()
+    assert _wait_until(lambda: bool(created))
+    browser, page = created[0]
+    assert page.inventory_title_entered.wait(2)
+
+    host.shutdown()
+    worker.join(timeout=2)
+
+    assert not worker.is_alive()
+    assert browser.closed is True
+    assert not host._thread.is_alive()
 
 
 def test_shutdown_cancels_pending_connector_and_runs_its_cleanup():

@@ -8398,3 +8398,63 @@ credential access, native pointer/DesktopService claim, atau push.
 Langkah aman berikutnya: commit scoped review fixes ini, review offline ulang, lalu regenerasi
 prompt. Task 5 hanya boleh dimulai setelah review hijau dengan RED fake
 semantic-observation/privacy tests; jangan mengaktifkan Chrome live.
+
+### Final follow-up review Task 4 — picker admission/teardown 2026-08-30
+
+Background reviewer tidak menghasilkan review: dua upaya berhenti sebelum membaca commit karena
+model provider `hermes` tidak tersedia (HTTP 404). Hasil itu tidak diperlakukan sebagai review
+hijau. Review read-only kemudian dilakukan langsung terhadap commit `0686b2c` dan surrounding
+state machine. Review tersebut menemukan empat interval fail-open yang dapat direproduksi
+offline:
+
+1. Browser disconnect ketika picker masih meng-await title inventory dapat diikuti publikasi
+   candidate list stale karena `_PickerLease` belum dipasang ketika disconnect retirement berjalan;
+2. shutdown atau public-call timeout setelah connector mengembalikan Browser tetapi sebelum
+   picker terpublikasi membatalkan coroutine, tetapi `_begin_picker` hanya menangkap `Exception`,
+   sehingga connected Browser tidak dilepas;
+3. Page dapat menjadi closed selama selection admission tanpa callback close yang sempat
+   meretire apa pun karena active close listener belum dipasang;
+4. close event yang datang selama selection admission juga harus fail-closed dan tidak boleh
+   mempromosikan stale picker.
+
+TDD aktual:
+
+- disconnect-during-inventory RED: **1 failed** karena `PickerResult.ok=True`; fix memeriksa exact
+  disconnected connection sebelum memasang `_PickerLease`, membersihkan candidate map, me-release
+  Browser, dan mengembalikan `unavailable` tanpa inventory;
+- shutdown-during-inventory RED: **1 failed** karena fake Browser tetap open; fix memberi cleanup
+  eksplisit pada `asyncio.CancelledError` setelah Browser berhasil dibuat;
+- closed-page-without-event RED: **1 failed** karena selection dipromosikan `sharing`; fix
+  memeriksa `page.is_closed()` pada owner loop sebelum target ID/generation dimint dan me-release
+  picker jika closed;
+- close-event-during-admission regression lulus dan membuktikan boundary yang sama fail-closed;
+- timeout regression membuktikan `_call` membatalkan future pada `TimeoutError`, lalu cancellation
+  cleanup me-release connected Browser alih-alih membiarkan job terus berjalan di belakang caller.
+
+Full selected-tab host suite setelah perbaikan: **26 passed** (`2.74s`). Final focused + adjacent
+Task 4 suite:
+`.venv/Scripts/python.exe -m pytest tests/test_user_browser.py
+ tests/test_selected_tab_host.py tests/test_tab_share_sheet.py
+ tests/test_screen_control_coordinator.py tests/test_selected_tab_session.py
+ tests/test_selected_tab_capabilities.py tests/test_execution_context.py
+ tests/test_capabilities.py tests/test_agent_tasks.py tests/test_evidence_status.py
+ -q -p no:randomly`
+→ **156 passed** (`8.89s`). Scoped Ruff: **All checks passed!**; scoped `py_compile` lulus;
+scoped `git diff --check` tidak menemukan whitespace error (hanya warning LF→CRLF); forbidden
+`pyautogui|NativeCUADriver|cua_driver|DesktopService` search pada selected-tab host nol hasil;
+FROZEN integrity **OK** (10 files, baseline `094b696`).
+
+Re-review langsung setelah fix tidak menemukan interleaving Task 4 lain yang demonstrable pada
+picker inventory, provisional navigation, disconnect, close, timeout, shutdown, exact target/
+generation, atau release idempotence. Ini adalah review offline terhadap fakes, bukan bukti live.
+Broad blockers tetap seperti sebelumnya dan tidak diperbaiki: full repository pytest berhenti pada
+unrelated missing `jarvis.integrations.voice_turn_guard`, root Ruff mempunyai dua existing S110.
+
+Batas bukti tetap: `source-present`, `focused-tested`, dan
+`runtime-wired-with-offline-fakes`. Live Chrome/CDP attach, tab nyata, real Playwright event
+transport, screenshot/preview, dan browser action tetap `unproven-live`. Tidak ada Chrome launch,
+live attach, credential access, config/browser-setting edit, DesktopService/native pointer action,
+push, atau klaim keberhasilan situs nyata.
+
+Langkah aman berikutnya: commit exact tiga path follow-up ini, regenerate prompt Task 5, lalu mulai
+Task 5 hanya dengan RED fake semantic-observation/privacy tests.

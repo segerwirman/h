@@ -245,7 +245,11 @@ class SelectedTabBrowserHost:
             self._invoke(callback, args),
             loop,
         )
-        return future.result(timeout=10.0)
+        try:
+            return future.result(timeout=10.0)
+        except TimeoutError:
+            future.cancel()
+            raise
 
     @staticmethod
     async def _invoke(callback, args):
@@ -326,6 +330,14 @@ class SelectedTabBrowserHost:
                         raise RuntimeError("selected_tab_candidate_id_invalid")
                     candidates[candidate_id] = page
                     local_items.append(LocalTabCandidate(candidate_id, title, origin))
+            if connection_id in self._disconnected_connections:
+                candidates.clear()
+                await self._safe_release(browser)
+                return PickerResult(
+                    False,
+                    "unavailable",
+                    "selected_tab_browser_disconnected",
+                )
             self._picker = _PickerLease(
                 picker_id,
                 connection_id,
@@ -338,6 +350,10 @@ class SelectedTabBrowserHost:
                 picker_id=picker_id,
                 candidates=tuple(local_items),
             )
+        except asyncio.CancelledError:
+            if browser is not None:
+                await self._safe_release(browser)
+            raise
         except Exception as exc:
             if browser is not None:
                 await self._safe_release(browser)
@@ -396,6 +412,16 @@ class SelectedTabBrowserHost:
                 False,
                 "disconnected",
                 "selected_tab_browser_disconnected",
+            )
+        is_closed = getattr(page, "is_closed", None)
+        if callable(is_closed) and bool(await _resolve(is_closed())):
+            self._picker = None
+            picker.candidates.clear()
+            await self._safe_release(picker.browser)
+            return SelectionResult(
+                False,
+                "closed",
+                "selected_tab_target_closed",
             )
         current_origin = _eligible_origin(getattr(page, "url", ""))
         navigation_reason = navigation["reason"] or self._navigation_reason(
