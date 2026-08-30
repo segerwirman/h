@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QImage
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -19,6 +20,12 @@ from PyQt6.QtWidgets import (
 
 from jarvis.integrations.selected_tab_browser import get_host
 from jarvis.ui import screen_control, theme
+from jarvis.ui.tab_share_preview import (
+    CursorVisual,
+    PreviewGeneration,
+    PreviewMetadata,
+    TabSharePreview,
+)
 
 
 _STATE_TEXT = {
@@ -101,6 +108,9 @@ class TabShareSheet(QWidget):
         self._candidates.itemActivated.connect(self._on_candidate_chosen)
         layout.addWidget(self._candidates, 1)
 
+        self.preview_widget = TabSharePreview(parent=self)
+        layout.addWidget(self.preview_widget, 1)
+
         buttons = QHBoxLayout()
         self._share_button = QPushButton("BAGIKAN TAB", self)
         self._share_button.clicked.connect(self.share_selected)
@@ -141,6 +151,20 @@ class TabShareSheet(QWidget):
         if state not in _STATE_TEXT:
             return False
         self.state = state
+        if state in {
+            "checking",
+            "unavailable",
+            "zero_tabs",
+            "tabs_available",
+            "selected",
+            "preview_unavailable",
+            "navigated",
+            "closed",
+            "disconnected",
+            "captcha_handoff",
+            "stopped",
+        }:
+            self.preview_widget.clear_preview()
         self._status.setText(self._state_text(state, reason))
         self._sync_buttons()
         return True
@@ -295,8 +319,101 @@ class TabShareSheet(QWidget):
             name="selected-tab-picker-cancel",
         ).start()
 
+    def refresh_preview(
+        self,
+        *,
+        preview_id: str,
+        cursor_state: str,
+    ) -> bool:
+        if (
+            self._scope is None
+            or self.state != "sharing"
+            or not self._active_target_id
+            or not preview_id
+        ):
+            self.preview_widget.clear_preview()
+            return False
+        try:
+            result = self._host.get_preview(str(preview_id))
+        except Exception:
+            self.preview_widget.clear_preview()
+            return False
+        if not bool(getattr(result, "ok", False)):
+            self.preview_widget.clear_preview()
+            return False
+        try:
+            image = QImage.fromData(
+                bytes(getattr(result, "image_bytes", b"")),
+                "PNG",
+            )
+            generation = PreviewGeneration(
+                target_generation=int(
+                    getattr(result, "target_generation", 0) or 0
+                ),
+                document_generation=int(
+                    getattr(result, "document_generation", 0) or 0
+                ),
+                observation_generation=int(
+                    getattr(result, "observation_generation", 0) or 0
+                ),
+                preview_generation=int(
+                    getattr(result, "preview_generation", 0) or 0
+                ),
+            )
+            viewport_css = getattr(result, "viewport_css", ())
+            screenshot_px = getattr(result, "screenshot_px", ())
+            dom_rect = getattr(result, "dom_rect", ())
+            if (
+                not isinstance(viewport_css, (tuple, list))
+                or len(viewport_css) != 2
+                or not isinstance(screenshot_px, (tuple, list))
+                or len(screenshot_px) != 2
+                or not isinstance(dom_rect, (tuple, list))
+                or len(dom_rect) != 4
+            ):
+                raise ValueError("selected_tab_preview_metadata_invalid")
+            metadata = PreviewMetadata(
+                viewport_css=(float(viewport_css[0]), float(viewport_css[1])),
+                screenshot_px=(int(screenshot_px[0]), int(screenshot_px[1])),
+                generation=generation,
+                captured_at=float(
+                    getattr(result, "captured_at", 0.0) or 0.0
+                ),
+                expires_at=float(
+                    getattr(result, "expires_at", 0.0) or 0.0
+                ),
+            )
+            visual = CursorVisual(
+                dom_rect=tuple(float(part) for part in dom_rect),
+                generation=generation,
+                state=str(cursor_state or ""),
+            )
+        except (TypeError, ValueError, OverflowError):
+            self.preview_widget.clear_preview()
+            return False
+        if not self.preview_widget.replace_preview(image, metadata):
+            return False
+        if not self.preview_widget.update_cursor(visual):
+            self.preview_widget.clear_preview()
+            return False
+        return True
+
+    def apply_visual_state(self, data: dict) -> bool:
+        scope = self._scope
+        if (
+            scope is None
+            or self.state != "sharing"
+            or str(data.get("session_id") or "") != scope.session_id
+            or str(data.get("task_id") or "") != scope.task_id
+        ):
+            return False
+        return self.refresh_preview(
+            preview_id=str(data.get("preview_id") or ""),
+            cursor_state=str(data.get("state") or ""),
+        )
+
     def apply_screen_control_state(self, data: dict) -> None:
-        if not self._active_target_id or bool(data.get("active", False)):
+        if bool(data.get("active", False)):
             return
         reason = str(data.get("reason") or "")
         state = {
@@ -305,8 +422,9 @@ class TabShareSheet(QWidget):
             "selected_tab_target_navigated": "navigated",
             "selected_tab_cross_origin_navigation": "navigated",
             "selected_tab_navigation_ineligible": "navigated",
-        }.get(reason)
-        if state is None:
+            "handoff": "captcha_handoff",
+        }.get(reason, "stopped")
+        if not self._active_target_id and not self.preview_widget.has_preview:
             return
         self._generation += 1
         self._active_target_id = ""
@@ -342,13 +460,14 @@ class TabShareSheet(QWidget):
         ).start()
 
     def closeEvent(self, event) -> None:
+        self.preview_widget.clear_preview()
         if self.state != "sharing":
             self.cancel_local()
         event.accept()
 
     def _open(self, parent_w: int, parent_h: int) -> None:
-        width = min(620, max(360, int(parent_w) - 40))
-        height = min(460, max(280, int(parent_h) - 80))
+        width = min(720, max(360, int(parent_w) - 40))
+        height = min(620, max(360, int(parent_h) - 80))
         self.setGeometry(
             (int(parent_w) - width) // 2,
             (int(parent_h) - height) // 2,

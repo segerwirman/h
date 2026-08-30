@@ -369,6 +369,11 @@ class MainWindow(
             self._on_screen_control_changed,
             ui=True,
         )
+        BUS.subscribe(
+            "selected_tab.visual",
+            self._on_selected_tab_visual,
+            ui=True,
+        )
         from jarvis.integrations.vision_supervisor import start_vision_supervisor
         start_vision_supervisor()
         BUS.subscribe("sentiment.updated", self._on_sentiment, ui=True)

@@ -222,6 +222,11 @@ class WindowPanelsMixin:
             self.notifications.push(
                 "Screen Control", "Pemilih tab sedang digunakan", "warning")
 
+    def _on_selected_tab_visual(self, data: dict) -> None:
+        sheet = getattr(self, "tab_share_sheet", None)
+        if sheet is not None:
+            sheet.apply_visual_state(data)
+
     def _on_screen_control_changed(self, data: dict) -> None:
         sheet = getattr(self, "tab_share_sheet", None)
         if sheet is not None:

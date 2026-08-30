@@ -8590,3 +8590,69 @@ credential access, atau push.
 Langkah aman berikutnya: review dan commit exact Task 6 hunks saja, jalankan post-commit focused tests,
 lalu mulai Task 7 dengan RED pure projection/visualization-only cursor tests; jangan lakukan live
 browser validation tanpa otorisasi terpisah.
+
+Task 6 kemudian di-commit sebagai `9307f1b` — `Screen Control: add honest selected-tab actions`.
+
+### Task 7 — volatile preview projection dan visualization-only Jarvis cursor 2026-08-30
+
+Task 7 dikerjakan RED-first dan sepenuhnya offline dengan fake Page/ElementHandle/clock/PNG/Qt/BUS/
+timer. Tidak ada Chrome launch, CDP live attach, enumerasi tab nyata, screenshot live, network, browser
+atau desktop input, native pointer, credential, config, maupun browser-setting change.
+
+RED dan implementasi:
+
+- pure projection RED awal menghasilkan **19 failed** karena model metadata/generation, fungsi proyeksi,
+  dan widget preview belum ada. GREEN memetakan DOM CSS viewport rect ke actual screenshot bitmap lalu
+  ke aspect-fit Qt logical widget rect dengan letterbox offset, clipping viewport, dan pemeriksaan skala
+  X/Y. Kasus 1×, 2× HiDPI, fractional 1.5× mixed-DPI, resize, partial clipping, dan fully off-viewport
+  dikunci tanpa pernah menghasilkan coordinate global/OS;
+- metadata malformed/missing, dimension non-finite/non-positive, screenshot/viewport aspect mismatch,
+  invalid rect, generation mismatch, TTL expiry, dan QImage dimension mismatch semuanya menyembunyikan
+  cursor atau membersihkan preview daripada menebak;
+- `TabSharePreview` hanya menyimpan salinan QImage volatile dan satu visual state
+  `planned|attempted|verified|ambiguous`. Widget focusless, `WA_TransparentForMouseEvents`, tidak menerima
+  fokus, dan tidak mempunyai mouse/key/wheel/touch/tablet/drag/drop handler. Paint path hanya menggambar
+  screenshot, target outline, dan visual cursor widget-local;
+- wiring RED berikutnya menghasilkan **3 failed, 19 passed** karena host belum punya preview lease dan
+  sheet belum dapat mengambil opaque preview. GREEN menambahkan tepat satu process-local preview lease,
+  PNG IHDR size parsing, viewport/DOM metadata dari exact retained handle, exact
+  target/document/observation/preview generations, dan TTL 5 detik. Preview replacement meretire image
+  lama;
+- action host menjadi satu-satunya capture owner: preview diambil sekali dari exact retained ref sebelum
+  ref dikonsumsi, lalu action result membawa hanya opaque preview ID secara internal. Tool tidak mengambil
+  screenshot kedua. Local BUS event `selected_tab.visual` hanya memuat session ID, task ID, opaque preview
+  ID, dan bounded state; ToolResult/model/audit tidak menerima preview ID, image bytes, DOM rect, viewport,
+  screenshot dimensions, target ID, selector, atau coordinate;
+- `TabShareSheet` menerima event hanya untuk exact active local session/task scope, mengambil volatile
+  image/metadata lewat `host.get_preview(preview_id)`, dan gagal tertutup bila lease sudah diganti atau
+  dicabut sebelum queued Qt delivery. Screenshot refresh dan cursor state tidak pernah menjadi action
+  proof; attempted/executed/verified/ambiguous evidence tetap berasal dari Task 6;
+- navigation, preview replacement, CAPTCHA, semantic revoke/expiry, target close/disconnect, terminal task,
+  user stop, application shutdown, sheet close, dan timer expiry membersihkan cursor dan image. Pre-CAPTCHA
+  preview sengaja tidak dipertahankan. Selected-tab preview tidak memakai global native desktop overlay
+  karena coordinate-nya widget-local dan authority-nya berbeda.
+
+Verifikasi aktual setelah GREEN dan review:
+
+- focused Task 7 Qt/action suite: **79 passed** (`3.20s`) untuk cursor projection, selected-tab actions,
+  tab-share sheet, dan native desktop overlay regression;
+- adjacent selected-tab/Screen Control/evidence suite: **177 passed** (`7.94s`);
+- scoped Ruff: **All checks passed!**; scoped `py_compile` lulus; FROZEN integrity **OK** (10 files,
+  baseline `094b696`); scoped `git diff --check` tidak menemukan whitespace error dan hanya memberi warning
+  konversi LF/CRLF working copy;
+- forbidden `pyautogui|NativeCUADriver|cua_driver|DesktopService` search pada selected-tab host/tool/UI
+  preview lane nol hasil;
+- full repository pytest tetap **blocked saat collection** oleh unrelated missing
+  `jarvis.integrations.voice_turn_guard`; root Ruff tetap melaporkan existing S110 pada
+  `jarvis/agent/communication_authorization.py:142` dan `jarvis/agent/tools/whatsapp_web.py:364`. Blocker
+  unrelated tersebut tidak diubah untuk memaksa hasil hijau.
+
+Batas bukti: Task 7 berstatus `source-present`, `focused-tested`, dan
+`runtime-wired-with-offline-fakes`. Chrome attach, inventory/visibility tab nyata, screenshot nyata,
+action situs nyata, mixed-DPI monitor nyata, dan akurasi cursor pada situs nyata tetap `unproven-live`.
+Seluruh screenshot/Qt/browser dependencies pada bukti di atas adalah fake/offline. Tidak ada authority
+`DesktopService`, native pointer movement, live browser/desktop action, credential/config access, atau push.
+
+Langkah aman berikutnya: commit hanya exact Task 7 paths/hunks setelah cached patch diperiksa lengkap,
+jalankan post-commit offline verification, lalu mulai Task 8 dengan RED surface-aware CAPTCHA lifecycle
+fakes; jangan lakukan live Chrome validation tanpa otorisasi terpisah.

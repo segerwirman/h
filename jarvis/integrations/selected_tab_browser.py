@@ -130,6 +130,24 @@ class SelectedTabObservationResult:
 
 
 @dataclass(frozen=True)
+class SelectedTabPreviewResult:
+    ok: bool
+    state: str
+    reason: str = ""
+    preview_id: str = ""
+    image_bytes: bytes = b""
+    viewport_css: tuple[float, float] = (0.0, 0.0)
+    screenshot_px: tuple[int, int] = (0, 0)
+    dom_rect: tuple[float, float, float, float] | None = None
+    target_generation: int = 0
+    document_generation: int = 0
+    observation_generation: int = 0
+    preview_generation: int = 0
+    captured_at: float = 0.0
+    expires_at: float = 0.0
+
+
+@dataclass(frozen=True)
 class SelectedTabActionClassification:
     allowed: bool
     requires_confirmation: bool = False
@@ -147,6 +165,7 @@ class SelectedTabActionResult:
     ambiguous: bool = False
     requires_confirmation: bool = False
     after_observation: SelectedTabObservationResult | None = None
+    preview_id: str = ""
 
 
 @dataclass
@@ -185,6 +204,11 @@ class _SelectedLease:
     browser: object
     page: object
     target: SelectedTarget
+
+
+@dataclass
+class _PreviewLease:
+    result: SelectedTabPreviewResult
 
 
 def _opaque_id() -> str:
@@ -349,6 +373,8 @@ class SelectedTabBrowserHost:
         self._target_generation = 0
         self._document_generation = 0
         self._observation_generation = 0
+        self._preview_generation = 0
+        self._preview_lease: _PreviewLease | None = None
         self._semantic_observation: _SemanticObservationLease | None = None
         self._semantic_clock = time.monotonic
         self._action_timeout_s = _ACTION_TIMEOUT_S
@@ -418,6 +444,29 @@ class SelectedTabBrowserHost:
             str(target_id or "").strip(),
             target_generation,
         )
+
+    def capture_preview(
+        self,
+        *,
+        session_id: str,
+        task_id: str,
+        target_id: str,
+        target_generation: int,
+        observation_id: str,
+        element_id: str,
+    ) -> SelectedTabPreviewResult:
+        return self._call(
+            self._capture_preview,
+            str(session_id or "").strip(),
+            str(task_id or "").strip(),
+            str(target_id or "").strip(),
+            target_generation,
+            str(observation_id or "").strip(),
+            str(element_id or "").strip(),
+        )
+
+    def get_preview(self, preview_id: str) -> SelectedTabPreviewResult | None:
+        return self._call(self._get_preview, str(preview_id or "").strip())
 
     def element_ref_is_actionable(
         self,
@@ -847,6 +896,7 @@ class SelectedTabBrowserHost:
         task_id: str,
         *,
         expose: bool,
+        preserve_preview: bool = False,
     ) -> SelectedTabObservationResult:
         selected = self._selected
         if selected is None:
@@ -863,7 +913,9 @@ class SelectedTabBrowserHost:
         try:
             records = list(await _resolve(self._semantic_harvester(selected.page)) or ())
         except Exception as exc:
-            self._retire_semantic_observation()
+            self._retire_semantic_observation(
+                keep_preview=preserve_preview,
+            )
             return SelectedTabObservationResult(
                 False,
                 "failed",
@@ -904,7 +956,9 @@ class SelectedTabBrowserHost:
             now=now,
         )
         decision = gate.classify_observation(gate_observation)
-        self._retire_semantic_observation()
+        self._retire_semantic_observation(
+            keep_preview=preserve_preview and decision.allowed,
+        )
         self._observation_generation += 1
         if not decision.allowed:
             gate.invalidate(gate_observation.id)
@@ -961,6 +1015,189 @@ class SelectedTabBrowserHost:
             expires_at=expires_at,
             elements=tuple(descriptors),
         )
+
+    async def _capture_preview(
+        self,
+        session_id: str,
+        task_id: str,
+        target_id: str,
+        target_generation: int,
+        observation_id: str,
+        element_id: str,
+    ) -> SelectedTabPreviewResult:
+        async with self._semantic_lifecycle_lock():
+            error = await self._selected_binding_error(
+                session_id,
+                task_id,
+                target_id,
+                target_generation,
+            )
+            if error:
+                return SelectedTabPreviewResult(False, error[0], error[1])
+            lease = self._semantic_observation
+            selected = self._selected
+            if lease is None or selected is None:
+                return SelectedTabPreviewResult(
+                    False,
+                    "blocked",
+                    "selected_tab_observation_stale",
+                )
+            try:
+                now = float(self._semantic_clock())
+            except Exception:
+                now = lease.expires_at
+            if now >= lease.expires_at:
+                self._retire_semantic_observation()
+                return SelectedTabPreviewResult(
+                    False,
+                    "blocked",
+                    "selected_tab_observation_expired",
+                )
+            if (
+                lease.session_id != session_id
+                or lease.task_id != task_id
+                or lease.target_id != target_id
+                or lease.target_generation != target_generation
+                or lease.observation_id != observation_id
+                or lease.document_generation != self._document_generation
+                or selected.target.target_id != target_id
+                or selected.target.target_generation != target_generation
+            ):
+                return SelectedTabPreviewResult(
+                    False,
+                    "blocked",
+                    "selected_tab_observation_mismatch",
+                )
+            ref = lease.refs.get(element_id)
+            if ref is None:
+                return SelectedTabPreviewResult(
+                    False,
+                    "blocked",
+                    "selected_tab_element_ref_stale",
+                )
+            return await self._capture_preview_from_ref(
+                lease,
+                selected,
+                ref,
+                now=now,
+            )
+
+    async def _capture_preview_from_ref(
+        self,
+        lease: _SemanticObservationLease,
+        selected: _SelectedLease,
+        ref: _SemanticRef,
+        *,
+        now: float | None = None,
+    ) -> SelectedTabPreviewResult:
+        try:
+            captured_at = float(self._semantic_clock()) if now is None else float(now)
+        except Exception:
+            captured_at = lease.expires_at
+        if captured_at >= lease.expires_at:
+            return SelectedTabPreviewResult(
+                False,
+                "blocked",
+                "selected_tab_observation_expired",
+            )
+        try:
+            if not bool(await _resolve(ref.handle.is_visible())):
+                raise RuntimeError("not-visible")
+            box = await _resolve(ref.handle.bounding_box())
+        except Exception:
+            box = None
+        if not _valid_box(box):
+            return SelectedTabPreviewResult(
+                False,
+                "blocked",
+                "selected_tab_element_not_actionable",
+            )
+        viewport = _viewport_css_size(selected.page)
+        if viewport is None:
+            return SelectedTabPreviewResult(
+                False,
+                "failed",
+                "selected_tab_preview_viewport_unavailable",
+            )
+        screenshot = getattr(selected.page, "screenshot", None)
+        if not callable(screenshot):
+            return SelectedTabPreviewResult(
+                False,
+                "failed",
+                "selected_tab_preview_capture_unavailable",
+            )
+        try:
+            image_bytes = bytes(
+                await _resolve(screenshot(full_page=False, type="png")) or b""
+            )
+            screenshot_px = _png_dimensions(image_bytes)
+        except Exception:
+            image_bytes = b""
+            screenshot_px = None
+        if screenshot_px is None:
+            return SelectedTabPreviewResult(
+                False,
+                "failed",
+                "selected_tab_preview_capture_failed",
+            )
+        scale_x = screenshot_px[0] / viewport[0]
+        scale_y = screenshot_px[1] / viewport[1]
+        if not math.isclose(
+            scale_x,
+            scale_y,
+            rel_tol=0.01,
+            abs_tol=1e-6,
+        ):
+            return SelectedTabPreviewResult(
+                False,
+                "failed",
+                "selected_tab_preview_scale_mismatch",
+            )
+        self._preview_generation += 1
+        preview_id = str(self._semantic_id_factory() or "")
+        if not preview_id:
+            self._retire_preview()
+            return SelectedTabPreviewResult(
+                False,
+                "failed",
+                "selected_tab_preview_id_invalid",
+            )
+        result = SelectedTabPreviewResult(
+            True,
+            "previewed",
+            preview_id=preview_id,
+            image_bytes=image_bytes,
+            viewport_css=viewport,
+            screenshot_px=screenshot_px,
+            dom_rect=(
+                float(box["x"]),
+                float(box["y"]),
+                float(box["width"]),
+                float(box["height"]),
+            ),
+            target_generation=lease.target_generation,
+            document_generation=lease.document_generation,
+            observation_generation=lease.observation_generation,
+            preview_generation=self._preview_generation,
+            captured_at=captured_at,
+            expires_at=lease.expires_at,
+        )
+        self._retire_preview()
+        self._preview_lease = _PreviewLease(result)
+        return result
+
+    def _get_preview(self, preview_id: str) -> SelectedTabPreviewResult | None:
+        lease = self._preview_lease
+        if lease is None or lease.result.preview_id != preview_id:
+            return None
+        try:
+            now = float(self._semantic_clock())
+        except Exception:
+            now = lease.result.expires_at
+        if now >= lease.result.expires_at:
+            self._retire_preview()
+            return None
+        return lease.result
 
     async def _classify_action(
         self,
@@ -1206,9 +1443,15 @@ class SelectedTabBrowserHost:
                     before_scroll = await _read_scroll_y(page)
                 except Exception:
                     return _blocked_action("selected_tab_scroll_state_unavailable")
+            preview = await self._capture_preview_from_ref(
+                lease,
+                selected,
+                ref,
+            )
+            preview_id = preview.preview_id if preview.ok else ""
             action_document_generation = self._document_generation
             action_connection_id = selected.connection_id
-            self._retire_semantic_observation()
+            self._retire_semantic_observation(keep_preview=bool(preview_id))
             attempted = True
             try:
                 if action == "click":
@@ -1229,6 +1472,7 @@ class SelectedTabBrowserHost:
                     "selected_tab_action_attempt_ambiguous",
                     attempted=attempted,
                     ambiguous=True,
+                    preview_id=preview_id,
                 )
             executed = True
             boundary_reason = await self._post_action_boundary_reason(
@@ -1239,7 +1483,10 @@ class SelectedTabBrowserHost:
                 action_connection_id,
             )
             if boundary_reason:
-                return _executed_unverified_action(boundary_reason)
+                return _executed_unverified_action(
+                    boundary_reason,
+                    preview_id=preview_id,
+                )
             verified = False
             if action == "click":
                 try:
@@ -1269,6 +1516,7 @@ class SelectedTabBrowserHost:
                     session_id,
                     task_id,
                     expose=True,
+                    preserve_preview=bool(preview_id),
                 )
             except Exception:
                 after = SelectedTabObservationResult(
@@ -1290,6 +1538,9 @@ class SelectedTabBrowserHost:
                     executed=executed,
                     ambiguous=True,
                     after_observation=None,
+                    preview_id=(
+                        "" if after.state == "captcha_handoff" else preview_id
+                    ),
                 )
             if not verified:
                 return SelectedTabActionResult(
@@ -1300,6 +1551,7 @@ class SelectedTabBrowserHost:
                     executed=True,
                     ambiguous=True,
                     after_observation=after,
+                    preview_id=preview_id,
                 )
             return SelectedTabActionResult(
                 True,
@@ -1309,6 +1561,7 @@ class SelectedTabBrowserHost:
                 executed=True,
                 verified=True,
                 after_observation=after,
+                preview_id=preview_id,
             )
 
     async def _post_action_boundary_reason(
@@ -1393,12 +1646,17 @@ class SelectedTabBrowserHost:
             self._retire_semantic_observation()
             return 1
 
-    def _retire_semantic_observation(self) -> None:
+    def _retire_semantic_observation(self, *, keep_preview: bool = False) -> None:
+        if not keep_preview:
+            self._retire_preview()
         lease, self._semantic_observation = self._semantic_observation, None
         if lease is None:
             return
         lease.refs.clear()
         lease.gate.invalidate(lease.gate_observation_id)
+
+    def _retire_preview(self) -> None:
+        self._preview_lease = None
 
     @staticmethod
     def _navigation_reason(admitted_origin: str, current_origin: str) -> str:
@@ -1568,7 +1826,11 @@ def _blocked_action(reason: str) -> SelectedTabActionResult:
     return SelectedTabActionResult(False, "blocked", str(reason or "selected_tab_action_blocked"))
 
 
-def _executed_unverified_action(reason: str) -> SelectedTabActionResult:
+def _executed_unverified_action(
+    reason: str,
+    *,
+    preview_id: str = "",
+) -> SelectedTabActionResult:
     return SelectedTabActionResult(
         False,
         "executed_unverified",
@@ -1576,6 +1838,7 @@ def _executed_unverified_action(reason: str) -> SelectedTabActionResult:
         attempted=True,
         executed=True,
         ambiguous=True,
+        preview_id=preview_id,
     )
 
 
@@ -1629,6 +1892,30 @@ def _valid_box(box: object) -> bool:
     except (KeyError, TypeError, ValueError):
         return False
     return all(math.isfinite(value) for value in values) and values[2] >= 2 and values[3] >= 2
+
+
+def _viewport_css_size(page: object) -> tuple[float, float] | None:
+    viewport = getattr(page, "viewport_size", None)
+    if not isinstance(viewport, dict):
+        return None
+    try:
+        width = float(viewport["width"])
+        height = float(viewport["height"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if not all(math.isfinite(value) and value > 0 for value in (width, height)):
+        return None
+    return width, height
+
+
+def _png_dimensions(data: bytes) -> tuple[int, int] | None:
+    if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        return None
+    width = int.from_bytes(data[16:20], "big")
+    height = int.from_bytes(data[20:24], "big")
+    if width <= 0 or height <= 0:
+        return None
+    return width, height
 
 
 def _bounded(value: object, limit: int) -> str:
@@ -1748,6 +2035,7 @@ __all__ = [
     "SelectedTabBrowserHost",
     "SelectedTabElementDescriptor",
     "SelectedTabObservationResult",
+    "SelectedTabPreviewResult",
     "SelectedTarget",
     "SelectionResult",
 ]

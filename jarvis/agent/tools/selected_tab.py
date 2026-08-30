@@ -9,6 +9,34 @@ from pydantic import BaseModel, ConfigDict, Field
 from jarvis.agent.base import Tool, ToolResult
 from jarvis.integrations.selected_tab_browser import get_host
 
+_VISUAL_STATES = frozenset({"planned", "attempted", "verified", "ambiguous"})
+
+
+def _publish_preview_visual(
+    bus,
+    *,
+    session_id: str,
+    task_id: str,
+    preview_id: str,
+    state: str,
+) -> bool:
+    clean_state = str(state or "").casefold().strip()
+    if (
+        clean_state not in _VISUAL_STATES
+        or not session_id
+        or not task_id
+        or not preview_id
+    ):
+        return False
+    bus.publish(
+        "selected_tab.visual",
+        session_id=str(session_id),
+        task_id=str(task_id),
+        preview_id=str(preview_id),
+        state=clean_state,
+    )
+    return True
+
 
 class _NoParams(BaseModel):
     pass
@@ -292,6 +320,26 @@ class _SelectedTabActionTool(Tool):
                 confirmation=bool(_selected_tab_confirmation),
                 **self._action_args(**kwargs),
             )
+            preview_id = str(getattr(result, "preview_id", "") or "")
+            if preview_id:
+                from jarvis.core.bus import BUS
+
+                state = (
+                    "verified"
+                    if result.verified
+                    else "ambiguous"
+                    if result.ambiguous
+                    else "attempted"
+                    if result.attempted
+                    else "planned"
+                )
+                _publish_preview_visual(
+                    BUS,
+                    session_id=session_id,
+                    task_id=task_id,
+                    preview_id=preview_id,
+                    state=state,
+                )
         except Exception as exc:
             return ToolResult.fail(
                 f"selected_tab_action_failed:{type(exc).__name__}",
