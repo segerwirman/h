@@ -216,11 +216,7 @@ class CaptchaHandoffOwner:
             getattr(request.authority, "surface_kind", "desktop") or "desktop"
         ).casefold()
         if surface_kind == "browser_tab":
-            # Task 5 only stages the existing human continuation. Fresh same-tab
-            # observation/resume belongs to the surface-aware Task 8 adapter; until
-            # then this lane cancels without ever acquiring desktop resources.
-            self._cancel(request, "browser_tab_resume_unavailable")
-            return "cancelled"
+            return await self._resume_browser_tab(request)
         if surface_kind != "desktop":
             self._cancel(request, "captcha_surface_unsupported")
             return "cancelled"
@@ -249,6 +245,42 @@ class CaptchaHandoffOwner:
                 REGISTRY.release_held(held)
 
         if not decision.allowed:
+            if not COORDINATOR.begin_handoff(request.task_id):
+                self._cancel(request, "repeat_handoff_failed")
+                return "cancelled"
+            if not REGISTRY.begin_wait(request.task_id, "captcha_handoff"):
+                self._cancel(request, "repeat_wait_failed")
+                return "cancelled"
+            request.state = "waiting"
+            self._publish_required()
+            return "waiting"
+
+        REGISTRY.clear_wait_continuation(request.task_id, request.token)
+        request.state = "resumed"
+        self._retire(request)
+        return "resumed"
+
+    async def _resume_browser_tab(self, request: CaptchaHandoffRequest) -> str:
+        """Fresh-observe the exact retained tab without acquiring desktop authority."""
+        try:
+            observation = await asyncio.to_thread(
+                request.authority.observe_for,
+                request.session_id,
+            )
+            allowed = bool(request.authority.observation_allowed(observation))
+        except Exception:
+            self._cancel(request, "fresh_observation_failed")
+            return "cancelled"
+        finally:
+            try:
+                request.authority.clear_session(request.session_id)
+            except Exception as exc:
+                _logger.warning(
+                    "captcha_handoff.fresh_ref_cleanup_failed",
+                    error=type(exc).__name__,
+                )
+
+        if not allowed:
             if not COORDINATOR.begin_handoff(request.task_id):
                 self._cancel(request, "repeat_handoff_failed")
                 return "cancelled"
@@ -319,12 +351,23 @@ class CaptchaHandoffOwner:
         if str(data.get("state", "") or "").casefold() != "off":
             return
         reason = str(data.get("reason", "") or "").casefold()
-        if reason != "expired":
+        cancel_reason = {
+            "expired": "screen_control_expired",
+            "selected_tab_target_closed": "selected_tab_target_closed",
+            "selected_tab_browser_disconnected": "selected_tab_browser_disconnected",
+            "selected_tab_target_navigated": "selected_tab_target_navigated",
+            "selected_tab_cross_origin_navigation": "selected_tab_cross_origin_navigation",
+            "selected_tab_navigation_ineligible": "selected_tab_navigation_ineligible",
+            "selected_tab_lease_generation_mismatch": (
+                "selected_tab_lease_generation_mismatch"
+            ),
+        }.get(reason)
+        if cancel_reason is None:
             return
         with self._lock:
             request = self._request
         if request is not None and request.state in {"staged", "waiting", "resuming"}:
-            self._cancel(request, "screen_control_expired")
+            self._cancel(request, cancel_reason)
 
 
 def _status_value(status) -> str:

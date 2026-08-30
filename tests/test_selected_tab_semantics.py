@@ -468,7 +468,7 @@ def test_captcha_is_classified_before_text_or_refs_escape_and_stages_human_hando
         host.shutdown()
 
 
-def test_captcha_resume_for_browser_tab_fails_closed_without_desktop_reacquisition(monkeypatch):
+def test_captcha_resume_for_browser_tab_fresh_observes_without_desktop_reacquisition(monkeypatch):
     from jarvis.agent import captcha_handoff
 
     events = []
@@ -501,6 +501,9 @@ def test_captcha_resume_for_browser_tab_fails_closed_without_desktop_reacquisiti
     authority = SimpleNamespace(
         surface_kind="browser_tab",
         clear_session=lambda session_id: events.append(f"clear_refs:{session_id}"),
+        observe_for=lambda session_id: events.append(f"fresh_observe:{session_id}")
+        or SimpleNamespace(ok=True, state="observed"),
+        observation_allowed=lambda observation: bool(observation.ok),
     )
     monkeypatch.setattr(captcha_handoff, "REGISTRY", Registry())
     monkeypatch.setattr(captcha_handoff, "COORDINATOR", Coordinator())
@@ -518,16 +521,15 @@ def test_captcha_resume_for_browser_tab_fails_closed_without_desktop_reacquisiti
         )
     )
 
-    assert outcome == "cancelled"
+    assert outcome == "resumed"
     assert "desktop_acquired" not in events
     assert events == [
         "clear_refs:session-a",
         "resume_wait",
         "screen_resumed",
+        "fresh_observe:session-a",
         "clear_refs:session-a",
         "clear",
-        "cancel",
-        "released:browser_tab_resume_unavailable",
     ]
 
 

@@ -55,11 +55,15 @@ class ScreenControlCoordinator:
         scheduler=None,
         overlay=None,
         selected_tab_scope_check=None,
+        selected_tab_release=None,
     ) -> None:
         self._desktop = desktop
         self._selected_tabs = selected_tabs
         self._selected_tab_scope_check = (
             selected_tab_scope_check or self._live_selected_tab_scope
+        )
+        self._selected_tab_release = (
+            selected_tab_release or self._release_selected_tab_host
         )
         self._bus = bus
         self._clock = clock
@@ -281,6 +285,23 @@ class ScreenControlCoordinator:
         return True
 
     @staticmethod
+    def _release_selected_tab_host(
+        target_id: str,
+        target_generation: int,
+    ) -> bool:
+        from jarvis.integrations.selected_tab_browser import get_host
+
+        host = get_host()
+        active = host.active_snapshot()
+        if (
+            not active.active
+            or active.target_id != target_id
+            or active.target_generation != target_generation
+        ):
+            return False
+        return bool(host.stop_selected(target_id, target_generation))
+
+    @staticmethod
     def _live_selected_tab_scope(session_id: str, task_id: str) -> bool:
         try:
             from jarvis.agent import dispatch
@@ -448,8 +469,21 @@ class ScreenControlCoordinator:
                 # reservation cleared by this stale cleanup.
                 self._desktop.release_authority(owner)
             elif surface_kind == BROWSER_TAB_SURFACE:
+                target_id = self._surface_id
+                target_generation = self._surface_generation
                 self._selected_tabs.release_session(owner, reason)
+            else:
+                target_id = ""
+                target_generation = 0
             self._clear_locked()
+        if surface_kind == BROWSER_TAB_SURFACE:
+            try:
+                self._selected_tab_release(target_id, target_generation)
+            except Exception as exc:
+                _logger.warning(
+                    "screen_control.selected_tab_host_release_failed",
+                    error=type(exc).__name__,
+                )
         if timer is not None:
             try:
                 timer.cancel()

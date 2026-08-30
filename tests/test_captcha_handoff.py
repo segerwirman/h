@@ -277,7 +277,17 @@ def test_handoff_wait_starts_only_after_dynamic_desktop_resource_is_released(
         def all_tools(self):
             return {"desktop_observe": OfflineObserve()}
 
-        async def execute(self, name, args, adapter, session, context):
+        async def execute(
+            self,
+            name,
+            args,
+            adapter,
+            session,
+            context,
+            *,
+            overlay=None,
+        ):
+            del args, adapter, session, context, overlay
             assert name == "desktop_observe"
             return await OfflineObserve().run()
 

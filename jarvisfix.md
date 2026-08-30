@@ -8656,3 +8656,74 @@ Seluruh screenshot/Qt/browser dependencies pada bukti di atas adalah fake/offlin
 Langkah aman berikutnya: commit hanya exact Task 7 paths/hunks setelah cached patch diperiksa lengkap,
 jalankan post-commit offline verification, lalu mulai Task 8 dengan RED surface-aware CAPTCHA lifecycle
 fakes; jangan lakukan live Chrome validation tanpa otorisasi terpisah.
+
+Task 7 kemudian di-commit sebagai `59d4096` — `Screen Control: add selected-tab visual cursor`.
+
+### Task 8 — surface-aware CAPTCHA dan terminal selected-tab lifecycle 2026-08-30
+
+Task 8 dikerjakan RED-first dan sepenuhnya offline dengan fake Registry/TaskRegistry, coordinator,
+selected-tab host/session owner, Page/target observation, BUS, Qt entry seam, timer, overlay, dan desktop
+authority guard. Tidak ada Chrome launch/restart, CDP live attach, enumerasi tab nyata, screenshot live,
+network, browser/desktop input, native pointer, credential, config, atau browser-setting change.
+
+RED dan implementasi:
+
+- RED CAPTCHA resume awal menghasilkan **3 failed** karena browser-tab masih memakai placeholder
+  `browser_tab_resume_unavailable`. GREEN mengganti placeholder dengan fresh observation pada exact
+  retained selected target melalui existing process-local `CaptchaHandoffOwner`; desktop resource
+  reacquisition tetap hanya berada pada surface desktop;
+- selected-tab CAPTCHA authority sekarang mengikat exact task ID, opaque target ID, dan target generation
+  secara process-local. Agent-facing schema/result tidak memperoleh target identity, generation, selector,
+  coordinate, raw CDP, JavaScript, storage, credential, maupun candidate inventory;
+- exact local `CAPTCHA selesai` tetap memakai satu continuation token dan lifecycle `TaskRegistry.WAITING`.
+  Fresh same-target observation yang masih mendeteksi marker mengembalikan continuation yang sama ke
+  `WAITING`; marker yang hilang meretire continuation. Ref pra-CAPTCHA tetap invalid dan ref validation
+  fresh dibersihkan sebelum model melanjutkan, sehingga normal observe berikutnya harus membuat opaque
+  observation generation baru;
+- browser-tab validation tidak memanggil `REGISTRY.try_acquire(..., {"desktop"})`, tidak mengklaim
+  `DesktopService`, dan tidak memanggil native input. Fake registry/desktop guard sengaja melempar bila
+  authority desktop disentuh;
+- RED terminal lifecycle berikutnya menghasilkan **2 failed** karena coordinator belum meretire host
+  target dan handoff owner hanya mengenali expiry. GREEN menambahkan exact target/generation host release
+  di luar coordinator lock, stale-target guard terhadap active host snapshot, serta cancellation untuk
+  target close, browser disconnect, navigation, cross-origin/ineligible navigation, dan lease-generation
+  mismatch;
+- terminal release sekarang meretire selected-tab lease, host target, semantic refs, volatile preview/
+  cursor, coordinator state, overlay, timer, dan grant/session cleanup melalui existing dispatch terminal
+  ordering. Repeated release bersifat idempotent dan tidak dapat menghentikan target baru dari callback
+  stale;
+- offline fake end-to-end mencakup icon → local candidate inventory → exactly-one opaque selection →
+  browser-tab ACTIVE → semantic observe → verified action evidence/visual state → CAPTCHA detect →
+  `WAITING` → exact local completion → same-target fresh validation → new observation → idempotent stop.
+  Existing selected-tab action/cursor tests tetap mencakup ambiguous/unverified visual state; visual cursor
+  dan screenshot refresh tidak dipakai sebagai proof;
+- existing `tests/test_captcha_handoff.py` fake registry diselaraskan dengan keyword-only internal
+  `overlay` argument; tidak ada production behavior unrelated yang diubah.
+
+Verifikasi aktual:
+
+- lifecycle suite: **11 passed**; focused Task 8 suite: **84 passed**; seluruh selected-tab regressions:
+  **127 passed**; adjacent lifecycle/Screen Control suite: **140 passed**;
+- sesudah rename test terakhir, affected semantics+lifecycle rerun: **22 passed** (`1.70s`);
+- scoped Ruff: **All checks passed!**; scoped `py_compile` lulus; scoped `git diff --check` bersih;
+  FROZEN integrity **OK** (10 files, baseline `094b696`); forbidden native-path search pada selected-tab
+  lane nol hasil;
+- full repository pytest tetap **blocked saat collection** oleh unrelated missing
+  `jarvis.integrations.voice_turn_guard`; root Ruff tetap melaporkan existing S110 pada
+  `jarvis/agent/communication_authorization.py:142` dan `jarvis/agent/tools/whatsapp_web.py:364`. Blocker
+  unrelated tersebut tidak diubah untuk memaksa hasil hijau;
+- background review tambahan tidak menghasilkan review karena provider model `hermes` unavailable
+  (`model_not_found` HTTP 404); itu bukan approval. Exact scoped diff inspection dan offline regression
+  results di atas yang menjadi bukti perubahan.
+
+Klasifikasi bukti: `source-present`, `focused-tested`, `runtime-wired-with-offline-fakes`, scoped static dan
+frozen integrity **lulus**; broad pytest/root Ruff **blocked** oleh issue unrelated; Chrome attach, real-tab
+inventory/visibility, real screenshot, real Playwright site action, real mixed-DPI cursor, real CAPTCHA site
+lifecycle, serta real close/disconnect timing tetap `unproven-live`. Seluruh browser/Page/Qt/BUS/timer/
+screenshot dependencies pada Task 8 adalah fake/offline. Tidak ada klaim attach/action/success live,
+`DesktopService` atau native pointer authority, config/credential/browser-setting access, push, solver,
+bypass, click-through, outsourcing, maupun ref pra-CAPTCHA reuse.
+
+Langkah aman berikutnya: stage dan commit hanya exact Task 8 paths/hunks setelah cached patch diperiksa
+lengkap, jalankan post-commit offline verification, lalu bangkitkan prompt fase lanjutan; jangan lakukan live
+Chrome/browser/desktop validation tanpa otorisasi terpisah.

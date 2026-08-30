@@ -63,15 +63,40 @@ class _ScrollParams(_TargetParams):
 
 
 class _SelectedTabCaptchaAuthority:
-    """Narrow CAPTCHA seam; it owns refs, never desktop resources or input."""
+    """Narrow CAPTCHA seam bound to one tab; never owns desktop resources."""
 
     surface_kind = "browser_tab"
 
-    def __init__(self, host) -> None:
+    def __init__(
+        self,
+        host,
+        *,
+        task_id: str,
+        target_id: str,
+        target_generation: int,
+    ) -> None:
         self._host = host
+        self._task_id = str(task_id or "").strip()
+        self._target_id = str(target_id or "").strip()
+        self._target_generation = target_generation
 
     def clear_session(self, session_id: str) -> int:
         return self._host.clear_semantic_session(session_id)
+
+    def observe_for(self, session_id: str):
+        result = self._host.observe_selected(
+            session_id=str(session_id or "").strip(),
+            task_id=self._task_id,
+            target_id=self._target_id,
+            target_generation=self._target_generation,
+        )
+        if not result.ok and result.state != "captcha_handoff":
+            raise RuntimeError(str(result.reason or "selected_tab_fresh_observation_failed"))
+        return result
+
+    @staticmethod
+    def observation_allowed(observation) -> bool:
+        return bool(getattr(observation, "ok", False))
 
 
 class SelectedTabObserve(Tool):
@@ -126,7 +151,12 @@ class SelectedTabObserve(Tool):
                     OWNER.stage(
                         session_id=session_id,
                         task_id=task_id,
-                        authority=_SelectedTabCaptchaAuthority(host),
+                        authority=_SelectedTabCaptchaAuthority(
+                            host,
+                            task_id=task_id,
+                            target_id=target_id,
+                            target_generation=target_generation,
+                        ),
                     )
                     return ToolResult.fail("selected_tab_handoff_required")
                 return ToolResult.fail(str(result.reason or "selected_tab_observe_failed"))
@@ -195,7 +225,15 @@ def _observation_content(result):
     }
 
 
-def _action_tool_result(result, *, host, session_id: str, task_id: str) -> ToolResult:
+def _action_tool_result(
+    result,
+    *,
+    host,
+    session_id: str,
+    task_id: str,
+    target_id: str,
+    target_generation: int,
+) -> ToolResult:
     evidence = {
         "attempted": bool(result.attempted),
         "executed": bool(result.executed),
@@ -219,7 +257,12 @@ def _action_tool_result(result, *, host, session_id: str, task_id: str) -> ToolR
         OWNER.stage(
             session_id=session_id,
             task_id=task_id,
-            authority=_SelectedTabCaptchaAuthority(host),
+            authority=_SelectedTabCaptchaAuthority(
+                host,
+                task_id=task_id,
+                target_id=target_id,
+                target_generation=target_generation,
+            ),
         )
         error = "selected_tab_handoff_required"
     elif result.ambiguous:
@@ -353,6 +396,8 @@ class _SelectedTabActionTool(Tool):
             host=host,
             session_id=session_id,
             task_id=task_id,
+            target_id=target_id,
+            target_generation=target_generation,
         )
 
 
