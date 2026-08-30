@@ -212,6 +212,18 @@ class CaptchaHandoffOwner:
             self._cancel(request, "screen_control_resume_failed")
             return "cancelled"
 
+        surface_kind = str(
+            getattr(request.authority, "surface_kind", "desktop") or "desktop"
+        ).casefold()
+        if surface_kind == "browser_tab":
+            # Task 5 only stages the existing human continuation. Fresh same-tab
+            # observation/resume belongs to the surface-aware Task 8 adapter; until
+            # then this lane cancels without ever acquiring desktop resources.
+            self._cancel(request, "browser_tab_resume_unavailable")
+            return "cancelled"
+        if surface_kind != "desktop":
+            self._cancel(request, "captcha_surface_unsupported")
+            return "cancelled"
         held = await self._acquire_desktop(request, bg_task)
         if held is None:
             self._cancel(request, "desktop_reacquire_failed")

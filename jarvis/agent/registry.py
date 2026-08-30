@@ -558,10 +558,18 @@ def _log_call(name: str, args: dict, res: ToolResult, elapsed_s: float,
 _SECRET_HINTS = ("key", "token", "password", "secret", "credential")
 _DESKTOP_SAFE_AUDIT_ARGS = frozenset({"observation_id", "element_id"})
 _DESKTOP_VISUAL_AUDIT_TOOLS = frozenset({"desktop_visual_observe"})
+_SELECTED_TAB_AUDIT_TOOLS = frozenset({
+    "selected_tab_observe",
+    "selected_tab_click",
+    "selected_tab_type",
+    "selected_tab_scroll",
+})
 
 
 def _audit_args(name: str, args: dict) -> dict:
-    """Keep desktop-safe and visual audit opaque; values/UI text never enter telemetry."""
+    """Keep semantic/visual audits opaque; values and UI text never persist."""
+    if str(name) in _SELECTED_TAB_AUDIT_TOOLS:
+        return {"action": str(name)}
     if str(name) in _DESKTOP_VISUAL_AUDIT_TOOLS:
         return {"action": str(name)}
     if str(name).startswith("desktop_safe") or str(name) == "desktop_observe":
@@ -573,6 +581,8 @@ def _audit_args(name: str, args: dict) -> dict:
 
 
 def _audit_error(name: str, error: str | None) -> str | None:
+    if error and str(name) in _SELECTED_TAB_AUDIT_TOOLS:
+        return "selected_tab_failed"
     if error and str(name) in _DESKTOP_VISUAL_AUDIT_TOOLS:
         return "desktop_visual_failed"
     if error and (str(name).startswith("desktop_safe") or str(name) == "desktop_observe"):

@@ -8458,3 +8458,68 @@ push, atau klaim keberhasilan situs nyata.
 
 Langkah aman berikutnya: commit exact tiga path follow-up ini, regenerate prompt Task 5, lalu mulai
 Task 5 hanya dengan RED fake semantic-observation/privacy tests.
+
+### Task 5 — selected-tab semantic observation/privacy boundary 2026-08-30
+
+Task 5 dimulai RED-first hanya dengan fake Page/ElementHandle/clock dan tanpa Chrome/CDP live.
+RED awal `tests/test_selected_tab_semantics.py` menghasilkan **7 failed** karena host belum memiliki
+`observe_selected`/opaque ref lifecycle dan tool `selected_tab_observe` belum ada. RED terpisah untuk
+CAPTCHA browser-tab juga gagal karena existing owner mencoba `REGISTRY.try_acquire(...,
+{"desktop"})`; ini membuktikan staging selected-tab belum aman bila resume masih desktop-only.
+
+Implementasi scoped:
+
+- `SelectedTabBrowserHost` sekarang menjalankan semantic harvest pada browser-owner loop, membaca
+  tepat selected Page, dan memvalidasi exact session/task/target/target-generation terhadap
+  `ScreenControlCoordinator` sebelum harvest;
+- hasil agent-visible hanya memuat sanitized origin, bounded role/name/label/text/type/state, opaque
+  observation/element IDs, target/document/observation generations, serta TTL 5 detik. Raw target ID,
+  title/inventory tab lokal, selector, rect/coordinate, screenshot, query/fragment, cookie/storage,
+  Page, ElementHandle, dan private CAPTCHA metadata tidak diserialkan;
+- process-local ref menyimpan exact ElementHandle. Eligibility action future membaca ulang
+  `is_visible()` dan `bounding_box()` dari handle yang sama tanpa selector/label re-query;
+- observation baru, TTL expiry, exact session cleanup, navigation, target close, disconnect, stop,
+  dan shutdown meretire ref map serta CUA observation;
+- password/login/PIN/OTP/payment/credential, file/upload, download, permission, disabled, unknown,
+  invisible, dan invalid-geometry elements tidak mendapat opaque ref. Review langsung menemukan bahwa
+  production harvester belum membawa metadata `download`/`autocomplete`, sehingga anchor download
+  berlabel netral atau field `autocomplete=one-time-code` dapat lolos. Test RED menangkap dua kasus
+  tersebut (**1 failed**), lalu GREEN **11 passed** setelah atribut bounded itu dibaca process-local
+  hanya untuk admission filtering dan tetap tidak diserialkan;
+- seluruh tree diklasifikasi CAPTCHA sebelum descriptor atau ref keluar. Tool men-stage owner human
+  handoff yang sama dengan authority `surface_kind=browser_tab`; sampai adapter resume surface-aware
+  Task 8 tersedia, resume browser-tab sengaja cancel fail-closed dengan
+  `browser_tab_resume_unavailable` dan **tidak pernah** mengakuisisi resource desktop;
+- `selected_tab_observe` terdaftar melalui auto-discovery dengan no-parameter schema, read-only,
+  protected selected-tab policy, dan audit output opaque. Toolgroup selected-tab ditambahkan sebagai
+  satu hunk terpisah tanpa mengambil hunk video-analysis user yang sudah ada.
+
+Verifikasi aktual setelah GREEN:
+
+- focused/adjacent non-CAPTCHA setelah review fix: **113 passed** (`6.16s`);
+- compatible CAPTCHA regressions setelah review fix: **35 passed, 1 deselected** (`1.83s`). Satu test lama yang
+  dideselect (`test_handoff_wait_starts_only_after_dynamic_desktop_resource_is_released`) gagal
+  sebelum mencapai assertions karena fake `Registry.execute` belum menerima keyword `overlay` yang
+  sudah dikirim existing agent loop; blocker fixture ini tidak disebabkan perubahan Task 5 dan tidak
+  diubah di slice ini;
+- staged-index validation setelah perbaikan partial staging: scoped Ruff **All checks passed!**,
+  staged-tree `py_compile` lulus, staged-tree focused semantics **11 passed** (`2.54s`), dan
+  `git diff --cached --check` bersih. Scoped working-tree Ruff/`py_compile` juga lulus; forbidden
+  `pyautogui|NativeCUADriver|cua_driver|DesktopService` search pada selected-tab host/tool nol hasil;
+  FROZEN integrity **OK** (10 files, baseline `094b696`);
+- dua upaya background reviewer Task 5 gagal sebelum membaca diff karena provider mengarahkan model
+  ke `hermes` yang unavailable (`model_not_found` HTTP 404); kegagalan itu bukan approval. Review
+  read-only langsung kemudian menemukan dan menutup gap metadata hidden di atas;
+- full repository pytest tetap berhenti saat collection karena unrelated missing
+  `jarvis.integrations.voice_turn_guard`; root Ruff tetap melaporkan existing S110 di
+  `jarvis/agent/communication_authorization.py:142` dan `jarvis/agent/tools/whatsapp_web.py:364`.
+
+Batas bukti: Task 5 berstatus `source-present`, `focused-tested`, dan
+`runtime-wired-with-offline-fakes`. Live Chrome/CDP attach, tab nyata, real DOM/ElementHandle event
+transport, preview/screenshot, browser action, post-action verification, CAPTCHA selected-tab resume,
+dan situs nyata tetap `unproven-live`/belum diimplementasikan. Tidak ada Chrome launch, live attach,
+credential access, config/browser-setting edit, native pointer/DesktopService authority, push, atau
+klaim aksi situs berhasil.
+
+Langkah aman berikutnya: review offline diff/commit Task 5 dan commit hanya exact Task 5 paths/hunks;
+jangan mulai Task 6 click/type/scroll sebelum review itu bersih.
