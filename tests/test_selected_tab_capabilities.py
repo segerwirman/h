@@ -391,6 +391,31 @@ def test_dispatch_mints_overlay_after_real_registry_binding(monkeypatch):
     assert captured["mint"][0] == session.id
 
 
+def test_matching_overlay_exposes_all_protected_selected_tab_writer_schemas(monkeypatch):
+    from jarvis.agent import local_run_capabilities, registry
+
+    adapter = object()
+    monkeypatch.setattr(
+        local_run_capabilities,
+        "_is_trusted_local_adapter",
+        lambda candidate: candidate is adapter,
+    )
+    overlay = local_run_capabilities.mint_selected_tab_overlay(
+        session_id="session-a",
+        task_id="T-a",
+        adapter=adapter,
+    )
+
+    names = _schema_names(registry.schemas(overlay=overlay))
+
+    assert {
+        "selected_tab_observe",
+        "selected_tab_click",
+        "selected_tab_type",
+        "selected_tab_scroll",
+    } <= names
+
+
 def test_execution_context_child_drops_selected_tab_authority():
     from jarvis.agent.execution_context import ExecutionContext
 

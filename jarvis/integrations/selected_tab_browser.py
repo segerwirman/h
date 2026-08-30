@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import Callable
 from urllib.parse import urlsplit
 
-from jarvis.automation.cua_safety import CuaSafetyGate
+from jarvis.automation.cua_safety import CuaSafetyGate, admit_text_entry
 from jarvis.core import log
 from jarvis.core.element_model import ScreenElementTree, UIElement, elements_from_harvest
 from jarvis.integrations import user_browser
@@ -25,6 +25,8 @@ from jarvis.integrations import user_browser
 _logger = log.get("integrations.selected_tab_browser")
 _SEMANTIC_MAX_ELEMENTS = 100
 _SEMANTIC_TTL_S = 5.0
+_SCROLL_STEP_PX = 240
+_ACTION_TIMEOUT_S = 8.0
 _SAFE_STATE_KEYS = frozenset({
     "checked", "disabled", "expanded", "focused", "pressed", "selected",
 })
@@ -40,6 +42,15 @@ _PERMISSION_TERMS = (
     "permission", "browser settings", "site settings",
 )
 _DOWNLOAD_TERMS = ("download", "save file", "export file")
+_DESTRUCTIVE_ACTION_TERMS = (
+    "delete", "remove", "erase", "format", "reset", "wipe", "discard",
+    "uninstall", "overwrite", "send", "submit", "purchase", "pay",
+    "confirm order",
+)
+_CLICK_ROLES = frozenset({
+    "button", "checkbox", "dropdown", "expander", "link", "menu_item",
+    "radio", "switch", "toggle",
+})
 _SENSITIVE_AUTOCOMPLETE_TERMS = (
     "current-password", "new-password", "one-time-code", "username", "webauthn",
     "cc-",
@@ -116,6 +127,26 @@ class SelectedTabObservationResult:
     captured_at: float = 0.0
     expires_at: float = 0.0
     elements: tuple[SelectedTabElementDescriptor, ...] = ()
+
+
+@dataclass(frozen=True)
+class SelectedTabActionClassification:
+    allowed: bool
+    requires_confirmation: bool = False
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class SelectedTabActionResult:
+    ok: bool
+    state: str
+    reason: str = ""
+    attempted: bool = False
+    executed: bool = False
+    verified: bool = False
+    ambiguous: bool = False
+    requires_confirmation: bool = False
+    after_observation: SelectedTabObservationResult | None = None
 
 
 @dataclass
@@ -320,9 +351,11 @@ class SelectedTabBrowserHost:
         self._observation_generation = 0
         self._semantic_observation: _SemanticObservationLease | None = None
         self._semantic_clock = time.monotonic
+        self._action_timeout_s = _ACTION_TIMEOUT_S
         self._semantic_id_factory = _opaque_id
         self._semantic_harvester = _harvest_semantic_records
         self._semantic_binding_check = _selected_tab_binding_error
+        self._semantic_lock: asyncio.Lock | None = None
         self._closed = False
         self._startup_abandoned = threading.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -408,6 +441,64 @@ class SelectedTabBrowserHost:
             target_generation,
             document_generation,
             observation_generation,
+        )
+
+    def classify_action(
+        self,
+        *,
+        action: str,
+        session_id: str,
+        task_id: str,
+        target_id: str,
+        target_generation: int,
+        observation_id: str,
+        element_id: str,
+        text: str = "",
+        direction: str = "",
+        count: int = 1,
+    ) -> SelectedTabActionClassification:
+        return self._call(
+            self._classify_action,
+            str(action or "").casefold().strip(),
+            str(session_id or "").strip(),
+            str(task_id or "").strip(),
+            str(target_id or "").strip(),
+            target_generation,
+            str(observation_id or "").strip(),
+            str(element_id or "").strip(),
+            text,
+            str(direction or "").casefold().strip(),
+            count,
+        )
+
+    def act_selected(
+        self,
+        *,
+        action: str,
+        session_id: str,
+        task_id: str,
+        target_id: str,
+        target_generation: int,
+        observation_id: str,
+        element_id: str,
+        text: str = "",
+        direction: str = "",
+        count: int = 1,
+        confirmation: bool = False,
+    ) -> SelectedTabActionResult:
+        return self._call(
+            self._act_selected,
+            str(action or "").casefold().strip(),
+            str(session_id or "").strip(),
+            str(task_id or "").strip(),
+            str(target_id or "").strip(),
+            target_generation,
+            str(observation_id or "").strip(),
+            str(element_id or "").strip(),
+            text,
+            str(direction or "").casefold().strip(),
+            count,
+            bool(confirmation),
         )
 
     def clear_semantic_session(self, session_id: str) -> int:
@@ -683,23 +774,47 @@ class SelectedTabBrowserHost:
         target_id: str,
         target_generation: int,
     ) -> SelectedTabObservationResult:
+        async with self._semantic_lifecycle_lock():
+            error = await self._selected_binding_error(
+                session_id,
+                task_id,
+                target_id,
+                target_generation,
+            )
+            if error:
+                state, reason = error
+                return SelectedTabObservationResult(False, state, reason)
+            return await self._capture_semantic_observation(
+                session_id,
+                task_id,
+                expose=True,
+            )
+
+    def _semantic_lifecycle_lock(self) -> asyncio.Lock:
+        lock = self._semantic_lock
+        if lock is None:
+            lock = asyncio.Lock()
+            self._semantic_lock = lock
+        return lock
+
+    async def _selected_binding_error(
+        self,
+        session_id: str,
+        task_id: str,
+        target_id: str,
+        target_generation: int,
+    ) -> tuple[str, str] | None:
         selected = self._selected
         if selected is None:
-            return SelectedTabObservationResult(
-                False, "stopped", "selected_tab_not_active"
-            )
+            return "stopped", "selected_tab_not_active"
         target = selected.target
         if (
             target.target_id != target_id
             or target.target_generation != target_generation
         ):
-            return SelectedTabObservationResult(
-                False, "blocked", "selected_tab_target_mismatch"
-            )
+            return "blocked", "selected_tab_target_mismatch"
         if not session_id or not task_id:
-            return SelectedTabObservationResult(
-                False, "blocked", "selected_tab_runtime_binding_required"
-            )
+            return "blocked", "selected_tab_runtime_binding_required"
         try:
             binding_error = str(
                 self._semantic_binding_check(
@@ -713,17 +828,32 @@ class SelectedTabBrowserHost:
         except Exception:
             binding_error = "selected_tab_state_unavailable"
         if binding_error:
-            return SelectedTabObservationResult(False, "blocked", binding_error)
+            return "blocked", binding_error
         if selected.connection_id in self._disconnected_connections:
-            return SelectedTabObservationResult(
-                False, "disconnected", "selected_tab_browser_disconnected"
-            )
+            return "disconnected", "selected_tab_browser_disconnected"
         is_closed = getattr(selected.page, "is_closed", None)
         if callable(is_closed) and bool(await _resolve(is_closed())):
             self._retire_semantic_observation()
+            return "closed", "selected_tab_target_closed"
+        origin = _eligible_origin(getattr(selected.page, "url", ""))
+        if not origin or origin != target.origin:
+            self._retire_semantic_observation()
+            return "navigated", "selected_tab_navigation_ineligible"
+        return None
+
+    async def _capture_semantic_observation(
+        self,
+        session_id: str,
+        task_id: str,
+        *,
+        expose: bool,
+    ) -> SelectedTabObservationResult:
+        selected = self._selected
+        if selected is None:
             return SelectedTabObservationResult(
-                False, "closed", "selected_tab_target_closed"
+                False, "stopped", "selected_tab_not_active"
             )
+        target = selected.target
         origin = _eligible_origin(getattr(selected.page, "url", ""))
         if not origin or origin != target.origin:
             self._retire_semantic_observation()
@@ -802,7 +932,8 @@ class SelectedTabBrowserHost:
             if not opaque_element_id or opaque_element_id in refs:
                 continue
             refs[opaque_element_id] = _SemanticRef(handle, element)
-            descriptors.append(_descriptor(opaque_element_id, element))
+            if expose:
+                descriptors.append(_descriptor(opaque_element_id, element))
         expires_at = now + _SEMANTIC_TTL_S
         self._semantic_observation = _SemanticObservationLease(
             session_id=session_id,
@@ -830,6 +961,387 @@ class SelectedTabBrowserHost:
             expires_at=expires_at,
             elements=tuple(descriptors),
         )
+
+    async def _classify_action(
+        self,
+        action: str,
+        session_id: str,
+        task_id: str,
+        target_id: str,
+        target_generation: int,
+        observation_id: str,
+        element_id: str,
+        text: str,
+        direction: str,
+        count: int,
+    ) -> SelectedTabActionClassification:
+        async with self._semantic_lifecycle_lock():
+            error = await self._selected_binding_error(
+                session_id,
+                task_id,
+                target_id,
+                target_generation,
+            )
+            if error:
+                return SelectedTabActionClassification(False, reason=error[1])
+            admission, _lease, _ref = await self._action_admission(
+                action,
+                session_id,
+                task_id,
+                target_id,
+                target_generation,
+                observation_id,
+                element_id,
+                text,
+                direction,
+                count,
+            )
+            return admission
+
+    async def _action_admission(
+        self,
+        action: str,
+        session_id: str,
+        task_id: str,
+        target_id: str,
+        target_generation: int,
+        observation_id: str,
+        element_id: str,
+        text: str,
+        direction: str,
+        count: int,
+    ) -> tuple[
+        SelectedTabActionClassification,
+        _SemanticObservationLease | None,
+        _SemanticRef | None,
+    ]:
+        lease = self._semantic_observation
+        selected = self._selected
+        if lease is None or selected is None:
+            return (
+                SelectedTabActionClassification(False, reason="selected_tab_observation_stale"),
+                None,
+                None,
+            )
+        try:
+            now = float(self._semantic_clock())
+        except Exception:
+            now = lease.expires_at
+        if now >= lease.expires_at:
+            self._retire_semantic_observation()
+            return (
+                SelectedTabActionClassification(False, reason="selected_tab_observation_expired"),
+                None,
+                None,
+            )
+        if (
+            lease.session_id != session_id
+            or lease.task_id != task_id
+            or lease.observation_id != observation_id
+            or lease.target_id != target_id
+            or lease.target_generation != target_generation
+            or lease.document_generation != self._document_generation
+            or selected.target.target_id != target_id
+            or selected.target.target_generation != target_generation
+        ):
+            return (
+                SelectedTabActionClassification(False, reason="selected_tab_observation_mismatch"),
+                None,
+                None,
+            )
+        ref = lease.refs.get(element_id)
+        if ref is None:
+            return (
+                SelectedTabActionClassification(False, reason="selected_tab_element_ref_stale"),
+                None,
+                None,
+            )
+        try:
+            semantic_ref = lease.gate.reference(
+                lease.gate_observation_id,
+                ref.element.element_id,
+                now=lease.captured_at,
+            )
+            decision = lease.gate.evaluate(
+                semantic_ref,
+                action=action,
+                now=lease.captured_at,
+            )
+        except Exception:
+            return (
+                SelectedTabActionClassification(False, reason="selected_tab_element_ref_unsafe"),
+                None,
+                None,
+            )
+        if not decision.allowed:
+            return (
+                SelectedTabActionClassification(False, reason="selected_tab_action_blocked"),
+                None,
+                None,
+            )
+        label = " ".join(
+            f"{ref.element.name} {ref.element.label} {ref.element.text} "
+            f"{ref.element.elem_type}".casefold().split()
+        )[:600]
+        if any(term in label for term in _SENSITIVE_TERMS):
+            return (
+                SelectedTabActionClassification(False, reason="selected_tab_sensitive_target"),
+                None,
+                None,
+            )
+        requires_confirmation = bool(
+            decision.requires_confirmation
+            or any(term in label for term in _DESTRUCTIVE_ACTION_TERMS)
+        )
+        if action == "click":
+            if ref.element.role not in _CLICK_ROLES:
+                return (
+                    SelectedTabActionClassification(False, reason="selected_tab_click_role_blocked"),
+                    None,
+                    None,
+                )
+        elif action == "type":
+            text_admission = admit_text_entry(ref.element, text)
+            if not text_admission.allowed:
+                return (
+                    SelectedTabActionClassification(False, reason="selected_tab_type_blocked"),
+                    None,
+                    None,
+                )
+        elif action == "scroll":
+            if direction not in {"up", "down"} or type(count) is not int or not 1 <= count <= 5:
+                return (
+                    SelectedTabActionClassification(False, reason="selected_tab_scroll_bounds_invalid"),
+                    None,
+                    None,
+                )
+        else:
+            return (
+                SelectedTabActionClassification(False, reason="selected_tab_action_unsupported"),
+                None,
+                None,
+            )
+        try:
+            if not bool(await _resolve(ref.handle.is_visible())):
+                raise RuntimeError("not-visible")
+            box = await _resolve(ref.handle.bounding_box())
+        except Exception:
+            box = None
+        if not _valid_box(box):
+            return (
+                SelectedTabActionClassification(False, reason="selected_tab_element_not_actionable"),
+                None,
+                None,
+            )
+        return (
+            SelectedTabActionClassification(
+                True,
+                requires_confirmation=requires_confirmation,
+                reason=(
+                    "selected_tab_confirmation_required"
+                    if requires_confirmation
+                    else "selected_tab_action_allowed"
+                ),
+            ),
+            lease,
+            ref,
+        )
+
+    async def _act_selected(
+        self,
+        action: str,
+        session_id: str,
+        task_id: str,
+        target_id: str,
+        target_generation: int,
+        observation_id: str,
+        element_id: str,
+        text: str,
+        direction: str,
+        count: int,
+        confirmation: bool,
+    ) -> SelectedTabActionResult:
+        async with self._semantic_lifecycle_lock():
+            error = await self._selected_binding_error(
+                session_id,
+                task_id,
+                target_id,
+                target_generation,
+            )
+            if error:
+                return _blocked_action(error[1])
+            admission, lease, ref = await self._action_admission(
+                action,
+                session_id,
+                task_id,
+                target_id,
+                target_generation,
+                observation_id,
+                element_id,
+                text,
+                direction,
+                count,
+            )
+            if not admission.allowed:
+                return _blocked_action(admission.reason)
+            if admission.requires_confirmation and not confirmation:
+                return SelectedTabActionResult(
+                    False,
+                    "confirmation_required",
+                    "selected_tab_confirmation_required",
+                    requires_confirmation=True,
+                )
+            if lease is None or ref is None:
+                return _blocked_action("selected_tab_element_ref_stale")
+            selected = self._selected
+            if selected is None:
+                return _blocked_action("selected_tab_not_active")
+            page = selected.page
+            before_click_state = None
+            before_scroll = None
+            if action == "click":
+                before_click_state = await _read_click_state(ref.handle)
+            elif action == "scroll":
+                try:
+                    before_scroll = await _read_scroll_y(page)
+                except Exception:
+                    return _blocked_action("selected_tab_scroll_state_unavailable")
+            action_document_generation = self._document_generation
+            action_connection_id = selected.connection_id
+            self._retire_semantic_observation()
+            attempted = True
+            try:
+                if action == "click":
+                    operation = ref.handle.click()
+                elif action == "type":
+                    operation = ref.handle.fill(text)
+                else:
+                    delta = _SCROLL_STEP_PX * count * (1 if direction == "down" else -1)
+                    operation = page.mouse.wheel(0, delta)
+                await asyncio.wait_for(
+                    _resolve(operation),
+                    timeout=float(self._action_timeout_s),
+                )
+            except Exception:
+                return SelectedTabActionResult(
+                    False,
+                    "attempt_ambiguous",
+                    "selected_tab_action_attempt_ambiguous",
+                    attempted=attempted,
+                    ambiguous=True,
+                )
+            executed = True
+            boundary_reason = await self._post_action_boundary_reason(
+                selected,
+                target_id,
+                target_generation,
+                action_document_generation,
+                action_connection_id,
+            )
+            if boundary_reason:
+                return _executed_unverified_action(boundary_reason)
+            verified = False
+            if action == "click":
+                try:
+                    after_click_state = await _read_click_state(ref.handle)
+                    verified = _click_state_changed(before_click_state, after_click_state)
+                except Exception:
+                    verified = False
+            elif action == "type":
+                try:
+                    verified = str(await _resolve(ref.handle.input_value())) == text
+                except Exception:
+                    verified = False
+            else:
+                try:
+                    after_scroll = await _read_scroll_y(page)
+                    verified = bool(
+                        before_scroll is not None
+                        and (
+                            (direction == "down" and after_scroll > before_scroll)
+                            or (direction == "up" and after_scroll < before_scroll)
+                        )
+                    )
+                except Exception:
+                    verified = False
+            try:
+                after = await self._capture_semantic_observation(
+                    session_id,
+                    task_id,
+                    expose=True,
+                )
+            except Exception:
+                after = SelectedTabObservationResult(
+                    False,
+                    "failed",
+                    "selected_tab_post_action_capture_failed",
+                )
+            if not after.ok:
+                reason = (
+                    "selected_tab_captcha_handoff_required"
+                    if after.state == "captcha_handoff"
+                    else "selected_tab_post_action_capture_failed"
+                )
+                return SelectedTabActionResult(
+                    False,
+                    after.state,
+                    reason,
+                    attempted=True,
+                    executed=executed,
+                    ambiguous=True,
+                    after_observation=None,
+                )
+            if not verified:
+                return SelectedTabActionResult(
+                    False,
+                    "executed_unverified",
+                    "selected_tab_action_executed_unverified",
+                    attempted=True,
+                    executed=True,
+                    ambiguous=True,
+                    after_observation=after,
+                )
+            return SelectedTabActionResult(
+                True,
+                "verified",
+                "selected_tab_action_verified",
+                attempted=True,
+                executed=True,
+                verified=True,
+                after_observation=after,
+            )
+
+    async def _post_action_boundary_reason(
+        self,
+        selected: _SelectedLease,
+        target_id: str,
+        target_generation: int,
+        document_generation: int,
+        connection_id: str,
+    ) -> str:
+        current = self._selected
+        if current is not selected:
+            return "selected_tab_target_revoked_during_action"
+        target = current.target
+        if (
+            target.target_id != target_id
+            or target.target_generation != target_generation
+        ):
+            return "selected_tab_target_changed_during_action"
+        if self._document_generation != document_generation:
+            return "selected_tab_navigation_during_action"
+        if (
+            current.connection_id != connection_id
+            or connection_id in self._disconnected_connections
+        ):
+            return "selected_tab_disconnect_during_action"
+        is_closed = getattr(current.page, "is_closed", None)
+        try:
+            if callable(is_closed) and bool(await _resolve(is_closed())):
+                return "selected_tab_close_during_action"
+        except Exception:
+            return "selected_tab_target_state_ambiguous"
+        return ""
 
     async def _element_ref_is_actionable(
         self,
@@ -873,12 +1385,13 @@ class SelectedTabBrowserHost:
             return False
         return _valid_box(box)
 
-    def _clear_semantic_session(self, session_id: str) -> int:
-        lease = self._semantic_observation
-        if lease is None or lease.session_id != session_id:
-            return 0
-        self._retire_semantic_observation()
-        return 1
+    async def _clear_semantic_session(self, session_id: str) -> int:
+        async with self._semantic_lifecycle_lock():
+            lease = self._semantic_observation
+            if lease is None or lease.session_id != session_id:
+                return 0
+            self._retire_semantic_observation()
+            return 1
 
     def _retire_semantic_observation(self) -> None:
         lease, self._semantic_observation = self._semantic_observation, None
@@ -929,7 +1442,6 @@ class SelectedTabBrowserHost:
         if selected is None or selected.target.target_id != target_id:
             return
         self._document_generation += 1
-        self._retire_semantic_observation()
         origin = _eligible_origin(getattr(frame, "url", ""))
         if not origin:
             reason = "selected_tab_navigation_ineligible"
@@ -960,22 +1472,31 @@ class SelectedTabBrowserHost:
         asyncio.run_coroutine_threadsafe(self._invoke(callback, args), loop)
 
     async def _retire_disconnected_connection(self, connection_id: str) -> None:
-        self._disconnected_connections.add(connection_id)
-        picker = self._picker
-        if picker is not None and picker.connection_id == connection_id:
-            self._picker = None
-            picker.candidates.clear()
-            await self._safe_release(picker.browser)
-            return
-        selected = self._selected
-        if selected is None or selected.connection_id != connection_id:
-            return
-        await self._retire_selected_lifecycle(
-            selected.target.target_id,
-            "selected_tab_browser_disconnected",
-        )
+        async with self._semantic_lifecycle_lock():
+            self._disconnected_connections.add(connection_id)
+            picker = self._picker
+            if picker is not None and picker.connection_id == connection_id:
+                self._picker = None
+                picker.candidates.clear()
+                await self._safe_release(picker.browser)
+                return
+            selected = self._selected
+            if selected is None or selected.connection_id != connection_id:
+                return
+            await self._retire_selected_lifecycle_locked(
+                selected.target.target_id,
+                "selected_tab_browser_disconnected",
+            )
 
     async def _retire_selected_lifecycle(
+        self,
+        target_id: str,
+        reason: str,
+    ) -> None:
+        async with self._semantic_lifecycle_lock():
+            await self._retire_selected_lifecycle_locked(target_id, reason)
+
+    async def _retire_selected_lifecycle_locked(
         self,
         target_id: str,
         reason: str,
@@ -1005,31 +1526,33 @@ class SelectedTabBrowserHost:
         target_id: str,
         target_generation: int,
     ) -> bool:
-        selected = self._selected
-        if selected is None:
-            return False
-        target = selected.target
-        if (
-            target.target_id != target_id
-            or target.target_generation != target_generation
-        ):
-            return False
-        self._selected = None
-        self._retire_semantic_observation()
-        await self._safe_release(selected.browser)
-        return True
+        async with self._semantic_lifecycle_lock():
+            selected = self._selected
+            if selected is None:
+                return False
+            target = selected.target
+            if (
+                target.target_id != target_id
+                or target.target_generation != target_generation
+            ):
+                return False
+            self._selected = None
+            self._retire_semantic_observation()
+            await self._safe_release(selected.browser)
+            return True
 
     async def _retire_all(self) -> None:
-        picker, self._picker = self._picker, None
-        selected, self._selected = self._selected, None
-        self._retire_semantic_observation()
-        if picker is not None:
-            picker.candidates.clear()
-            await self._safe_release(picker.browser)
-        if selected is not None and (
-            picker is None or selected.browser is not picker.browser
-        ):
-            await self._safe_release(selected.browser)
+        async with self._semantic_lifecycle_lock():
+            picker, self._picker = self._picker, None
+            selected, self._selected = self._selected, None
+            self._retire_semantic_observation()
+            if picker is not None:
+                picker.candidates.clear()
+                await self._safe_release(picker.browser)
+            if selected is not None and (
+                picker is None or selected.browser is not picker.browser
+            ):
+                await self._safe_release(selected.browser)
 
     async def _safe_release(self, browser: object) -> None:
         try:
@@ -1039,6 +1562,63 @@ class SelectedTabBrowserHost:
                 "selected_tab.release_failed",
                 error=type(exc).__name__,
             )
+
+
+def _blocked_action(reason: str) -> SelectedTabActionResult:
+    return SelectedTabActionResult(False, "blocked", str(reason or "selected_tab_action_blocked"))
+
+
+def _executed_unverified_action(reason: str) -> SelectedTabActionResult:
+    return SelectedTabActionResult(
+        False,
+        "executed_unverified",
+        str(reason or "selected_tab_action_executed_unverified"),
+        attempted=True,
+        executed=True,
+        ambiguous=True,
+    )
+
+
+async def _read_scroll_y(page: object) -> float:
+    evaluate = getattr(page, "evaluate", None)
+    if not callable(evaluate):
+        raise RuntimeError("selected_tab_scroll_sampler_unavailable")
+    value = float(await _resolve(evaluate("() => window.scrollY")))
+    if not math.isfinite(value):
+        raise RuntimeError("selected_tab_scroll_state_invalid")
+    return value
+
+
+async def _read_click_state(handle: object) -> dict[str, object]:
+    evaluate = getattr(handle, "evaluate", None)
+    if not callable(evaluate):
+        return {}
+    try:
+        raw = await _resolve(evaluate(
+            "el => ({ checked: typeof el.checked === 'boolean' ? el.checked : null, "
+            "selected: typeof el.selected === 'boolean' ? el.selected : null, "
+            "expanded: el.getAttribute('aria-expanded'), "
+            "pressed: el.getAttribute('aria-pressed'), "
+            "value: 'value' in el ? String(el.value) : null })"
+        ))
+    except Exception:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        key: raw.get(key)
+        for key in ("checked", "selected", "expanded", "pressed", "value")
+        if raw.get(key) is not None
+    }
+
+
+def _click_state_changed(before: object, after: object) -> bool:
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return False
+    return any(
+        key in before and key in after and before[key] != after[key]
+        for key in ("checked", "selected", "expanded", "pressed", "value")
+    )
 
 
 def _valid_box(box: object) -> bool:
@@ -1163,6 +1743,8 @@ __all__ = [
     "shutdown_host",
     "LocalTabCandidate",
     "PickerResult",
+    "SelectedTabActionClassification",
+    "SelectedTabActionResult",
     "SelectedTabBrowserHost",
     "SelectedTabElementDescriptor",
     "SelectedTabObservationResult",

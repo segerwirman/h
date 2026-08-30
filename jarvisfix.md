@@ -8523,3 +8523,70 @@ klaim aksi situs berhasil.
 
 Langkah aman berikutnya: review offline diff/commit Task 5 dan commit hanya exact Task 5 paths/hunks;
 jangan mulai Task 6 click/type/scroll sebelum review itu bersih.
+
+### Task 6 — selected-tab one-attempt actions dan honest evidence 2026-08-30
+
+Task 6 tetap RED-first dan offline-only dengan fake Browser/Page/ElementHandle/clock/coordinator/
+registry. Tidak ada Chrome launch, CDP live attach, tab nyata, screenshot live, network, native pointer,
+credential, atau perubahan config/browser setting.
+
+RED dan implementasi:
+
+- RED schema/privacy awal menghasilkan **2 failed** karena tool click/type/scroll belum tersedia. GREEN
+  menambahkan schema `extra="forbid"`: click hanya opaque observation/element ID, type menambah text
+  1–500, dan scroll menambah `up|down` serta strict count 1–5; tidak ada target/generation,
+  selector/XPath, coordinate, JavaScript/CDP, tab index, storage, path, atau pixel delta agent-facing;
+- RED host-action awal menghasilkan **6 failed, 3 passed** karena `act_selected` belum ada. GREEN
+  mengikat exact session/task/target/document/observation/ref + TTL, membaca visibility/geometry dari
+  retained handle yang sama, mengonsumsi ref sebelum input await, dan menjalankan tepat satu
+  `ElementHandle.click()`, `ElementHandle.fill(text)`, atau fixed internal `Page.mouse.wheel()` tanpa
+  selector fallback, native input, implicit Enter, atau retry;
+- RED tool/registry menghasilkan **2 failed, 10 passed**. GREEN menambahkan process-local action
+  classification, generic local confirmation, membuang marker confirmation caller/model, re-evaluate
+  admission setelah approval await, lalu menginjeksi private marker hanya dari registry. Hard denial
+  tetap tidak dapat diubah menjadi allow;
+- evidence membedakan blocked, attempt ambiguous, executed-unverified, dan verified. Type hanya
+  verified setelah exact process-local `input_value == text`; scroll hanya verified setelah trusted
+  `scrollY` bergerak ke arah yang diminta; click hanya verified dari same-handle state transition.
+  Typed text/current value tidak keluar pada result atau audit;
+- post-action CAPTCHA men-stage existing human-only handoff owner, tidak mengekspos source text/ref,
+  dan mempertahankan attempted/executed/ambiguous evidence;
+- direct review menemukan revoke lifecycle belum memakai semantic lock, navigation dapat melepaskan
+  target di tengah input, shutdown membatalkan action, recapture exception dapat kehilangan evidence,
+  dan failure content hanya string. Concurrency RED yang diperketat menghasilkan **6 failed** untuk
+  stop/clear/navigation/close/disconnect/shutdown; RED tambahan menangkap internal timeout dan
+  structured failure content;
+- GREEN final menyerialkan observe/classify/action/clear/stop/navigation-close-disconnect release/
+  shutdown dalam satu owner-loop lock. Event navigation/disconnect boleh menandai generation/health
+  stale segera, tetapi exact target release dan lifecycle callback menunggu action critical section;
+  post-input boundary check melarang verified pada navigation/close/disconnect; internal bounded
+  action timeout menjadi attempted=true, executed=false, verified=false, ambiguous=true; recapture
+  failure setelah input kembali menjadi attempted/executed=true, verified=false, ambiguous=true;
+  selected-tab writer failure content sekarang structured state/evidence + optional bounded fresh
+  observation, dengan evidence yang sama di meta dan `do_not_retry` untuk ambiguity.
+
+Verifikasi aktual:
+
+- action suite final: **26 passed** (`1.76s`); sebelum final review suite bertumbuh dari 15 GREEN ke
+  lifecycle RED lalu final GREEN;
+- focused/adjacent Task 6 suite: **98 passed** (`6.68s`) untuk actions, semantics, capabilities,
+  evidence status, desktop semantic regression, dan selected-tab host;
+- scoped Ruff: **All checks passed!**; scoped `py_compile` lulus; scoped `git diff --check` bersih
+  (hanya warning line-ending Git); forbidden
+  `pyautogui|NativeCUADriver|cua_driver|DesktopService` search pada selected-tab host/tool nol hasil;
+- dua background review agent yang dicoba sebelumnya gagal sebelum menghasilkan review karena model
+  provider `hermes` unavailable (`model_not_found` HTTP 404); itu bukan approval. Direct review dan
+  regression tests di atas yang dipakai untuk menutup gap;
+- full repository pytest tetap **blocked saat collection** oleh unrelated missing
+  `jarvis.integrations.voice_turn_guard`; root Ruff tetap melaporkan existing S110 pada
+  `jarvis/agent/communication_authorization.py:142` dan `jarvis/agent/tools/whatsapp_web.py:364`.
+
+Batas bukti: Task 6 berstatus `source-present`, `focused-tested`, dan
+`runtime-wired-with-offline-fakes`. Live Chrome/CDP attach, visibility tab nyata, action pada situs
+nyata, postcondition situs nyata, screenshot/preview, dan akurasi cursor live tetap `unproven-live`.
+Tidak ada klaim attach/action/success live, native pointer/DesktopService authority, config change,
+credential access, atau push.
+
+Langkah aman berikutnya: review dan commit exact Task 6 hunks saja, jalankan post-commit focused tests,
+lalu mulai Task 7 dengan RED pure projection/visualization-only cursor tests; jangan lakukan live
+browser validation tanpa otorisasi terpisah.

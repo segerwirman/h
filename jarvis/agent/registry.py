@@ -299,6 +299,7 @@ async def execute(name: str, args: dict, adapter=None,
 
     args = dict(args or {})
     args.pop("_raw", None)
+    args.pop("_selected_tab_confirmation", None)
     policy_approval_granted = False
     confirmation_granted = False
     from jarvis.agent.capabilities import REGISTRY as capability_registry
@@ -383,8 +384,13 @@ async def execute(name: str, args: dict, adapter=None,
             return ToolResult.fail(context_error)
 
     # konfirmasi tool berbahaya — via adapter; sesi cron menolak otomatis
+    confirmation_args = dict(args)
+    if descriptor.toolset == "selected_tab":
+        confirmation_args["_session"] = session
+        confirmation_args["_adapter"] = adapter
+        confirmation_args["_context"] = context
     try:
-        needs = tool.needs_confirmation(**args)
+        needs = tool.needs_confirmation(**confirmation_args)
     except Exception:                                        # noqa: BLE001
         needs = tool.requires_confirmation
     direct_confirmation = False
@@ -415,8 +421,10 @@ async def execute(name: str, args: dict, adapter=None,
         approved = False
         if adapter is not None:
             try:
-                ans = await adapter.ask(tool.confirmation_text(**args),
-                                        ["Lanjut", "Batal"])
+                ans = await adapter.ask(
+                    tool.confirmation_text(**confirmation_args),
+                    ["Lanjut", "Batal"],
+                )
                 approved = str(ans or "").strip().lower() in (
                     "lanjut", "ya", "yes", "confirm", "konfirmasi", "ok", "1")
             except Exception as e:                           # noqa: BLE001
@@ -430,6 +438,24 @@ async def execute(name: str, args: dict, adapter=None,
             return res
         confirmation_granted = True
 
+    if descriptor.toolset == "selected_tab" and name in {
+        "selected_tab_click",
+        "selected_tab_type",
+        "selected_tab_scroll",
+    }:
+        try:
+            still_needs = tool.needs_confirmation(**confirmation_args)
+        except Exception:
+            return ToolResult.fail(
+                "selected_tab_action_admission_unavailable"
+            )
+        if still_needs and not (
+            confirmation_granted
+            or policy_approval_granted
+            or direct_confirmation
+        ):
+            return ToolResult.fail("selected_tab_confirmation_required")
+
     # tool yang menyatakan wants_context menerima sesi+adapter aktif
     # (todo per-sesi, clarify, delegate, snapshot kamera via UI adapter)
     if getattr(tool, "wants_context", False):
@@ -438,6 +464,19 @@ async def execute(name: str, args: dict, adapter=None,
         args["_context"] = context
         if descriptor.toolset == "desktop_safe":
             args["_desktop_safe_confirmation"] = confirmation_granted
+        elif (
+            descriptor.toolset == "selected_tab"
+            and name in {
+                "selected_tab_click",
+                "selected_tab_type",
+                "selected_tab_scroll",
+            }
+        ):
+            args["_selected_tab_confirmation"] = bool(
+                confirmation_granted
+                or policy_approval_granted
+                or direct_confirmation
+            )
 
     if communication_override:
         # Re-check after policy/approval/confirmation awaits and consume exactly
