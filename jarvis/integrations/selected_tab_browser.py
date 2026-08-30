@@ -1,8 +1,9 @@
 """Process-local host for selecting one controllable everyday-Chrome tab.
 
 The host deliberately exposes only immutable local-UI metadata. Every Playwright
-sync object remains on one owner thread for its complete lifetime; callers pass
-only opaque picker/candidate/target identities across that boundary.
+async object remains on one continuously serviced owner thread for its complete
+lifetime; callers pass only opaque picker/candidate/target identities across that
+boundary.
 """
 from __future__ import annotations
 
@@ -90,7 +91,7 @@ async def _connect(port: int):
             f"http://127.0.0.1:{int(port)}",
             timeout=5_000,
         )
-    except Exception:
+    except BaseException:
         await playwright.stop()
         raise
     browser._jarvis_playwright = playwright
@@ -165,8 +166,10 @@ class SelectedTabBrowserHost:
         self._lifecycle_callback = lifecycle_callback
         self._picker: _PickerLease | None = None
         self._selected: _SelectedLease | None = None
+        self._disconnected_connections: set[str] = set()
         self._target_generation = 0
         self._closed = False
+        self._startup_abandoned = threading.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._ready = threading.Event()
         self._thread = threading.Thread(
@@ -176,7 +179,9 @@ class SelectedTabBrowserHost:
         )
         self._thread.start()
         if not self._ready.wait(timeout=2.0):
+            self._startup_abandoned.set()
             self._closed = True
+            self._thread.join(timeout=0.1)
             raise RuntimeError("selected_tab_host_start_timeout")
 
     def begin_picker(self) -> PickerResult:
@@ -250,10 +255,17 @@ class SelectedTabBrowserHost:
         return result
 
     def _worker(self) -> None:
+        if self._startup_abandoned.is_set():
+            self._ready.set()
+            return
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         self._loop = loop
         self._ready.set()
+        if self._startup_abandoned.is_set():
+            loop.close()
+            self._loop = None
+            return
         try:
             loop.run_forever()
         finally:
@@ -356,13 +368,45 @@ class SelectedTabBrowserHost:
         if page is None:
             return SelectionResult(False, "selected", "selected_tab_candidate_not_found")
 
-        origin = _eligible_origin(getattr(page, "url", ""))
-        if not origin:
+        admitted_origin = _eligible_origin(getattr(page, "url", ""))
+        if not admitted_origin:
             return SelectionResult(False, "closed", "selected_tab_candidate_ineligible")
+        navigation = {"reason": ""}
+        on = getattr(page, "on", None)
+        if callable(on):
+            on(
+                "framenavigated",
+                lambda frame: self._guard_selection_navigation(
+                    page,
+                    frame,
+                    admitted_origin,
+                    navigation,
+                ),
+            )
         try:
             title = str(await _resolve(page.title()) or "")[:160]
         except Exception:
             title = ""
+        current_picker = self._picker
+        if (
+            current_picker is not picker
+            or picker.connection_id in self._disconnected_connections
+        ):
+            return SelectionResult(
+                False,
+                "disconnected",
+                "selected_tab_browser_disconnected",
+            )
+        current_origin = _eligible_origin(getattr(page, "url", ""))
+        navigation_reason = navigation["reason"] or self._navigation_reason(
+            admitted_origin,
+            current_origin,
+        )
+        if navigation_reason:
+            self._picker = None
+            picker.candidates.clear()
+            await self._safe_release(picker.browser)
+            return SelectionResult(False, "navigated", navigation_reason)
         target_id = str(self._id_factory() or "")
         if not target_id:
             return SelectionResult(False, "stopped", "selected_tab_target_id_invalid")
@@ -371,7 +415,7 @@ class SelectedTabBrowserHost:
             target_id=target_id,
             target_generation=self._target_generation,
             title=title,
-            origin=origin,
+            origin=current_origin,
         )
         self._selected = _SelectedLease(
             picker.connection_id,
@@ -379,7 +423,6 @@ class SelectedTabBrowserHost:
             page,
             target,
         )
-        on = getattr(page, "on", None)
         if callable(on):
             on("close", lambda *_args: self._on_selected_target_closed(target_id))
             on(
@@ -406,6 +449,29 @@ class SelectedTabBrowserHost:
             target.title,
             target.origin,
         )
+
+    @staticmethod
+    def _navigation_reason(admitted_origin: str, current_origin: str) -> str:
+        if not current_origin:
+            return "selected_tab_navigation_ineligible"
+        if current_origin != admitted_origin:
+            return "selected_tab_cross_origin_navigation"
+        return ""
+
+    def _guard_selection_navigation(
+        self,
+        page: object,
+        frame: object,
+        admitted_origin: str,
+        navigation: dict[str, str],
+    ) -> None:
+        if frame is not getattr(page, "main_frame", None):
+            return
+        current_origin = _eligible_origin(getattr(frame, "url", ""))
+        navigation["reason"] = self._navigation_reason(
+            admitted_origin,
+            current_origin,
+        ) or "selected_tab_target_navigated"
 
     def _on_selected_target_closed(self, target_id: str) -> None:
         self._schedule_owner(
@@ -439,6 +505,7 @@ class SelectedTabBrowserHost:
         )
 
     def _on_browser_disconnected(self, connection_id: str) -> None:
+        self._disconnected_connections.add(connection_id)
         self._schedule_owner(
             self._retire_disconnected_connection,
             connection_id,
@@ -454,6 +521,7 @@ class SelectedTabBrowserHost:
         asyncio.run_coroutine_threadsafe(self._invoke(callback, args), loop)
 
     async def _retire_disconnected_connection(self, connection_id: str) -> None:
+        self._disconnected_connections.add(connection_id)
         picker = self._picker
         if picker is not None and picker.connection_id == connection_id:
             self._picker = None

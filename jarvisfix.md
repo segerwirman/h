@@ -8359,6 +8359,42 @@ tetap `unproven-live`. Tidak ada Chrome launch, live attach, tab/screenshot nyat
 credential access, DesktopService claim, pointer OS/native action, config/browser-setting edit,
 push, atau silent rebind.
 
-Langkah aman berikutnya: review offline follow-up commit ini. Task 5 hanya boleh dimulai
-setelah review hijau dan prompt lanjutan diregenerasi; tetap gunakan RED fake
-semantic-observation/privacy tests dan jangan mengaktifkan Chrome live.
+Commit scoped follow-up pertama adalah `999c1ae` — `Screen Control: service selected-tab
+lifecycle continuously`. Review offline berikutnya menemukan tiga interval teardown/selection
+baru, ditambah satu variasi disconnect pada selection window:
+
+1. main-frame navigation dapat terjadi ketika `page.title()` sedang di-await, sebelum listener
+   active-target terpasang; hasil lama dapat dipromosikan ke cross-origin/ineligible page;
+2. Browser disconnect pada await yang sama dapat membersihkan picker lalu selection coroutine
+   melanjutkan memakai local picker stale;
+3. cancellation saat default `_connect()` menunggu CDP dapat melewati `playwright.stop()`;
+4. startup timeout dapat meninggalkan owner thread yang kemudian masuk `run_forever()` tanpa
+   host reference untuk dihentikan.
+
+RED aktual selection-window menghasilkan **2 failed**; RED startup cleanup menghasilkan
+**1 failed, 1 passed** (pending connector test sudah memicu cancellation cleanup milik fake,
+sementara startup timeout meninggalkan thread). Fix memasang provisional main-frame guard
+sebelum await, melakukan final same-picker/disconnect/current-origin validation setelah await,
+menolak semua navigation selama admission, dan tidak pernah mempromosikan picker stale.
+Disconnect ditandai synchronously pada event delivery sebelum retirement task dijadwalkan.
+Default connector sekarang menangkap cancellation (`BaseException`), menjalankan
+`playwright.stop()`, lalu re-raise. Startup-abandoned event mencegah delayed worker masuk owner
+loop setelah constructor timeout. Empat regression race menjadi **4 passed**; full host suite
+menjadi **21 passed**.
+
+Final focused + adjacent Task 4 suite setelah review fixes: **147 passed** (`8.53s`). Scoped
+Ruff: **All checks passed!**; scoped `py_compile` lulus; scoped `git diff --check` tanpa
+whitespace error (hanya warning LF→CRLF); forbidden native/DesktopService search nol hasil;
+FROZEN integrity **OK** (10 files, baseline `094b696`). Broad pytest tetap blocked pada
+unrelated missing `jarvis.integrations.voice_turn_guard` (**1 error**, exit 2), dan root Ruff
+masih melaporkan dua existing S110 yang sama. Tidak ada blocker unrelated yang diperbaiki.
+
+Batas jujur tidak berubah: semua race direproduksi dengan fake async Page/Browser/connector,
+timer, thread, dan offscreen Qt. Ini membuktikan state machine offline, bukan live Chrome/CDP.
+Live attach, real Playwright event delivery, real tab visibility, screenshot/preview, dan real
+browser action tetap `unproven-live`; tidak ada live operation, config/browser-setting edit,
+credential access, native pointer/DesktopService claim, atau push.
+
+Langkah aman berikutnya: commit scoped review fixes ini, review offline ulang, lalu regenerasi
+prompt. Task 5 hanya boleh dimulai setelah review hijau dengan RED fake
+semantic-observation/privacy tests; jangan mengaktifkan Chrome live.

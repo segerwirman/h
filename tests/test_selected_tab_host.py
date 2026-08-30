@@ -6,7 +6,9 @@ socket, captures a real tab, or performs browser/native input.
 from __future__ import annotations
 
 import asyncio
+import sys
 import threading
+from types import ModuleType
 
 import pytest
 
@@ -131,6 +133,37 @@ class _OwnedBrowser:
     def close(self) -> None:
         assert threading.get_ident() == self._owner
         self.closed = True
+
+
+class _GatedSelectionPage(_AsyncOwnedPage):
+    def __init__(self, owner: int, url: str, title: str) -> None:
+        super().__init__(owner, url, title)
+        self.title_calls = 0
+        self.selection_title_entered = threading.Event()
+        self._release_selection_title = asyncio.Event()
+
+    async def title(self) -> str:
+        self._touch("title")
+        self.title_calls += 1
+        if self.title_calls > 1:
+            self.selection_title_entered.set()
+            await self._release_selection_title.wait()
+        return self._title
+
+    def navigate_during_selection(self, url: str) -> None:
+        self._url = url
+        frame = type(
+            "_Frame",
+            (),
+            {"page": self, "url": url},
+        )()
+        self.main_frame = frame
+        for callback in tuple(self.listeners.get("framenavigated", ())):
+            callback(frame)
+        self._release_selection_title.set()
+
+    def release_selection_title(self) -> None:
+        self._release_selection_title.set()
 
 
 class _AsyncOwnedBrowser:
@@ -285,6 +318,226 @@ def _wait_until(predicate, timeout=2.0):
             return True
         threading.Event().wait(0.01)
     return bool(predicate())
+
+
+def test_selection_rejects_navigation_delivered_while_title_is_awaited():
+    from jarvis.integrations.selected_tab_browser import SelectedTabBrowserHost
+
+    created = []
+
+    async def connect(_port):
+        owner = threading.get_ident()
+        page = _GatedSelectionPage(owner, "https://safe.test/start", "Safe")
+        browser = _AsyncOwnedBrowser(owner, [page])
+        created.append((browser, page))
+        return browser
+
+    ids = iter(("picker", "candidate", "target"))
+    host = SelectedTabBrowserHost(
+        connector=connect,
+        enabled_check=lambda: True,
+        port_provider=lambda: 9222,
+        id_factory=lambda: next(ids),
+    )
+    result_box = []
+    try:
+        picker = host.begin_picker()
+        page = created[0][1]
+
+        worker = threading.Thread(
+            target=lambda: result_box.append(
+                host.select_candidate(
+                    picker.picker_id,
+                    picker.candidates[0].candidate_id,
+                )
+            )
+        )
+        worker.start()
+        assert page.selection_title_entered.wait(2)
+        assert host._loop is not None
+        host._loop.call_soon_threadsafe(
+            page.navigate_during_selection,
+            "https://other.test/path",
+        )
+        worker.join(timeout=2)
+
+        assert not worker.is_alive()
+        assert result_box[0].ok is False
+        assert result_box[0].state == "navigated"
+        assert host.active_snapshot().active is False
+        assert created[0][0].closed is True
+    finally:
+        if created:
+            loop = host._loop
+            if loop is not None:
+                loop.call_soon_threadsafe(created[0][1].release_selection_title)
+        host.shutdown()
+
+
+def test_disconnect_during_selection_cannot_promote_stale_picker():
+    from jarvis.integrations.selected_tab_browser import SelectedTabBrowserHost
+
+    created = []
+
+    async def connect(_port):
+        owner = threading.get_ident()
+        page = _GatedSelectionPage(owner, "https://safe.test/start", "Safe")
+        browser = _AsyncOwnedBrowser(owner, [page])
+        created.append((browser, page))
+        return browser
+
+    ids = iter(("picker", "candidate", "target"))
+    host = SelectedTabBrowserHost(
+        connector=connect,
+        enabled_check=lambda: True,
+        port_provider=lambda: 9222,
+        id_factory=lambda: next(ids),
+    )
+    result_box = []
+    try:
+        picker = host.begin_picker()
+        browser, page = created[0]
+        worker = threading.Thread(
+            target=lambda: result_box.append(
+                host.select_candidate(
+                    picker.picker_id,
+                    picker.candidates[0].candidate_id,
+                )
+            )
+        )
+        worker.start()
+        assert page.selection_title_entered.wait(2)
+        assert host._loop is not None
+
+        def disconnect_and_release() -> None:
+            browser.emit_soon("disconnected")
+            page.release_selection_title()
+
+        host._loop.call_soon_threadsafe(disconnect_and_release)
+        worker.join(timeout=2)
+
+        assert not worker.is_alive()
+        assert result_box[0].ok is False
+        assert host.active_snapshot().active is False
+        assert browser.closed is True
+    finally:
+        if created:
+            loop = host._loop
+            if loop is not None:
+                loop.call_soon_threadsafe(created[0][1].release_selection_title)
+        host.shutdown()
+
+
+def test_default_connector_stops_playwright_when_cdp_attach_is_cancelled(
+    monkeypatch,
+):
+    from jarvis.integrations import selected_tab_browser
+
+    attach_started = asyncio.Event()
+    playwright_stopped = asyncio.Event()
+
+    class _Chromium:
+        async def connect_over_cdp(self, _url, *, timeout):
+            assert timeout == 5_000
+            attach_started.set()
+            await asyncio.Event().wait()
+
+    class _Playwright:
+        def __init__(self) -> None:
+            self.chromium = _Chromium()
+
+        async def stop(self) -> None:
+            playwright_stopped.set()
+
+    class _Manager:
+        async def start(self):
+            return _Playwright()
+
+    fake_api = ModuleType("playwright.async_api")
+    fake_api.async_playwright = lambda: _Manager()
+    monkeypatch.setitem(sys.modules, "playwright.async_api", fake_api)
+
+    async def exercise() -> None:
+        task = asyncio.create_task(selected_tab_browser._connect(9222))
+        await attach_started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    asyncio.run(exercise())
+    assert playwright_stopped.is_set()
+
+
+def test_shutdown_cancels_pending_connector_and_runs_its_cleanup():
+    from jarvis.integrations.selected_tab_browser import SelectedTabBrowserHost
+
+    connector_started = threading.Event()
+    connector_cleaned = threading.Event()
+
+    async def connect(_port):
+        connector_started.set()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            connector_cleaned.set()
+
+    host = SelectedTabBrowserHost(
+        connector=connect,
+        enabled_check=lambda: True,
+        port_provider=lambda: 9222,
+        id_factory=lambda: "picker",
+    )
+    result_box = []
+
+    def begin_picker() -> None:
+        try:
+            result_box.append(host.begin_picker())
+        except BaseException as exc:
+            result_box.append(exc)
+
+    worker = threading.Thread(target=begin_picker)
+    worker.start()
+    assert connector_started.wait(2)
+
+    host.shutdown()
+    worker.join(timeout=2)
+
+    assert connector_cleaned.wait(2)
+    assert not worker.is_alive()
+    assert not host._thread.is_alive()
+
+
+def test_startup_timeout_does_not_leave_owner_thread_running(monkeypatch):
+    from jarvis.integrations import selected_tab_browser
+
+    original_worker = selected_tab_browser.SelectedTabBrowserHost._worker
+    release_worker = threading.Event()
+
+    def delayed_worker(self):
+        assert release_worker.wait(3)
+        original_worker(self)
+
+    monkeypatch.setattr(
+        selected_tab_browser.SelectedTabBrowserHost,
+        "_worker",
+        delayed_worker,
+    )
+    before = sum(
+        thread.name == "selected-tab-browser-owner"
+        for thread in threading.enumerate()
+    )
+
+    with pytest.raises(RuntimeError, match="selected_tab_host_start_timeout"):
+        selected_tab_browser.SelectedTabBrowserHost()
+
+    release_worker.set()
+    assert _wait_until(
+        lambda: sum(
+            thread.name == "selected-tab-browser-owner"
+            for thread in threading.enumerate()
+        )
+        == before
+    )
 
 
 def test_picker_browser_objects_are_owned_by_one_dedicated_thread():
