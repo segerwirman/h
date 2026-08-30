@@ -8301,7 +8301,64 @@ GREEN menghasilkan **68 passed** (`1.47s`); final focused + adjacent regression 
 **130 passed** (`4.37s`), scoped Ruff hijau, dan `py_compile` lulus. Follow-up scoped commit
 dan review wajib selesai sebelum Task 5.
 
-Prompt lanjutan repository-generated ditulis ke `.claude/next_phase_prompt_task5.md`.
-Langkah aman berikutnya setelah follow-up review hijau: mulai Task 5 dengan RED fake
-semantic-observation/privacy tests; jangan mengaktifkan Chrome live dan pertahankan
-inventaris kandidat sebagai local-UI-only.
+Prompt lanjutan repository-generated ditulis ke `.claude/next_phase_prompt_task5.md`,
+namun prompt itu dinyatakan stale setelah final review Task 4 menemukan empat defect
+lifecycle/privacy. Klaim **SELESAI OFFLINE** di atas karena itu disupersede sampai follow-up
+ini selesai direview dan committed.
+
+### Follow-up lifecycle/privacy Task 4 — 2026-08-30
+
+Final offline review menemukan empat defect yang tidak tertutup oleh fake callback lama:
+
+1. owner thread sync berhenti pada `queue.get()` sehingga real Playwright event dispatcher
+   tidak terbukti terus dipompa saat idle;
+2. Cancel setelah host selection/coordinator activation tetapi sebelum hasil diterapkan dapat
+   menghentikan host tanpa exact-revoke coordinator/SelectedTabSessionOwner;
+3. main-frame navigation dapat mempertahankan authority lama, termasuk cross-origin atau
+   unsupported scheme;
+4. delayed Stop Sharing memakai generic revoke dan dapat mencabut surface yang lebih baru.
+
+Perbaikan dibuat dengan TDD offline:
+
+- stale Cancel RED aktual: **2 failed, 11 passed** untuk orphan authority dan delayed stale
+  stop. GREEN mengganti kedua cleanup dengan `revoke_browser_tab(target_id,
+  target_generation, reason)` sebelum exact host retirement; focused sheet menjadi
+  **13 passed**;
+- host kini memakai dedicated continuously-running `asyncio` event loop dan Playwright async
+  API. Public calls masuk lewat `run_coroutine_threadsafe`; Browser/Context/Page dan lifecycle
+  callback tetap dimiliki satu owner thread. Fake async transport menjadwalkan close hanya
+  melalui owner loop saat idle, lalu membuktikan host dan lifecycle lease benar-benar retired;
+- navigation RED aktual: **3 failed, 13 passed**. Main-frame navigation sekarang fail-closed:
+  same-origin → `selected_tab_target_navigated`, cross-origin →
+  `selected_tab_cross_origin_navigation`, unsupported/internal →
+  `selected_tab_navigation_ineligible`. Ketiganya retire exact target/generation; subframe dan
+  popup tetap tidak rebind target. Manage UI menampilkan state `navigated`;
+- lifecycle/session focused set setelah implementasi: **52 passed** (`1.23s`).
+
+Final focused + adjacent command:
+`.venv/Scripts/python.exe -m pytest tests/test_user_browser.py
+ tests/test_selected_tab_host.py tests/test_tab_share_sheet.py
+ tests/test_screen_control_coordinator.py tests/test_selected_tab_session.py
+ tests/test_selected_tab_capabilities.py tests/test_execution_context.py
+ tests/test_capabilities.py tests/test_agent_tasks.py -q -p no:randomly`
+→ **142 passed** (`6.76s`). Scoped Ruff empat changed paths: **All checks passed!**;
+scoped `py_compile` lulus tanpa output; scoped `git diff --check` tidak menemukan whitespace
+error (hanya warning LF→CRLF); forbidden search `pyautogui|NativeCUADriver|cua_driver|
+DesktopService` pada selected-tab host nol hasil; FROZEN integrity **OK** (10 files,
+baseline `094b696`).
+
+Broad checks dicoba lagi dan tidak diklaim hijau: full pytest tetap berhenti saat collection
+karena unrelated missing `jarvis.integrations.voice_turn_guard` (**1 error**, exit 2); root
+Ruff tetap melaporkan dua existing S110 pada `communication_authorization.py:142` dan
+`whatsapp_web.py:364`. Tidak ada blocker unrelated yang diperbaiki.
+
+Batas jujur tetap: seluruh verifikasi memakai fake Browser/Page/event loop dan offscreen Qt.
+Async owner loop sekarang diuji terus melayani queued lifecycle event, tetapi live Chrome/CDP
+attach, real target event delivery, tab visibility, screenshot/preview, dan real browser action
+tetap `unproven-live`. Tidak ada Chrome launch, live attach, tab/screenshot nyata,
+credential access, DesktopService claim, pointer OS/native action, config/browser-setting edit,
+push, atau silent rebind.
+
+Langkah aman berikutnya: review offline follow-up commit ini. Task 5 hanya boleh dimulai
+setelah review hijau dan prompt lanjutan diregenerasi; tetap gunakan RED fake
+semantic-observation/privacy tests dan jangan mengaktifkan Chrome live.

@@ -49,6 +49,7 @@ class _Host:
         self.stopped = []
         self.selected_matches_result = True
         self.selection_checks = 0
+        self.active_selected = False
         self.picker = PickerResult(
             True,
             "tabs_available",
@@ -74,6 +75,7 @@ class _Host:
             return SelectionResult(False, "stopped", "selection mismatch")
         title = "Docs" if candidate_id == "candidate-a" else "Music"
         origin = "https://docs.test" if candidate_id == "candidate-a" else "https://music.test"
+        self.active_selected = True
         return SelectionResult(
             True,
             "sharing",
@@ -87,13 +89,30 @@ class _Host:
             matches = matches.pop(0)
         return bool(
             matches
+            and self.active_selected
             and target_id == "target-opaque"
             and target_generation == 7
         )
 
     def stop_selected(self, target_id, target_generation):
         self.stopped.append((target_id, target_generation, threading.get_ident()))
-        return target_id == "target-opaque" and target_generation == 7
+        matches = target_id == "target-opaque" and target_generation == 7
+        if matches:
+            self.active_selected = False
+        return matches
+
+
+class _GatedPostActivationHost(_Host):
+    def __init__(self) -> None:
+        super().__init__()
+        self.post_activation_check = threading.Event()
+        self.release_post_activation_check = threading.Event()
+
+    def selection_is_active(self, target_id, target_generation):
+        if self.selection_checks == 1:
+            self.post_activation_check.set()
+            assert self.release_post_activation_check.wait(2)
+        return super().selection_is_active(target_id, target_generation)
 
 
 class _Coordinator:
@@ -101,6 +120,7 @@ class _Coordinator:
         self.activations = []
         self.revocations = []
         self.current = screen_control.ScreenControlSnapshot()
+        self.activated = threading.Event()
 
     def snapshot(self):
         return self.current
@@ -133,6 +153,7 @@ class _Coordinator:
             target_id,
             target_generation,
         )
+        self.activated.set()
         return True
 
     def revoke(self, reason):
@@ -155,6 +176,40 @@ class _Coordinator:
         ):
             return False
         return self.revoke(reason)
+
+
+class _GatedRevokeCoordinator(_Coordinator):
+    def __init__(self) -> None:
+        super().__init__()
+        self.revoke_entered = threading.Event()
+        self.release_revoke = threading.Event()
+
+    def _wait_before_revoke(self) -> None:
+        self.revoke_entered.set()
+        assert self.release_revoke.wait(2)
+
+    def revoke(self, reason):
+        self._wait_before_revoke()
+        return super().revoke(reason)
+
+    def revoke_browser_tab(
+        self,
+        *,
+        target_id,
+        target_generation,
+        reason,
+    ):
+        self._wait_before_revoke()
+        current = self.current
+        if (
+            current.surface_kind != screen_control.BROWSER_TAB_SURFACE
+            or current.surface_id != target_id
+            or current.surface_generation != target_generation
+        ):
+            return False
+        self.revocations.append((reason, threading.get_ident()))
+        self.current = screen_control.ScreenControlSnapshot()
+        return True
 
 
 def _sheet(*, host=None, coordinator=None):
@@ -296,6 +351,73 @@ def test_one_local_candidate_activates_exact_browser_surface_off_ui_thread():
         _APP.processEvents()
 
 
+def test_cancel_after_activation_exactly_retires_stale_share_authority():
+    host = _GatedPostActivationHost()
+    coordinator = _Coordinator()
+    parent, sheet = _sheet(host=host, coordinator=coordinator)
+    try:
+        sheet.present(SimpleNamespace(session_id="session-a", task_id="T-a"), 900, 700)
+        assert _wait_until(lambda: sheet.state == "tabs_available")
+        sheet._candidates.setCurrentRow(0)
+        sheet._candidates.itemClicked.emit(sheet._candidates.currentItem())
+        sheet.share_selected()
+
+        assert coordinator.activated.wait(2)
+        assert host.post_activation_check.wait(2)
+        sheet.cancel_local()
+        host.release_post_activation_check.set()
+
+        assert _wait_until(lambda: bool(host.stopped))
+        assert coordinator.snapshot().state == screen_control.OFF
+        assert coordinator.revocations[-1][0] == "selected_tab_stale_share_result"
+        assert host.active_selected is False
+        assert sheet.state == "stopped"
+        assert sheet.active_target_id == ""
+    finally:
+        host.release_post_activation_check.set()
+        parent.close()
+        _APP.processEvents()
+
+
+def test_delayed_old_stop_cannot_revoke_newer_browser_tab_surface():
+    host = _Host()
+    coordinator = _GatedRevokeCoordinator()
+    coordinator.current = screen_control.ScreenControlSnapshot(
+        screen_control.ACTIVE,
+        "session-a",
+        "T-a",
+        150.0,
+        screen_control.BROWSER_TAB_SURFACE,
+        "target-opaque",
+        7,
+    )
+    parent, sheet = _sheet(host=host, coordinator=coordinator)
+    try:
+        assert sheet.present_manage(coordinator.current, 900, 700) is True
+        sheet.stop_sharing()
+        assert coordinator.revoke_entered.wait(2)
+
+        coordinator.current = screen_control.ScreenControlSnapshot(
+            screen_control.ACTIVE,
+            "session-b",
+            "T-b",
+            180.0,
+            screen_control.BROWSER_TAB_SURFACE,
+            "target-newer",
+            8,
+        )
+        coordinator.release_revoke.set()
+
+        assert _wait_until(lambda: bool(host.stopped))
+        assert coordinator.snapshot().surface_id == "target-newer"
+        assert coordinator.snapshot().surface_generation == 8
+        assert coordinator.revocations == []
+    finally:
+        coordinator.release_revoke.set()
+        parent.close()
+        _APP.processEvents()
+
+
 def test_cancel_while_checking_retires_inventory_when_worker_finishes():
     host = _Host(block=True)
     parent, sheet = _sheet(host=host)
@@ -329,6 +451,7 @@ def test_active_icon_manage_view_does_not_stop_or_rebind_until_explicit_button()
         "target-opaque",
         7,
     )
+    coordinator.current = active
     try:
         assert sheet.present_manage(active, 900, 700) is True
         assert sheet.state == "sharing"
@@ -350,6 +473,9 @@ def test_active_icon_manage_view_does_not_stop_or_rebind_until_explicit_button()
     [
         ("selected_tab_target_closed", "closed"),
         ("selected_tab_browser_disconnected", "disconnected"),
+        ("selected_tab_target_navigated", "navigated"),
+        ("selected_tab_cross_origin_navigation", "navigated"),
+        ("selected_tab_navigation_ineligible", "navigated"),
     ],
 )
 def test_active_manage_view_reflects_fail_closed_browser_lifecycle(

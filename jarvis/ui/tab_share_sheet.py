@@ -302,6 +302,9 @@ class TabShareSheet(QWidget):
         state = {
             "selected_tab_target_closed": "closed",
             "selected_tab_browser_disconnected": "disconnected",
+            "selected_tab_target_navigated": "navigated",
+            "selected_tab_cross_origin_navigation": "navigated",
+            "selected_tab_navigation_ineligible": "navigated",
         }.get(reason)
         if state is None:
             return
@@ -320,7 +323,13 @@ class TabShareSheet(QWidget):
         generation = self._generation
 
         def worker() -> None:
-            revoked = bool(self._coordinator.revoke("user_stop_sharing"))
+            revoked = bool(
+                self._coordinator.revoke_browser_tab(
+                    target_id=target_id,
+                    target_generation=target_generation,
+                    reason="user_stop_sharing",
+                )
+            )
             stopped = bool(
                 self._host.stop_selected(target_id, target_generation)
             )
@@ -378,11 +387,19 @@ class TabShareSheet(QWidget):
         if generation != self._generation:
             target = getattr(result, "target", None)
             if getattr(result, "ok", False) and target is not None:
-                threading.Thread(
-                    target=lambda: self._host.stop_selected(
+                def retire_stale_share() -> None:
+                    self._coordinator.revoke_browser_tab(
+                        target_id=target.target_id,
+                        target_generation=target.target_generation,
+                        reason="selected_tab_stale_share_result",
+                    )
+                    self._host.stop_selected(
                         target.target_id,
                         target.target_generation,
-                    ),
+                    )
+
+                threading.Thread(
+                    target=retire_stale_share,
                     daemon=True,
                     name="selected-tab-stale-share-retire",
                 ).start()

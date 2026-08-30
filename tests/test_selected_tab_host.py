@@ -5,6 +5,7 @@ socket, captures a real tab, or performs browser/native input.
 """
 from __future__ import annotations
 
+import asyncio
 import threading
 
 import pytest
@@ -22,9 +23,20 @@ class _OwnedPage:
         self._touch(f"on:{event}")
         self.listeners.setdefault(event, []).append(callback)
 
-    def emit(self, event: str) -> None:
+    def emit(self, event: str, *args) -> None:
         for callback in tuple(self.listeners.get(event, ())):
-            callback()
+            callback(*args)
+
+    def navigate(self, url: str, *, main_frame: bool = True) -> None:
+        self._url = url
+        frame = type(
+            "_Frame",
+            (),
+            {"page": self, "url": url},
+        )()
+        if main_frame:
+            self.main_frame = frame
+        self.emit("framenavigated", frame)
 
     def _touch(self, operation: str) -> None:
         current = threading.get_ident()
@@ -41,6 +53,38 @@ class _OwnedPage:
         return self._title
 
 
+class _AsyncOwnedPage:
+    def __init__(self, owner: int, url: str, title: str) -> None:
+        self._owner = owner
+        self._url = url
+        self._title = title
+        self.touches: list[tuple[str, int]] = []
+        self.listeners: dict[str, list] = {}
+
+    def on(self, event: str, callback) -> None:
+        self._touch(f"on:{event}")
+        self.listeners.setdefault(event, []).append(callback)
+
+    def emit_soon(self, event: str) -> None:
+        loop = asyncio.get_running_loop()
+        for callback in tuple(self.listeners.get(event, ())):
+            loop.call_soon(callback)
+
+    def _touch(self, operation: str) -> None:
+        current = threading.get_ident()
+        assert current == self._owner
+        self.touches.append((operation, current))
+
+    @property
+    def url(self) -> str:
+        self._touch("url")
+        return self._url
+
+    async def title(self) -> str:
+        self._touch("title")
+        return self._title
+
+
 class _OwnedContext:
     def __init__(self, owner: int, pages: list[_OwnedPage]) -> None:
         self._owner = owner
@@ -48,6 +92,17 @@ class _OwnedContext:
 
     @property
     def pages(self) -> list[_OwnedPage]:
+        assert threading.get_ident() == self._owner
+        return list(self._pages)
+
+
+class _AsyncOwnedContext:
+    def __init__(self, owner: int, pages: list[_AsyncOwnedPage]) -> None:
+        self._owner = owner
+        self._pages = pages
+
+    @property
+    def pages(self) -> list[_AsyncOwnedPage]:
         assert threading.get_ident() == self._owner
         return list(self._pages)
 
@@ -74,6 +129,33 @@ class _OwnedBrowser:
             callback()
 
     def close(self) -> None:
+        assert threading.get_ident() == self._owner
+        self.closed = True
+
+
+class _AsyncOwnedBrowser:
+    def __init__(self, owner: int, pages: list[_AsyncOwnedPage]) -> None:
+        self._owner = owner
+        self.context = _AsyncOwnedContext(owner, pages)
+        self._contexts = [self.context]
+        self.closed = False
+        self.listeners: dict[str, list] = {}
+
+    @property
+    def contexts(self) -> list[_AsyncOwnedContext]:
+        assert threading.get_ident() == self._owner
+        return list(self._contexts)
+
+    def on(self, event: str, callback) -> None:
+        assert threading.get_ident() == self._owner
+        self.listeners.setdefault(event, []).append(callback)
+
+    def emit_soon(self, event: str) -> None:
+        loop = asyncio.get_running_loop()
+        for callback in tuple(self.listeners.get(event, ())):
+            loop.call_soon(callback)
+
+    async def close(self) -> None:
         assert threading.get_ident() == self._owner
         self.closed = True
 
@@ -137,6 +219,72 @@ def test_process_host_is_lazy_and_can_shutdown_without_import_thread_leak():
         thread.name == "selected-tab-browser-owner"
         for thread in threading.enumerate()
     ) == before
+
+
+def test_async_owner_loop_services_lifecycle_event_while_idle():
+    from jarvis.integrations.selected_tab_browser import SelectedTabBrowserHost
+
+    created = []
+    lifecycle_events = []
+
+    async def connect(_port):
+        owner = threading.get_ident()
+        page = _AsyncOwnedPage(owner, "https://safe.test", "Safe")
+        browser = _AsyncOwnedBrowser(owner, [page])
+        created.append((browser, page))
+        return browser
+
+    ids = iter(("picker", "candidate", "target"))
+    host = SelectedTabBrowserHost(
+        connector=connect,
+        enabled_check=lambda: True,
+        port_provider=lambda: 9222,
+        id_factory=lambda: next(ids),
+        lifecycle_callback=lambda *event: lifecycle_events.append(event),
+    )
+    try:
+        picker = host.begin_picker()
+        selected = host.select_candidate(
+            picker.picker_id,
+            picker.candidates[0].candidate_id,
+        )
+        assert selected.ok is True
+
+        scheduled = threading.Event()
+
+        def schedule_close() -> None:
+            assert host._loop is not None
+
+            def emit_close() -> None:
+                created[0][1].emit_soon("close")
+                scheduled.set()
+
+            host._loop.call_soon_threadsafe(emit_close)
+
+        threading.Thread(target=schedule_close).start()
+        assert scheduled.wait(2)
+        assert _wait_until(lambda: host.active_snapshot().active is False)
+        assert lifecycle_events == [
+            (
+                selected.target.target_id,
+                selected.target.target_generation,
+                "selected_tab_target_closed",
+            )
+        ]
+        assert created[0][0].closed is True
+    finally:
+        host.shutdown()
+
+
+def _wait_until(predicate, timeout=2.0):
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        threading.Event().wait(0.01)
+    return bool(predicate())
 
 
 def test_picker_browser_objects_are_owned_by_one_dedicated_thread():
@@ -266,6 +414,70 @@ def test_cancel_retires_temporary_inventory_and_stale_ids_fail_closed():
         assert selected.ok is False
         assert selected.state == "stopped"
         assert host.active_snapshot().active is False
+    finally:
+        host.shutdown()
+
+
+@pytest.mark.parametrize(
+    ("url", "expected_reason"),
+    [
+        ("https://safe.test/next", "selected_tab_target_navigated"),
+        ("https://other.test/path", "selected_tab_cross_origin_navigation"),
+        ("chrome://settings", "selected_tab_navigation_ineligible"),
+    ],
+)
+def test_main_frame_navigation_retires_selected_target_without_rebinding(
+    url,
+    expected_reason,
+):
+    lifecycle_events = []
+    host, created, _threads = _host(
+        [("https://safe.test/start", "Safe")],
+        lifecycle_callback=lambda *event: lifecycle_events.append(event),
+    )
+    try:
+        picker = host.begin_picker()
+        selected = host.select_candidate(
+            picker.picker_id,
+            picker.candidates[0].candidate_id,
+        )
+        assert selected.ok is True
+
+        created[0][1][0].navigate(url)
+
+        assert host.active_snapshot().active is False
+        assert lifecycle_events == [
+            (
+                selected.target.target_id,
+                selected.target.target_generation,
+                expected_reason,
+            )
+        ]
+        assert created[0][0].closed is True
+    finally:
+        host.shutdown()
+
+
+def test_subframe_navigation_does_not_revoke_or_rebind_selected_target():
+    lifecycle_events = []
+    host, created, _threads = _host(
+        [("https://safe.test/start", "Safe")],
+        lifecycle_callback=lambda *event: lifecycle_events.append(event),
+    )
+    try:
+        picker = host.begin_picker()
+        selected = host.select_candidate(
+            picker.picker_id,
+            picker.candidates[0].candidate_id,
+        )
+        assert selected.ok is True
+
+        created[0][1][0].navigate("https://frame.test", main_frame=False)
+
+        active = host.active_snapshot()
+        assert active.active is True
+        assert active.target_id == selected.target.target_id
+        assert lifecycle_events == []
     finally:
         host.shutdown()
 
