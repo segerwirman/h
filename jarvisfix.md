@@ -9231,3 +9231,86 @@ Tinggal `test_api_sheet_emits_once_and_clears_secret_after_emit` — konflik kep
 yang menyangkut kredensial, dilaporkan untuk keputusan pengguna dan sengaja tidak dipilih sendiri.
 
 Komit `5a58fa9`.
+
+---
+
+### Fase 17 — rekonsiliasi gerbang eskalasi iterasi (2026-08-31)
+
+Dua tes di `tests/test_iteration_limit_honesty.py` merah sejak 2026-08-22 dengan `assert [] =
+adapter.asked`. Bukan cacat kode dan bukan cacat fixture — **gerbang konfigurasi**.
+
+**Diagnosis berurutan.** Fungsinya bernama `_iteration_escalation`, bukan `_maybe_escalate`
+(pencarian nama awal tidak menemukan pemanggilan; baris 228 yang memanggilnya). Di dalamnya
+urutan eksekusi adalah `adapter.progress()` → **gerbang** → `adapter.ask()`. Karena peringatan
+dikirim sebelum gerbang, `test_user_is_warned_before_the_limit_is_hit` tetap lulus sementara dua
+tes yang menuntut `ask` gagal. Gejala cocok ke titik.
+
+**Penyebab.** `config.yaml:862-863` memuat `iteration_escalation.enabled: false` dengan komentar
+`P8E: disabled per user request — no speech unless commanded`. `loop.py:393` menghormatinya
+persis sesuai rancangan. Jadi kode produksi benar; tesnyalah yang menuntut perilaku lama.
+
+**Provenan.**
+
+| Tanggal | Komit | Apa yang terjadi |
+|---|---|---|
+| 2026-08-05 | `73adaa0` | Fase 17 — gerbang **dan** kedua tes lahir bersama, hijau |
+| 2026-08-22 | `c57c923` | P8E — mematikan gerbang; menyentuh hanya `config.yaml` + `adapters/ui.py` |
+
+`git merge-base --is-ancestor 73adaa0 c57c923` → benar. P8E **tidak** menyentuh
+`tests/test_iteration_limit_honesty.py`, jadi kedua tes dibiarkan menggantung selama 9 hari.
+P8E melakukan apa yang diminta pengguna; yang hilang hanya rekonsiliasi tesnya.
+
+**Bukti awal (kontrol vs mutan).** Monkeypatch, bukan menyunting `config.yaml`
+(md5 diverifikasi tidak berubah):
+
+| | Kondisi | Hasil |
+|---|---|---|
+| Kontrol | konfigurasi apa adanya (`false`) | `asked == []` |
+| Mutan | hanya gerbang dibalik | `asked` terisi |
+
+**Temuan yang lebih penting: gerbang ini tidak teruji sama sekali.** Pencarian
+`iteration_escalation` di seluruh `tests/` menghasilkan **nol** kecocokan — satu-satunya yang
+cocok adalah `dialogue_escalation` di `test_dialogue_rules.py`, fitur berbeda. Gerbang juga
+**tidak muncul di panel Settings** (nol penyebut di `settings_service.py`), jadi tidak ada
+cara mengubahnya dari UI. Ketiadaan pengawasan inilah yang membiarkan P8E membalik nilai
+defaultnya tanpa satu tes pun memperingatkan.
+
+**Perbaikan — dua arah, karena satu arah tidak cukup.**
+
+1. **Tes baru untuk gerbangnya sendiri** (yang tadinya nol), dari kedua sisi:
+   `test_escalation_off_keeps_progress_but_never_asks` dan
+   `test_escalation_on_asks_and_can_stop_early`. Keduanya memakai helper `_with_escalation`
+   yang mengikuti pola baku repo — `monkeypatch.setattr(config, "get", ...)`, sudah dipakai
+   di 13 berkas lain (contoh terdekat `tests/test_mcp_catalog.py:41`).
+2. **Kedua tes Fase 17 dinyalakan eksplisit** lewat helper yang sama, sehingga hasilnya tidak
+   lagi bergantung pada isi `config.yaml`. Perubahan nilai konfigurasi tidak akan membuat tes
+   merah secara misterius.
+
+**Bukti RED — kedua mutan efektif.**
+
+| Mutan | Simulasi | Hasil | Artinya |
+|---|---|---|---|
+| A | gerbang dihapus (selalu aktif) | `asked` terisi | tes keadaan-mati **akan merah** |
+| B | gerbang macet mati | `asked` lenyap, lari sampai batas | tes keadaan-hidup **akan merah** |
+
+Keduanya butuh percobaan kedua karena kesalahan rancangan: `agent_loop.config` **adalah**
+`jarvis.core.config` (objek modul sama, diverifikasi `is` → `True`), sehingga patch kedua di
+atas patch pertama memanggil dir sendiri — `RecursionError`. Perbaikan: mutan **membungkus**
+fungsi yang sudah dipatch, bukan menggantinya. Kesalahan kedua murni ketik: helper `_run` di
+scratch mengembalikan `RunResult` langsung, bukan tuple.
+
+**Verifikasi aktual.**
+
+- berkas: **12 passed** (`1.28s`), sebelumnya 10 passed / 2 failed — net **+2 tes**;
+- deterministik 3/3 dengan `-p no:randomly`, dan lulus juga **tanpa** flag itu (urutan acak);
+- scoped Ruff: **All checks passed!**; FROZEN integrity **OK** (10 file, baseline `094b696`);
+- diff **+75/−0** — murni penambahan, nol penghapusan. Empat baris `embed()` milik pengguna
+  di baris 82 tetap utuh.
+
+**Batas jujur.** Perbaikan ini tidak memvalidasi suara nyata; eskalasi interaktif pada
+runtime live tetap `unproven-live`. Yang dites adalah keputusan cabang di
+`_iteration_escalation()` dengan adapter tiruan.
+
+**Terbuka.** Apakah `enabled: false` masih diinginkan? Tes sekarang mengakui keadaan saat ini
+dan tidak mengubah perilaku apa pun — bila kebijakan P8E diubah, tes keadaan-mati di atas
+yang akan merah, yang justru tujuannya.

@@ -79,6 +79,10 @@ def _never_finishing_client(monkeypatch, tool="web_search"):
         def chat(self, _messages, _tools):
             return _Resp("", [_Call(tool, {"query": "x"})])
 
+        def embed(self, texts):
+            """Simulate embed unavailable - returns None like production code expects."""
+            return None
+
     monkeypatch.setattr(agent_loop.model_routing, "light_client",
                         lambda: _Client())
     return _Client()
@@ -183,7 +187,16 @@ def test_user_is_warned_before_the_limit_is_hit(monkeypatch):
 
 
 def test_interactive_run_offers_to_stop_before_the_wall(monkeypatch):
+    """Eskalasi menyala: run interaktif ditawari berhenti sebelum menabrak dinding.
+
+    Gerbang eskalasi dinyalakan secara eksplisit. Nilanya di `config.yaml`
+    saat ini `false` (P8E, "no speech unless commanded"), jadi tanpa timpalan
+    ini tes bergantung pada isi berkas konfigurasi dan merah misterius bila
+    nilainya berubah — persis yang terjadi sejak 2026-08-22. Keadaan mati
+    diuji tersendiri di bawah.
+    """
     _never_finishing_client(monkeypatch)
+    _with_escalation(monkeypatch, enabled=True)
     adapter = _Adapter()
     adapter.interactive = True
     adapter.answer = "Hentikan"
@@ -198,6 +211,7 @@ def test_interactive_run_offers_to_stop_before_the_wall(monkeypatch):
 def test_no_answer_keeps_working_instead_of_blocking(monkeypatch):
     """Tidak menjawab bukan 'hentikan' — pekerjaan lanjut sampai batas."""
     _never_finishing_client(monkeypatch)
+    _with_escalation(monkeypatch, enabled=True)
     adapter = _Adapter()
     adapter.interactive = True
     adapter.answer = None
@@ -215,6 +229,67 @@ def test_non_interactive_run_is_never_asked(monkeypatch):
     _run(adapter, max_iterations=5)
 
     assert adapter.asked == []
+
+
+# ── gerbang konfigurasi eskalasi ─────────────────────────────────────────
+#
+# P8E (commit c57c923, 2026-08-22) mematikan ``agent.iteration_escalation.enabled``
+# atas permintaan pengguna — "no speech unless commanded". Fase 17 lahir
+# sebelumnya (73adaa0, 2026-08-05) dengan gerbang ini menyala, dan dua tes di
+# atas menuntut ``adapter.ask`` dipanggil. Saat P8E membalik nilai defaultnya,
+# kedua tes itu menjadi merah dan tidak ada satu pun tes yang mengawasi
+# gerbangnya sendiri — jadi perubahan itu lewat tanpa peringatan.
+#
+# Dua tes di bawah menutup kekosongan itu dari kedua sisi: bila gerbang dihapus
+# atau dibalik, salah satunya pasti merah.
+
+
+def _with_escalation(monkeypatch, enabled: bool):
+    """Timpa hanya kunci eskalasi; kunci lain tetap dibaca dari config asli."""
+    from jarvis.core import config
+
+    original = config.get
+    monkeypatch.setattr(
+        config, "get",
+        lambda key, default=None: (
+            enabled if key == "agent.iteration_escalation.enabled"
+            else original(key, default)
+        ),
+    )
+
+
+def test_escalation_off_keeps_progress_but_never_asks(monkeypatch):
+    """Gerbang mati = peringatan tetap dikirim, prompt tidak pernah muncul.
+
+    Inilah keadaan yang dikonfigurasi P8E. Prompt interaktif akan memotong
+    dengan suara, dan itu yang diminta untuk dihilangkan.
+    """
+    _never_finishing_client(monkeypatch)
+    _with_escalation(monkeypatch, enabled=False)
+    adapter = _Adapter()
+    adapter.interactive = True
+    adapter.answer = None
+
+    result, _ = _run(adapter, max_iterations=5)
+
+    # Peringatan progres masih wajib: keheningan total bukan tujuan gerbang ini.
+    assert [l for l in adapter.progress_lines if "batas" in l.casefold()]
+    assert adapter.asked == []
+    assert result.iterations == 5      # pekerjaan jalan terus sampai batas
+
+
+def test_escalation_on_asks_and_can_stop_early(monkeypatch):
+    """Gerbang hidup = run interaktif ditawari berhenti sebelum menabrak dinding."""
+    _never_finishing_client(monkeypatch)
+    _with_escalation(monkeypatch, enabled=True)
+    adapter = _Adapter()
+    adapter.interactive = True
+    adapter.answer = "Hentikan"
+
+    result, _ = _run(adapter, max_iterations=5)
+
+    assert adapter.asked
+    assert result.iterations < 5, "berhenti lebih awal atas permintaan user"
 
 
 # ── konfirmasi ditolak tidak boleh diulang ────────────────────────────────
