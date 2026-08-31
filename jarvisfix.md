@@ -9730,6 +9730,16 @@ menegaskan **urutan** `["enter", "capture", "exit(raised=True)"]`. Urutan itu
 penting: ia membuktikan capture benar-benar terjadi **di dalam** pause, bukan
 hanya bahwa pause dipanggil.
 
+> **Koreksi 2026-09-01 — klaim "nol tes" di bawah ini berlebihan.** Saya
+> menulis bahwa tidak ada tes yang menyentuh `capture_pause`. Pengukuran
+> ulang (`git grep -c capture_pause HEAD~1 -- tests/`) menunjukkan
+> `test_screen_cursor_overlay.py` memakainya **10 kali** sebelum perubahan
+> saya. Yang benar: tes itu memang memakai `capture_pause`, tetapi **tidak ada**
+> yang menegaskan urutan enter -> capture -> exit pada jalur
+> `VisualObserveService`, dan tidak ada yang menegaskan pause tertutup saat
+> capture gagal. Jadi celahnya nyata, tetapi sebabnya bukan ketiadaan tes —
+> melainkan ketiadaan penegasan atas **urutan**.
+
 RED diukur lebih dulu: dengan capture dikeluarkan dari `with`, tes baru **merah**
 (`1 failed, 6 passed`). Setelah produksi dipulihkan, **7 passed**. M kini mati.
 
@@ -9938,3 +9948,67 @@ Tes menolaknya. Setelah `telegram.py` dipulihkan (`git diff` kosong): **3 passed
   baris. Dua baris tambahan itu berupa komentar, dan keduanya diukur bersih —
   tetapi ini berarti cakupan pengawasan berubah, dan perubahan itu sengaja
   dicatat di sini.
+
+---
+
+## Fase 42 — koreksi atas laporan saya sendiri: bukan "RED-by-design",
+## melainkan cacat wiring yang terukur
+
+Sebelumnya saya melaporkan kegagalan `test_phase42_voice_ack_dark_range.py`
+sebagai "RED-by-design". Itu keliru, dan saya perbaiki di sini.
+
+**Gejala (diukur 2026-09-01):** `assert 50.0 == 1050.0`. Log runtime ikut
+menampilkan `speech_end_ms: 0.0`.
+
+**Mekanisme — terukur, bukan tebakan:**
+
+- `latency.mark()` menyimpan **selang sejak penanda terakhir**, bukan offset
+  dari awal turn (`latency.py:93`: `round((moment - turn.last_at) * 1000, 1)`).
+  Diverifikasi langsung: `start@100.0`, `mark a@100.4`, `mark b@100.9`
+  menghasilkan `[('a', 400.0), ('b', 500.0)]`.
+- `_voice_intercept` memanggil `start` **dan** `mark("speech_end")` pada saat
+  yang sama (`window_voice.py:125-126`), yaitu setelah transkrip final tiba.
+  Selangnya karena itu selalu nol.
+- Tes yang gagal menspesifikasikan `start` terjadi saat ucapan **dimulai**
+  (now=100.0) dan `speech_end` saat transkrip **final** (now=100.8), sehingga
+  `speech_end_ms` = 800.0.
+
+**Ini menjelaskan anomali yang tercatat sejak 2026-08-19 dan belum
+terjelaskan.** Catatan Fase 42 di atas berbunyi: "Pada kelima record,
+`speech_end_ms` tetap **0.0**". Ternyata bukan misteri runtime — penyebabnya
+ada di kode dan dapat diukur sepenuhnya secara offline.
+
+**Koreksi atas koreksi (pengukuran kedua, jam yang sama).** Dua jam sesudah
+paragraf di atas, saya hampir mencatat "tidak ada hook awal ucapan". Itu
+pun keliru — dan kali ini penyebabnya grep yang terlalu sempit: `
+grep -rn add_transcription jarvis/` hanya mencari di dalam paket, padahal
+pemanggilnya hidup di `main.py:1517` dan `main.py:1534`. Pola yang sama
+dengan kesalahan besar saya di Fase 48: **menyimpulkan dari jangkauan
+pencarian yang tidak saya periksa batasnya.**
+
+Dengan cakupan yang benar, wiring-nya ternyata sudah ada:
+
+- `main.py:1506-1512` — `if not in_buf:` = awal ucapan yang sesungguhnya
+  (`self._turn_id = self._sm.begin_request()`, `_trace("turn.input_started")`).
+- `VoiceToolGate` diinstansiasi di `main.py:1154`; `add_transcription`
+  dipanggil di `main.py:1517` (parsial) dan `main.py:1534` (final).
+
+Jadi titik `start` yang benar bukan di `_voice_intercept`, melainkan di
+`main.py:1511`. Yang hilang tinggal satu `latency.start("voice_ack")` di
+titik itu, supaya `speech_end` punya offset tak-nol terhadap awal ucapan.
+
+**Verifikasi bahwa `mark` bukan biangnya.** Sebelum menyalahkan `mark`, saya
+periksa apakah semantik selang itu disengaja. Ya — dan terkunci oleh tes:
+`tests/test_latency_breakdown.py:56-60` menegaskan `prepared=100`,
+`first_llm=500`, `first_tool=1500` untuk `start@0 / mark@0.1 / mark@0.6 /
+mark@2.1`. Jadi `mark` menyimpan selang **karena itu memang maksudnya**, dan
+satu-satunya cacat adalah `start` yang dipanggil terlambat.
+
+**Status: DILAPORKAN, belum diperbaiki.** Alasan penundaan bukan ketiadaan
+hook, melainkan karena menambah `latency.start` di `main.py` berarti
+menyentuh jalur transkrip live saat satu suite penuh sedang berjalan, dan
+perubahan itu sendiri belum punya tes RED.
+
+**Langkah aman berikutnya (sempit):** tulis RED yang menegaskan
+`speech_end_ms > 0` untuk ucapan dua-chunk (`add_transcription` parsial lalu
+final) sebelum menyentuh `main.py`.
