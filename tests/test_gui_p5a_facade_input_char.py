@@ -498,17 +498,32 @@ def test_activate_mounts_payload_and_marks_active(stage):
     assert stage._loading_label.isHidden()
 
 
-def test_reactivating_same_panel_stays_active_and_forces_signal(stage):
+def test_switch_panel_while_active_notifies_every_time(stage):
     from jarvis.ui.stage import ContentStatus
+    stage.activate("alpha")
     seen: list[str] = []
     stage.status_changed.connect(seen.append)
-    stage.activate("alpha")
 
-    stage.activate("alpha")               # same panel → still ACTIVE
+    stage.activate("beta")                # switch panel, status stays ACTIVE
+    assert stage.status is ContentStatus.ACTIVE
+    assert stage.current == "beta"
+    # Panel change with constant ACTIVE must still notify (force=True). The
+    # forced emit is one per switch, not two — _set_status fires once.
+    assert seen == ["ACTIVE"]
+    stage.activate("alpha")               # switching back is notified too
+    assert seen.count("ACTIVE") == 2
+
+
+def test_reactivating_the_same_panel_emits_nothing(stage):
+    from jarvis.ui.stage import ContentStatus
+    stage.activate("alpha")
+    seen: list[str] = []
+    stage.status_changed.connect(seen.append)
+
+    stage.activate("alpha")               # no state change → no duplicate signal
     assert stage.status is ContentStatus.ACTIVE
     assert stage.current == "alpha"
-    # Panel change with constant ACTIVE must still notify (force=True):
-    assert seen.count("ACTIVE") >= 2
+    assert seen == []
 
 
 def test_panel_switch_crossfades_to_new_owner(stage):
