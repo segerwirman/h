@@ -32,12 +32,20 @@ from pathlib import Path
 from jarvis.core import latency
 
 
-def test_speech_end_offset_masih_nol_cacat_yang_tercatat():
-    """BUKTI CACAT: ``speech_end_ms`` bernilai nol pada jalur intercept UI.
+def test_speech_end_punya_offset_pada_alur_nyata():
+    """Alur NYATA: ``begin_request`` membuka turn, intercept menandai.
 
-    Menjalankan ``_voice_intercept`` produksi yang sesungguhnya, bukan salinan
-    logikanya, supaya tes tidak bisa hijau dengan meniru kesalahan yang sama.
+    Ini ujian yang sesungguhnya. Versi tes ini sebelumnya **menipu**: ia
+    memanggil ``_voice_intercept`` tanpa ``begin_request``, sehingga turn
+    dibuka oleh ``start`` di dalam intercept — dan cacatnya tetap tersembunyi
+    walau tes lolos.
+
+    Alur produksi yang benar: ``main.py`` memanggil ``begin_request()`` pada
+    chunk pertama ucapan, lalu ``_voice_intercept`` menandai ``speech_end``
+    sesudah transkrip final tiba. Bila intercept masih memanggil ``start``,
+    ia menimpa turn itu dan ``speech_end`` kembali nol.
     """
+    from jarvis.core.state import PipelineStateMachine
     from jarvis.ui import window_voice as wv
 
     obj = object.__new__(wv.WindowVoiceMixin)
@@ -47,19 +55,23 @@ def test_speech_end_offset_masih_nol_cacat_yang_tercatat():
 
     latency.reset()
     try:
-        # Tier AGENT membuat _voice_intercept return di baris 147-151,
-        # sebelum menyentuh self.router — jadi objek di atas cukup.
-        obj._voice_intercept("tolong riset topik ini")
-        report = latency.voice_handoff(now=latency.time.monotonic() + 0.05)
+        base = latency.time.monotonic()
+        PipelineStateMachine().begin_request()      # awal ucapan
+        # Transkrip final tiba di lain waktu; intercept hanya menandai.
+        with __import__("unittest.mock", fromlist=["patch"]).patch.object(
+            latency.time, "monotonic", lambda: base + 0.8
+        ):
+            obj._voice_intercept("tolong riset topik ini")
+        report = latency.voice_handoff(now=base + 1.05)
     finally:
         latency.reset()
 
-    stages = dict(report.get("stages", []))
-    # Cacat: speech_end selalu nol karena start dan mark terjadi bersamaan.
-    assert stages.get("speech_end") == 0.0, (
-        "speech_end kini tidak nol — cacat Fase 42 sudah tertutup; "
-        "balikkan assertion ini menjadi > 0 agar ia mengunci perbaikannya"
+    stages = dict(report["stages"])
+    assert stages["speech_end"] == 800.0, (
+        f"speech_end = {stages.get('speech_end')!r} — intercept menimpa turn "
+        f"dari begin_request, cacat Fase 42 muncul kembali"
     )
+    assert report["total_ms"] == 1050.0, report
 
 
 def test_intercept_tidak_terhubung_ke_jalur_transkrip_live():
@@ -100,3 +112,34 @@ def test_jalur_live_memang_punya_titik_awal_ucapan():
     source = Path("main.py").read_text(encoding="utf-8")
     assert "if not in_buf:" in source
     assert "turn.input_started" in source
+
+
+def test_begin_request_membuka_turn_voice_ack():
+    """RED: awal ucapan harus membuka turn ``voice_ack``.
+
+    Fase 42 mandek karena tidak ada titik di luar ``main.py`` yang membuka
+    turn ini, dan ``main.py`` adalah berkas **frozen**. ``begin_request()``
+    dipanggil tepat di dalam blok ``if not in_buf:`` (awal ucapan) pada
+    ``main.py:1509``, dan hidup di ``jarvis/core/state.py`` yang tidak frozen.
+
+    Bila ia membuka turn, ``speech_end`` yang ditandai ``_voice_intercept``
+    memperoleh offset nyata — cacat ``speech_end_ms = 0.0`` tertutup tanpa
+    menyentuh satu pun berkas frozen.
+    """
+    from jarvis.core.state import PipelineStateMachine
+
+    latency.reset()
+    try:
+        sm = PipelineStateMachine()
+        base = latency.time.monotonic()
+        sm.begin_request()                       # awal ucapan
+        latency.mark("voice_ack", "speech_end", now=base + 0.8)
+        report = latency.voice_handoff(now=base + 1.05)
+    finally:
+        latency.reset()
+
+    stages = dict(report["stages"])
+    assert stages.get("speech_end") == 800.0, (
+        f"begin_request tidak membuka turn voice_ack — speech_end = "
+        f"{stages.get('speech_end')!r}; cacat Fase 42 belum tertutup"
+    )

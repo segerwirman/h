@@ -118,14 +118,23 @@ class WindowVoiceMixin:
         divergen. Free-form conversation tetap ke live assistant."""
         if not spoken:
             return
-        # Fase 42 — UKUR rentang gelap akhir-ucapan → ACK. Penanda ini hanya
+        # Fase 42/50 — UKUR rentang gelap akhir-ucapan → ACK. Penanda ini hanya
         # mengukur; tidak mengubah routing. `latency.turn` ber-key voice_ack
         # ditutup di dispatch (voice_handoff) saat task masuk.
+        #
+        # `start` TIDAK lagi dipanggil di sini. Turn dibuka oleh
+        # `state.py begin_request()`, yang dipanggil dari `main.py` pada chunk
+        # pertama ucapan. Dua alasan, keduanya terukur:
+        #
+        # 1. `mark()` menyimpan selang sejak penanda terakhir (`latency.py:93`).
+        #    `start` di sini terjadi sesudah transkrip final tiba, sehingga
+        #    `speech_end_ms` selalu 0.0 — anomali sejak 2026-08-19.
+        # 2. `start` kedua mengganti turn yang sedang berjalan dan MENGHAPUS
+        #    `speech_end` yang sudah tercatat (terukur 2026-09-01).
         try:
-            latency.start("voice_ack", task=f"voice:{spoken[:60]}")
             latency.mark("voice_ack", "speech_end")
         except Exception as exc:                             # noqa: BLE001
-            _logger.debug("latency.voice_ack_open_failed",
+            _logger.debug("latency.voice_ack_mark_failed",
                           error=type(exc).__name__)
         if self.reply_flow.handle_utterance(spoken):
             return

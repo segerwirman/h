@@ -46,7 +46,24 @@ def test_voice_handoff_after_second_voice_ack_start_is_bounded():
     assert len(report["stages"]) == 2  # satu pasang, bukan dua
 
 
-def test_voice_intercept_opens_dark_range_turn(monkeypatch):
+def test_voice_intercept_marks_dark_range_without_reopening_it(monkeypatch):
+    """Intercept MENANDAI akhir ucapan; ia TIDAK membuka turn baru.
+
+    Fase 50 (2026-09-01) mengubah kontrak ini, dan alasannya terukur:
+
+    1. Turn `voice_ack` dibuka oleh `state.py begin_request()`, yang dipanggil
+       dari `main.py` pada chunk pertama ucapan. `mark()` menyimpan selang
+       sejak penanda terakhir, jadi `start` yang dipanggil sesudah transkrip
+       final — seperti dulu — membuat `speech_end_ms` selalu `0.0`. Itu
+       anomali yang tercatat sejak 2026-08-19 tanpa penjelasan.
+
+    2. `start` kedua bukan sekadar sia-sia: ia mengganti turn yang sedang
+       berjalan dan **menghapus** `speech_end` yang sudah tercatat. Bila
+       intercept masih membuka turn, ia merusak penanda dari `begin_request`.
+
+    Assertion negatif di bawah adalah inti tes ini — tanpanya, cacatnya bisa
+    kembali tanpa terdeteksi.
+    """
     from jarvis.ui import window_voice as wv
 
     calls: list[tuple] = []
@@ -65,5 +82,9 @@ def test_voice_intercept_opens_dark_range_turn(monkeypatch):
     obj._pending_close_decision = None
     obj._pending_voice_proposal_id = None
     obj._voice_intercept("tolong pesankan tiket pesawat ke jakarta")
-    assert ("start", "voice_ack") in calls
     assert ("mark", "voice_ack", "speech_end") in calls
+    # Intercept tidak boleh membuka turn: begin_request sudah melakukannya.
+    assert ("start", "voice_ack") not in calls, (
+        "_voice_intercept kembali memanggil latency.start — ia akan menimpa "
+        "turn dari begin_request dan menghapus speech_end yang sudah tercatat"
+    )

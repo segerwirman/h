@@ -10066,3 +10066,82 @@ perilaku yang mengeksekusi `_voice_intercept` produksi yang sesungguhnya.
 bukan dibiarkan merah.
 - Belum ada perubahan produksi. Angka `speech_end_ms` yang sesungguhnya
 masih menunggu sesi voice nyata; tes ini hanya mengunci wiring-nya.
+
+---
+
+## Fase 50 — GREEN: cacat `speech_end_ms = 0.0` tertutup TANPA menyentuh
+## berkas frozen
+
+Tanggal: 2026-09-01. Berkas produksi: `jarvis/core/state.py` (**diubah**),
+`jarvis/ui/window_voice.py` (**diubah**). `main.py` **tidak disentuh**.
+
+### Blokiran dan jalan keluar yang terukur
+
+Percobaan pertama menempatkan `latency.start` di `main.py:1506`. Ia bekerja
+(9 tes hijau, 3/3 mutan mati) — lalu `scripts/verify_frozen.py` menolaknya:
+
+    FROZEN integrity: FAILED
+    - main.py: hash berubah
+
+`main.py` ada di `config/frozen_manifest.json`. Ini seharusnya saya periksa
+SEBELUM mengedit, bukan sesudah lima belas menit bekerja.
+
+Jalan keluarnya: `main.py:1509` memanggil `self._sm.begin_request()` tepat di
+dalam blok `if not in_buf:`. `begin_request()` hidup di `jarvis/core/state.py`
+— **tidak frozen**. Dua risiko diukur lebih dulu:
+
+- **Impor melingkar:** `state.py` hanya mengimpor `log` dan `BUS`. Aman.
+- **Pencemaran jalur lain:** dua `begin_request()` lain ada di jalur dokumen
+  (`voice_document.py:225,362`, `document.py:147`), tetapi keduanya milik
+  `DocumentLifecycle`, bukan `PipelineStateMachine`. Jalur dokumen tidak
+  tersentuh.
+
+### Tes pertama saya MENIPU, dan itu yang terpenting di sini
+
+Tes RED awal lolos. Ia tidak memanggil `_voice_intercept`, sehingga turn
+dibuka oleh `start` di dalam intercept — cacatnya tetap tersembunyi walau
+tes hijau. Saat alur NYATA disimulasikan (`begin_request` lalu intercept),
+hasilnya `speech_end = 0.0`: perbaikan sama sekali belum efektif, karena
+`_voice_intercept` masih memanggil `latency.start` dan **menimpa** turn.
+
+Tes ditulis ulang agar mengukur alur produksi yang sesungguhnya. Pelajaran
+yang sama dengan Fase 48: hijau pada satu tes bukan bukti apa pun bila tesnya
+tidak mengeksekusi jalur yang dipertanyakan.
+
+### Hasil
+
+    stages: [('speech_end', 800.0), ('dispatch_start', 250.0)]
+    total_ms: 1050.0
+
+`speech_end` kini `800.0`, bukan `0.0`.
+
+### 3/3 mutan mati
+
+| Mutan | Hasil |
+|---|---|
+| F: `start` dikembalikan ke `_voice_intercept` | KILLED (2 tes) |
+| G: `start` dihapus dari `begin_request` | KILLED (2 tes) |
+| H: `start` dipindah ke `to(TRANSCRIBING)` | KILLED (2 tes) |
+
+H adalah yang paling berharga: `start` tetap ADA dan tetap dipanggil jalur
+suara, hanya terlambat. Tes keberadaan saja akan lolos.
+
+### Kontrak yang diubah
+
+`test_voice_intercept_opens_dark_range_turn` (2026-08-17) menegaskan intercept
+**membuka** turn. Kontrak itulah yang menghasilkan `speech_end_ms = 0.0`, dan
+ia diubah menjadi `test_voice_intercept_marks_dark_range_without_reopening_it`
+dengan assertion negatif (`start` absen). Perubahan ini di atas berkas
+tracked dan disetujui pengguna lebih dulu.
+
+### Batas jujur
+
+- Pengukuran memakai jam tiruan. Angka `speech_end_ms` yang sesungguhnya
+  masih menunggu sesi voice nyata; yang tertutup di sini adalah wiring-nya.
+- `begin_request()` juga dipanggil dari jalur selain transkrip suara bila ada
+  pemanggil baru kelak; setiap pemanggil akan membuka turn `voice_ack`.
+  Saat ini `main.py:1509` satu-satunya pemanggil `PipelineStateMachine`.
+- UTANG BELUM LUNAS: `git checkout` pada sesi ini menghapus satu tes milik
+  pengguna yang belum pernah di-commit
+  (`test_final_transcript_boundary_is_bound_to_the_matching_voice_ack`).
+  Yang ada sekarang adalah REKONSTRUKSI saya, bukan versi asli pengguna.

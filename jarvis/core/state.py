@@ -112,10 +112,36 @@ class PipelineStateMachine:
 
     # ── transitions ──────────────────────────────────────────────────────────
     def begin_request(self) -> str:
-        """New correlation id for one voice command."""
+        """New correlation id for one voice command.
+
+        Fase 42/50 — titik ini juga membuka rentang gelap ``voice_ack``
+        (akhir ucapan → task masuk dispatch). ``main.py:1509`` memanggilnya
+        tepat di dalam ``if not in_buf:``, yaitu chunk pertama sebuah ucapan.
+
+        Mengapa di sini, bukan di ``_voice_intercept``: ``latency.mark()``
+        menyimpan selang sejak penanda terakhir (``latency.py:93``), sehingga
+        ``start`` yang dipanggil sesudah transkrip final tiba membuat
+        ``speech_end_ms`` selalu ``0.0`` — anomali yang tercatat sejak
+        2026-08-19 tanpa penjelasan. Terukur pula bahwa ``start`` kedua
+        mengganti turn yang berjalan dan **menghapus** ``speech_end``.
+
+        Mengapa di sini, bukan di ``main.py``: berkas itu ada dalam
+        ``config/frozen_manifest.json``. ``state.py`` tidak.
+
+        Pengukur tidak pernah boleh menjatuhkan giliran — kegagalan di sini
+        ditelan dan dicatat, bukan dibiarkan merambat.
+        """
         rid = new_request_id()
         with self._lock:
             self._request_id = rid
+        try:
+            from jarvis.core import latency, quiet
+        except Exception:                                        # noqa: BLE001
+            return rid          # pengukur tidak pernah menjatuhkan giliran
+        try:
+            latency.start("voice_ack", task=f"voice:{rid}")
+        except Exception as exc:                                 # noqa: BLE001
+            quiet.swallowed("latency.voice_ack_open_failed", exc)
         return rid
 
     def to(self, state: PipelineState, outcome: Outcome | None = None,
