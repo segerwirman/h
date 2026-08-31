@@ -87,6 +87,48 @@ def test_awareness_and_focus_mode_are_glyph_buttons_with_indicator():
             assert panel._buttons[name]._active is False
 
 
+def test_screen_control_uses_dedicated_painted_share_button():
+    from jarvis.ui.actionpanel import ActionPanel, GlyphButton, ScreenShareButton
+
+    _app()
+    parent = QWidget()
+    panel = ActionPanel(parent)
+    button = panel._buttons["screen_control"]
+    try:
+        assert isinstance(button, ScreenShareButton)
+        assert not isinstance(button, GlyphButton)
+        assert "tab Chrome" in button.toolTip()
+        assert "tab Chrome" in button.accessibleName()
+        assert button.text() == ""
+
+        panel.set_indicator("screen_control", True)
+        assert button._active is True
+        panel.set_indicator("screen_control", False)
+        assert button._active is False
+    finally:
+        parent.close()
+
+
+def test_screen_share_button_renders_offscreen_in_inactive_and_active_states():
+    from PyQt6.QtGui import QPixmap
+    from jarvis.ui.actionpanel import ActionPanel
+
+    _app()
+    parent = QWidget()
+    panel = ActionPanel(parent)
+    button = panel._buttons["screen_control"]
+    button.resize(44, 40)
+    try:
+        for active in (False, True):
+            panel.set_indicator("screen_control", active)
+            pixmap = QPixmap(button.size())
+            pixmap.fill()
+            button.render(pixmap)
+            assert pixmap.isNull() is False
+    finally:
+        parent.close()
+
+
 def test_focus_mode_indicator_bekerja_di_panel_default():
     """focus_mode tetap ikon default — cakupannya tidak boleh bergantung
     pada opt-in awareness."""

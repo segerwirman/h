@@ -227,6 +227,34 @@ def _sheet(*, host=None, coordinator=None):
     return parent, sheet
 
 
+@pytest.mark.parametrize(
+    ("state", "expected"),
+    [
+        ("feature_disabled", "belum diaktifkan di konfigurasi lokal"),
+        ("task_required", "tepat satu tugas agent lokal"),
+    ],
+)
+def test_readiness_only_state_never_probes_browser_or_mints_scope(state, expected):
+    host = _Host()
+    parent, sheet = _sheet(host=host)
+    try:
+        assert sheet.present_readiness(state, 900, 700) is True
+
+        assert sheet.isVisible() is True
+        assert sheet.state == state
+        assert expected in sheet.status_text().casefold()
+        assert host.begin_threads == []
+        assert sheet._scope is None
+        assert sheet._picker_id == ""
+        assert sheet._share_button.isEnabled() is False
+        assert sheet._stop_button.isEnabled() is False
+        assert sheet._cancel_button.text() == "TUTUP"
+    finally:
+        sheet.cancel_local()
+        parent.close()
+        _APP.processEvents()
+
+
 def test_present_returns_while_fake_attach_is_blocked_and_updates_asynchronously():
     host = _Host(block=True)
     parent, sheet = _sheet(host=host)
@@ -518,6 +546,8 @@ def test_sheet_has_truthful_text_for_all_declared_local_states():
     parent, sheet = _sheet()
     try:
         for state in (
+            "feature_disabled",
+            "task_required",
             "checking",
             "unavailable",
             "zero_tabs",

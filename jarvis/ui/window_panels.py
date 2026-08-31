@@ -195,7 +195,12 @@ class WindowPanelsMixin:
                 self.write_log(
                     "SYS: Surface Screen Control aktif tidak dapat dikelola dari pemilih tab.")
             return
+        sheet = getattr(self, "tab_share_sheet", None)
+        central = self.centralWidget()
         if not bool(config.get("screen_control.enabled", False)):
+            if sheet is not None and central is not None:
+                sheet.present_readiness(
+                    "feature_disabled", central.width(), central.height())
             self.write_log(
                 "SYS: Screen Control belum diizinkan di konfigurasi lokal.")
             self.notifications.push(
@@ -203,18 +208,19 @@ class WindowPanelsMixin:
             return
         scope = dispatch.screen_control_scope()
         if scope is None:
+            if sheet is not None and central is not None:
+                sheet.present_readiness(
+                    "task_required", central.width(), central.height())
             self.write_log(
                 "SYS: Screen Control memerlukan tepat satu tugas agent aktif.")
             self.notifications.push(
                 "Screen Control", "Tidak ada satu tugas aktif yang jelas", "warning")
             return
-        sheet = getattr(self, "tab_share_sheet", None)
         if sheet is None:
             self.write_log("SYS: Pemilih tab Screen Control tidak tersedia.")
             self.notifications.push(
                 "Screen Control", "Pemilih tab tidak tersedia", "warning")
             return
-        central = self.centralWidget()
         if central is None:
             return
         if not sheet.present(scope, central.width(), central.height()):

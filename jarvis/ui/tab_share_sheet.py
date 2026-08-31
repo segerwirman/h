@@ -29,6 +29,14 @@ from jarvis.ui.tab_share_preview import (
 
 
 _STATE_TEXT = {
+    "feature_disabled": (
+        "Screen Control belum diaktifkan di konfigurasi lokal. "
+        "Tidak ada koneksi ke Chrome yang dicoba."
+    ),
+    "task_required": (
+        "Mulai tepat satu tugas agent lokal terlebih dahulu, lalu buka kembali "
+        "Bagikan Tab Chrome."
+    ),
     "checking": "Memeriksa tab Chrome yang dapat dikontrol…",
     "unavailable": "Chrome tidak dapat dilihat. Periksa remote-debugging-port.",
     "zero_tabs": "Tidak ada tab HTTP/HTTPS yang dapat dibagikan.",
@@ -152,6 +160,8 @@ class TabShareSheet(QWidget):
             return False
         self.state = state
         if state in {
+            "feature_disabled",
+            "task_required",
             "checking",
             "unavailable",
             "zero_tabs",
@@ -172,6 +182,25 @@ class TabShareSheet(QWidget):
     @staticmethod
     def _state_text(state: str, reason: str) -> str:
         return str(reason or _STATE_TEXT.get(state, "Status tab tidak tersedia."))
+
+    def present_readiness(
+        self,
+        state: str,
+        parent_w: int,
+        parent_h: int,
+    ) -> bool:
+        if state not in {"feature_disabled", "task_required"}:
+            return False
+        self._generation += 1
+        self._scope = None
+        self._picker_id = ""
+        self._active_target_id = ""
+        self._active_target_generation = 0
+        self._chosen_candidate_id = ""
+        self._candidates.clear()
+        self.set_runtime_state(state)
+        self._open(parent_w, parent_h)
+        return True
 
     def present(self, scope, parent_w: int, parent_h: int) -> bool:
         session_id = str(getattr(scope, "session_id", "") or "").strip()
@@ -565,7 +594,8 @@ class TabShareSheet(QWidget):
         )
         self._stop_button.setVisible(sharing)
         self._stop_button.setEnabled(sharing)
-        self._cancel_button.setText("TUTUP" if sharing else "BATAL")
+        readiness_only = self.state in {"feature_disabled", "task_required"}
+        self._cancel_button.setText("TUTUP" if sharing or readiness_only else "BATAL")
 
 
 __all__ = ["TabShareSheet"]

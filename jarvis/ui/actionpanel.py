@@ -6,7 +6,7 @@ back to 1.0 at home. All tunables in config.yaml.
 """
 from __future__ import annotations
 
-from PyQt6.QtCore import QRectF, Qt, pyqtSignal
+from PyQt6.QtCore import QLineF, QRectF, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PyQt6.QtWidgets import (QGraphicsOpacityEffect, QHBoxLayout, QLabel,
                              QLineEdit, QPushButton, QVBoxLayout, QWidget)
@@ -57,6 +57,97 @@ class CameraButton(QPushButton):
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(color)
             p.drawEllipse(QRectF(side * .76, side * .12, dot, dot))
+
+
+class ScreenShareButton(QPushButton):
+    """Painted selected-tab share control; independent of installed fonts."""
+
+    def __init__(self, size_px: int, parent=None):
+        super().__init__(parent)
+        self._icon_px = int(size_px)
+        self._active = False
+        self.setText("")
+
+    def set_active(self, active: bool) -> None:
+        active = bool(active)
+        if active != self._active:
+            self._active = active
+            self.update()
+
+    def paintEvent(self, _event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        side = min(self.width(), self.height()) * .82
+        left = (self.width() - side) / 2
+        top = (self.height() - side) / 2
+        tile = QRectF(left, top, side, side)
+
+        panel = QColor(theme.PAL.panel)
+        panel = panel.lighter(118 if (self.underMouse() or self._active) else 106)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(panel)
+        painter.drawRoundedRect(tile, side * .22, side * .22)
+
+        line = QColor(theme.PAL.text if (self.underMouse() or self._active)
+                      else theme.PAL.text_dim)
+        painter.setPen(QPen(line, max(1.5, side * .055),
+                            Qt.PenStyle.SolidLine,
+                            Qt.PenCapStyle.RoundCap,
+                            Qt.PenJoinStyle.RoundJoin))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        screen = QRectF(
+            left + side * .20,
+            top + side * .22,
+            side * .60,
+            side * .43,
+        )
+        painter.drawRoundedRect(screen, side * .07, side * .07)
+        painter.drawLine(QLineF(
+            screen.center().x(), screen.bottom(),
+            screen.center().x(), top + side * .77,
+        ))
+        painter.drawLine(QLineF(
+            left + side * .38, top + side * .77,
+            left + side * .62, top + side * .77,
+        ))
+
+        cyan = QColor(theme.PAL.accent)
+        painter.setPen(QPen(cyan, max(1.6, side * .06),
+                            Qt.PenStyle.SolidLine,
+                            Qt.PenCapStyle.RoundCap))
+        painter.drawLine(QLineF(
+            left + side * .29, top + side * .53,
+            left + side * .40, top + side * .42,
+        ))
+        painter.drawLine(QLineF(
+            left + side * .40, top + side * .42,
+            left + side * .40, top + side * .50,
+        ))
+
+        alert = QColor(theme.PAL.alert)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(alert)
+        painter.drawEllipse(QRectF(
+            left + side * .66,
+            top + side * .34,
+            side * .11,
+            side * .11,
+        ))
+
+        if self._active:
+            painter.setBrush(cyan)
+            painter.drawRoundedRect(
+                QRectF(
+                    left + side * .15,
+                    top + side * .84,
+                    side * .70,
+                    max(2.0, side * .055),
+                ),
+                side * .025,
+                side * .025,
+            )
+
 
 class GlyphButton(QPushButton):
     """Text-glyph action button that can show a lit on/off lamp when active.
@@ -109,7 +200,7 @@ _ICONS = {           # glyph, tooltip
     "settings":   ("⚙", "Pengaturan — API key"),
     "awareness":  ("◈", "Screen awareness — pause/resume"),
     "focus_mode": ("◐", "Focus Mode — pause comment narration"),
-    "screen_control": ("⌖", "Screen Control — kontrol desktop semantik lokal"),
+    "screen_control": ("", "Screen Control — pilih satu tab Chrome"),
     "palette":    ("▤", "Command palette"),
     "timeline":   ("◷", "Context timeline"),
     # Semua control plane dibuka sebagai sheet lokal, bukan ContentStage.
@@ -171,6 +262,8 @@ class ActionPanel(QWidget):
             if name == "vision":
                 btn: QPushButton = CameraButton(icon_px, self)
                 self._camera_button = btn
+            elif name == "screen_control":
+                btn = ScreenShareButton(icon_px, self)
             elif name == "cancel":
                 # Tombol batal memakai warna merah agar jelas dari ikon lain.
                 btn = GlyphButton(glyph, icon_px, self)
@@ -206,7 +299,7 @@ class ActionPanel(QWidget):
         """Light/extinguish the on-off lamp on a toggle icon (awareness,
         focus_mode, …). Works for both the camera and glyph buttons."""
         btn = self._buttons.get(name)
-        if isinstance(btn, (GlyphButton, CameraButton)):
+        if isinstance(btn, (GlyphButton, CameraButton, ScreenShareButton)):
             btn.set_active(active)
 
     def set_button_state(self, name: str, tooltip: str) -> None:

@@ -508,7 +508,14 @@ def test_toggle_screen_control_refuses_when_local_config_is_disabled(monkeypatch
 
     logs = []
     notices = []
+    readiness = []
+    picker_calls = []
     host = SimpleNamespace(
+        centralWidget=lambda: SimpleNamespace(width=lambda: 900, height=lambda: 700),
+        tab_share_sheet=SimpleNamespace(
+            present_readiness=lambda *args: readiness.append(args) or True,
+            present=lambda *args: picker_calls.append(args) or True,
+        ),
         write_log=logs.append,
         notifications=SimpleNamespace(
             push=lambda *args: notices.append(args),
@@ -519,6 +526,8 @@ def test_toggle_screen_control_refuses_when_local_config_is_disabled(monkeypatch
 
     WindowPanelsMixin._toggle_screen_control(host)
 
+    assert readiness == [("feature_disabled", 900, 700)]
+    assert picker_calls == []
     assert "belum diizinkan" in logs[-1]
     assert notices[-1][1] == "Dinonaktifkan di konfigurasi"
 
@@ -529,7 +538,14 @@ def test_toggle_screen_control_requires_one_unambiguous_live_task(monkeypatch):
 
     logs = []
     notices = []
+    readiness = []
+    picker_calls = []
     host = SimpleNamespace(
+        centralWidget=lambda: SimpleNamespace(width=lambda: 900, height=lambda: 700),
+        tab_share_sheet=SimpleNamespace(
+            present_readiness=lambda *args: readiness.append(args) or True,
+            present=lambda *args: picker_calls.append(args) or True,
+        ),
         write_log=logs.append,
         notifications=SimpleNamespace(
             push=lambda *args: notices.append(args),
@@ -541,6 +557,8 @@ def test_toggle_screen_control_requires_one_unambiguous_live_task(monkeypatch):
 
     WindowPanelsMixin._toggle_screen_control(host)
 
+    assert readiness == [("task_required", 900, 700)]
+    assert picker_calls == []
     assert "tepat satu tugas" in logs[-1]
     assert notices[-1][1] == "Tidak ada satu tugas aktif yang jelas"
 
