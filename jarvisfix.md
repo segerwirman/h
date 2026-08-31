@@ -9645,3 +9645,296 @@ sah. K dibiarkan sebagai mutan setara dan dicatat di sini.
 - Tiga dari empat mutan mati, satu setara. Cakupan tes ini **tidak** mencakup
   kanal `notifications.push` maupun isi `_speak_line` — keduanya tidak ditegaskan
   oleh tes mana pun di berkas ini, dan itu boleh jadi layak diuji nanti.
+
+---
+
+## Fase 48 — `visual_observe.py`: fail-closed yang diam dikembalikan ke fail-closed yang jujur, plus satu celah authority yang tertutup
+
+Tanggal: 2026-08-31. Berkas: `jarvis/automation/visual_observe.py` (tracked,
+**diubah**), `tests/test_desktop_visual_soak.py` (tracked, **ditambah 1 tes**).
+
+### Kegagalan yang diukur
+
+    pytest tests/test_desktop_visual_soak.py::test_visual_service_capture_exception_does_not_retain_partial_frame
+    -> AssertionError: capture exception must propagate to tool fail-closed boundary
+
+### Bukan "tes yang salah" — kronologi yang terukur
+
+Keduanya tracked dan **bersih** (sama dengan HEAD), jadi ini bukan dirty file
+pengguna. Provenansinya:
+
+| Tanggal | Commit | Perubahan |
+|---|---|---|
+| 2026-08-02 | `c55ff2a` | tes ditulis: exception capture **harus merambat** |
+| 2026-08-28 | `0d984ef` (Screen Control: require human CAPTCHA handoff) | produksi membungkus capture dengan `try/except Exception: return None` |
+
+Jadi tes ini **hijau selama 26 hari**, lalu `0d984ef` membalik perilakunya tanpa
+menyentuh tes. Ini regresi nyata — persis pola P8E (`agent.iteration_escalation.enabled`)
+dan pola `_request_cancel_tasks` yang ditemukan pada fase-fase sebelumnya:
+perubahan niat baik pada satu sisi, kontrak di sisi lain dibiarkan tanpa pengawas.
+
+### Mengapa `0d984ef` melakukannya, dan mengapa itu keliru
+
+Commit itu menambahkan `capture_pause` — context manager Screen Control yang
+menjeda authority/overlay selama pengambilan citra. Wajar bila ia ingin
+memastikan pause tertutup walau capture gagal.
+
+Tetapi `with` **sudah** menjamin itu: `__exit__` berjalan saat exception
+merambat. Dua bukti terukur:
+
+1. `jarvis/automation/uia_capture.py:65` memakai pola yang sama
+   (`with self._capture_pause():`) **tanpa** `try/except` — preseden di kode sendiri.
+2. Diukur langsung: dengan `try/except` dihapus, events berjalan
+   `['enter', 'exit(raised=True)']` — pause **tetap tertutup** saat exception melintas,
+   dan `vars(service)` tidak menyimpan citra.
+
+Jadi `except Exception: return None` bukan keharusan keselamatan. Ia mengubah
+**semantika kegagalan**: kegagalan capture kini tak bisa dibedakan dari
+"foreground tidak dikenal" (baris 23) — keduanya sama-sama `None`. Padahal batas
+fail-closed yang sesungguhnya **sudah ada di alat**:
+`desktop_visual_observe.py:62-65` membungkus `observe()` dengan
+`try/except -> ToolResult.fail("desktop_visual_failed")`.
+
+Penanganan di `visual_observe.py` karenanya **menduplikasi** yang sudah benar,
+dan melakukannya lebih buruk.
+
+> **Koreksi (2026-09-01).** Kalimat "Dihapus" di atas terlalu sederhana dan
+> membuat saya memproduksi regresi. Penghapusan menyeluruh itu salah: satu dari
+> dua kegagalan yang ditelan `except` itu **memang harus** ditelan. Lihat
+> subbagian [KOREKSI](#koreksi--perubahan-pertama-fase-ini-membuat-regresi-dan-baru-ketahuan-di-suite-penuh)
+> di bawah untuk versi yang benar.
+
+### Mutasi: buktikan perubahan ini benar dan aman
+
+> Bagian ini diukur pada versi perbaikan **pertama** (hapus `try/except`
+> seluruhnya) dan kini usang. Mutan L di bawah **tidak** seharusnya dibunuh —
+> itu seharusnya membuat saya curiga. Tabel mutan yang berlaku ada di subbagian
+> KOREKSI. Bagian ini dipertahankan apa adanya supaya jejak kesalahannya tidak
+> hilang dari catatan.
+
+| Mutan | Hasil |
+|---|---|
+| L: kembalikan `try/except return None` yang lama | KILLED (2 tes) |
+| M: capture **di luar** `capture_pause` | **SURVIVED** |
+| N: hapus `del image` | **SURVIVED** |
+
+### M adalah celah authority nyata, dan kini tertutup
+
+M selamat karena **nol tes** menyentuh `capture_pause` — padahal itu properti
+yang menjaga authority Screen Control tetap terjeda selama capture. Pelanggarannya
+tak terdeteksi sama sekali.
+
+Ditambahkan satu tes penjaga,
+`test_capture_runs_inside_capture_pause_and_closes_it_even_on_failure`, yang
+menegaskan **urutan** `["enter", "capture", "exit(raised=True)"]`. Urutan itu
+penting: ia membuktikan capture benar-benar terjadi **di dalam** pause, bukan
+hanya bahwa pause dipanggil.
+
+RED diukur lebih dulu: dengan capture dikeluarkan dari `with`, tes baru **merah**
+(`1 failed, 6 passed`). Setelah produksi dipulihkan, **7 passed**. M kini mati.
+
+### N adalah mutan SETARA — dicatat, tidak ditambal
+
+Alih-alih menulis tes untuk mengejar angka, saya ukur apakah N mengubah perilaku
+yang dapat diamati. Tidak:
+
+    service retains: nothing
+    service __dict__ keys: ['_capture', '_capture_pause', '_denylisted', '_foreground']
+
+`image` adalah nama **lokal** yang mati saat `observe()` return, dengan atau tanpa
+`del`. `vars(service)` hanya berisi empat dependensi yang diinjeksi — tak ada
+yang menyimpan citra. Menegaskan `del image` berarti menguji masa hidup variabel
+lokal, yang akan rusak pada refactoring yang sah. N dibiarkan sebagai mutan
+setara dan dicatat di sini.
+
+### Verifikasi
+
+    pytest tests/test_desktop_visual_soak.py -q -p no:randomly  -> 7 passed  (3x)
+    pytest tests/test_desktop_visual_observe.py                 -> 71 passed
+           tests/test_visual_observe_failclosed.py                 (4 berkas
+           tests/test_cua_uia_safe_click.py                         terkait,
+           tests/test_screen_control_coordinator.py                 tanpa regresi)
+    ruff check tests/test_desktop_visual_soak.py
+               jarvis/automation/visual_observe.py               -> All checks passed!
+    scripts/verify_frozen.py                                     -> FROZEN integrity: OK
+
+### Batas jujur
+
+- Bukti bahwa pause menutup saat exception merambat diukur dengan context manager
+  **fake**, bukan `COORDINATOR.capture_pause()` yang sesungguhnya. Perilaku
+  Screen Control nyata pada mesin hidup tetap `unproven-live`.
+- Jalur sukses diukur dengan citra numpy sintetis (abu-abu 128), bukan tangkapan
+  layar nyata. `_summarize` terbukti menghasilkan keempat kunci kontrak, tetapi
+  akurasi agregat terhadap layar nyata tidak diuji di sini.
+
+---
+
+### KOREKSI — perubahan pertama fase ini MEMBUAT regresi, dan baru ketahuan di suite penuh
+
+Ini dicatat karena prosesnya penting, bukan untuk meratapi diri. Versi pertama
+perbaikan saya menghapus `try/except` seluruhnya:
+
+    with self._capture_pause():
+        image = self._capture()
+
+`tests/test_desktop_visual_soak.py` menjadi hijau (7 passed). Yang tidak saya
+periksa: berkas tes **lain** yang juga memakai `visual_observe`. Suite penuh
+menemukannya:
+
+    FAILED tests/test_screen_cursor_overlay.py::
+           test_worker_thread_fallback_pause_fails_closed_before_capture
+       assert [] == [None]
+
+Dua kesalahan saya, berurutan:
+
+1. **Saya menyimpulkan dari satu berkas tes.** Enam hijau di
+   `test_desktop_visual_soak.py` saya anggap sebagai bukti cukup. Padahal
+   `test_screen_cursor_overlay.py` memakai `VisualObserveService` yang sama
+   (baris 311, 322) dengan `capture_pause` yang diinjeksi berbeda. Protokol
+   proyek menuntut suite penuh sebelum commit justru karena alasan ini.
+
+2. **Saya tidak membedakan dua kegagalan yang berbeda.** Sebabnya terukur:
+
+       screen_cursor_overlay.py:174  raise RuntimeError(
+           "fallback capture pause harus berjalan pada Qt UI thread")
+       screen_control.py:169          raise RuntimeError(
+           "screen_control_capture_exclusion_unavailable")
+
+   `capture_pause` **sengaja** melempar bila overlay kursor tidak bisa
+   disembunyikan — itu sinyal "jangan ambil citra, overlay akan ikut terekam".
+   `except Exception: return None` yang saya hapus bukan cuma menelan kegagalan
+   capture; itu **satu-satunya** penangan fail-closed untuk kegagalan pause.
+   Dengan menghapusnya, exception merambat, thread worker mati sebelum
+   `results.append(...)`, dan tes melihat `[]` alih-alih `[None]`.
+
+Diverifikasi bukan tebakan: `git stash` pada `visual_observe.py` mengembalikan
+produksi ke HEAD, dan tes itu **hijau** (`1 passed`). Jadi regresi ini jelas
+akibat perubahan saya.
+
+### Perbaikan: pisahkan kedua kegagalan
+
+`capture_pause` adalah `@contextmanager`, jadi kegagalannya baru terjadi saat
+`__enter__` — bukan saat dipanggil. Karena itu `try` harus membungkus
+**masuknya** context, dan capture diletakkan di luarnya:
+
+    pause = self._capture_pause()
+    stack = ExitStack()
+    try:
+        stack.enter_context(pause)       # gagal di sini -> jangan capture
+    except Exception:
+        return None
+    with stack:
+        image = self._capture()          # gagal di sini -> merambat ke alat
+
+Percobaan pertama saya memanggil `pause.__enter__()` / `pause.__exit__()`
+secara manual. Itu bekerja, tetapi menulis ulang protokol context manager
+dengan tangan — rapuh dan mengalahkan maksud `with`. `ExitStack` melakukan
+hal yang sama dengan benar.
+
+### 3/3 mutan mati setelah pemisahan
+
+| Mutan | Mati oleh |
+|---|---|
+| P: kegagalan pause **merambat** (fail-closed hilang) | `test_worker_thread_fallback_pause_fails_closed_before_capture` |
+| Q: kegagalan capture **ditelan** lagi (regresi fase ini) | `test_visual_service_capture_exception_does_not_retain_partial_frame`, `test_capture_runs_inside_capture_pause_and_closes_it_even_on_failure` |
+| R: capture **di luar** konteks pause | `test_visual_observe_capture_runs_inside_injected_pause_context`, `test_capture_runs_inside_capture_pause_and_closes_it_even_on_failure` |
+
+Kedua perlakuan kini terkunci dari dua arah yang berlawanan — bukan hanya satu.
+
+### Verifikasi setelah koreksi
+
+    pytest tests/test_screen_cursor_overlay.py
+           tests/test_desktop_visual_soak.py
+           tests/test_desktop_visual_observe.py
+           tests/test_visual_observe_failclosed.py
+           tests/test_cua_uia_safe_click.py
+           tests/test_screen_control_coordinator.py
+      -> 89 passed
+    ruff check -> All checks passed!
+    verify_frozen.py -> FROZEN integrity: OK
+
+### Catatan penomoran
+
+Fase 18–21 pada sesi ini bentrok dengan fase 18–21 yang **sudah ada** di berkas
+ini dari pekerjaan sebelumnya (nomor fase dipakai sampai 47). Yang 18 dan 19
+sudah terkomit dan terpush sebelum saya sadar, jadi dibiarkan apa adanya;
+fase `visual_observe` dan `remote_proposal_wiring` di atas diberi nomor **48**
+dan **49** supaya tidak menimpa penomoran lama.
+
+---
+
+## Fase 49 — `test_remote_proposal_wiring.py`: kontrak yang memotong teks pada komentar
+
+Tanggal: 2026-08-31. Berkas: `tests/test_remote_proposal_wiring.py` (tracked, **diubah**),
+`jarvis/agent/adapters/telegram.py` (tracked, **tidak diubah**).
+
+### Kegagalan yang diukur
+
+    ValueError: substring not found
+    block = source[source.index("remote_proposal_ingress.stage_text("):
+                   source.index("# jawaban untuk pertanyaan clarify")]
+
+Tes ini adalah **kontrak sumber**: ia membaca `telegram.py` sebagai teks, memotong
+satu blok, lalu menegaskan bahwa blok itu tidak memanggil
+`dispatch.dispatch_async`, `telegram_light.execute`, `approve_local`, atau
+`executor=` — yakni bahwa ingress Telegram tidak mendispatch pekerjaan sendiri.
+
+### Sebabnya: bukan pelanggaran kontrak, melainkan penanda yang hilang
+
+Diukur satu per satu, ketiga string kontrak **masih ada**:
+
+| String kontrak | Ada? |
+|---|---|
+| `remote_proposal_ingress.stage_text(` | ya |
+| `BUS.publish("remote_proposal.pending"` | ya |
+| `Permintaan menunggu persetujuan desktop lokal.` | ya |
+| `# jawaban untuk pertanyaan clarify` (penanda akhir) | **tidak** |
+
+`b0257ed` (2026-08-27, "Telegram: stabilize polling and confirmations") mengubah
+komentar itu menjadi `# Jawaban teks bebas untuk pertanyaan clarify tetap
+terpisah dari` (`telegram.py:1044`) — huruf kapital dan kata tambahan. Tes
+memotong teks memakai string lama, sehingga `index()` melempar `ValueError`.
+
+Pola yang sama dengan fase-fase sebelumnya di sesi ini: perubahan niat baik di
+satu sisi, kontrak di sisi lain tanpa pengawas. Bedanya, di sini **kontraknya
+tidak dilanggar** — yang rusak hanya cara tes mencari batas blok.
+
+### Perbaikan: potong pada nama kode, bukan kalimat komentar
+
+Penanda baru `self._clarification_lock` adalah **nama kode**, jadi tidak berubah
+hanya karena seseorang menyunting komentar. Bloknya menjadi 11 baris (sebelumnya
+9 baris dengan penanda lama), dan diukur: **keempat pola terlarang tetap absen**
+pada blok yang lebih lebar itu.
+
+Pemotongan juga diperbaiki agar mencari penanda **setelah** titik awal
+(`source.index(..., start)`). Tanpa itu, `self._clarification_lock` ditemukan di
+posisi yang lebih awal dan bloknya menjadi **kosong** — tes akan selalu hijau
+karena tidak ada apa pun di dalamnya untuk diperiksa. Kesalahan ini saya buat
+pada percobaan pertama, dan hanya ketahuan karena saya mengukur panjang blok
+(0 karakter), bukan karena melihatnya hijau.
+
+### RED diukur: tes masih menolak pelanggaran
+
+Memperbaiki tes kontrak berarti mengubah apa yang diawasi, jadi saya suntik
+`dispatch.dispatch_async()` **ke dalam** blok yang baru dan jalankan tes:
+
+    FAILED ...::test_telegram_ingress_stages_exact_phrase_and_returns_local_approval_notice
+    1 failed, 2 passed
+
+Tes menolaknya. Setelah `telegram.py` dipulihkan (`git diff` kosong): **3 passed**.
+
+### Verifikasi
+
+    pytest tests/test_remote_proposal_wiring.py -q -p no:randomly  -> 3 passed  (3x)
+    ruff check tests/test_remote_proposal_wiring.py                -> All checks passed!
+    git diff --stat jarvis/agent/adapters/telegram.py              -> kosong (tidak diubah)
+
+### Batas jujur
+
+- Ini kontrak **sumber**, bukan kontrak perilaku: ia membaca berkas sebagai teks.
+  Ia menjamin bahwa pola-pola itu tidak tertulis di blok tersebut, bukan bahwa
+  ingress Telegram tidak pernah mendispatch pekerjaan pada runtime.
+- Memperbaiki penanda **memperluas** cakupan blok yang diawasi dari 9 menjadi 11
+  baris. Dua baris tambahan itu berupa komentar, dan keduanya diukur bersih —
+  tetapi ini berarti cakupan pengawasan berubah, dan perubahan itu sengaja
+  dicatat di sini.

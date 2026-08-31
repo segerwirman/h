@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from contextlib import nullcontext
+from contextlib import ExitStack, nullcontext
 
 from jarvis.core.privacy_denylist import is_denylisted
 
@@ -28,11 +28,34 @@ class VisualObserveService:
             return None  # identitas foreground tidak cukup — tolak sebelum capture
         if self._denylisted(title, app):
             return None
+        # Dua kegagalan berbeda, dua perlakuan berbeda. Jangan disatukan.
+        #
+        # 1. ``capture_pause`` GAGAL — artinya overlay kursor tidak bisa
+        #    disembunyikan (``screen_control.py:169`` sengaja melempar
+        #    ``screen_control_capture_exclusion_unavailable``). Mengambil citra
+        #    dalam keadaan itu berarti merekam overlay kita sendiri, jadi
+        #    fail-closed di sini: ``None``, tanpa menyentuh kamera layar.
+        # 2. ``capture`` GAGAL — pause sudah aktif dan aman, dan batas
+        #    fail-closed yang sesungguhnya ada di alat:
+        #    ``desktop_visual_observe.py:62-65`` meneruskan exception ke
+        #    ``ToolResult.fail("desktop_visual_failed")``. Menelan exception di
+        #    sini membuat kegagalan capture tak bisa dibedakan dari
+        #    "foreground tidak dikenal" (baris 23).
+        # ``capture_pause`` adalah ``@contextmanager``, jadi kegagalannya baru
+        # terjadi saat ``__enter__`` — bukan saat dipanggil. Karena itu ``try``
+        # harus membungkus masuknya context, dan capture diletakkan DI LUARnya
+        # supaya kegagalan kamera layar tetap merambat.
+        pause = self._capture_pause()
+        stack = ExitStack()
         try:
-            with self._capture_pause():
-                image = self._capture()
-        except Exception:
+            # Masuknya context dikelola sendiri: bila pause gagal, citra TIDAK
+            # diambil — overlay yang tak bisa disembunyikan akan ikut terekam.
+            stack.enter_context(pause)
+        except Exception:                                    # noqa: BLE001
             return None
+        with stack:
+            # Kegagalan kamera layar dibiarkan merambat ke alat.
+            image = self._capture()
         if image is None:
             return None
         try:

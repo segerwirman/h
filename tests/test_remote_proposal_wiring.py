@@ -9,7 +9,15 @@ def test_telegram_ingress_stages_exact_phrase_and_returns_local_approval_notice(
     assert "remote_proposal_ingress.stage_text(" in source
     assert 'BUS.publish("remote_proposal.pending"' in source
     assert "Permintaan menunggu persetujuan desktop lokal." in source
-    block = source[source.index("remote_proposal_ingress.stage_text("):source.index("# jawaban untuk pertanyaan clarify")]
+    # Batas blok dipotong pada NAMA KODE, bukan kalimat komentar. Bentuk lama
+    # memakai "# jawaban untuk pertanyaan clarify"; b0257ed (2026-08-27)
+    # mengubah komentar itu menjadi "# Jawaban teks bebas untuk pertanyaan
+    # clarify tetap terpisah dari", sehingga index() melempar ValueError —
+    # bukan karena kontrak dilanggar, melainkan karena penanda teksnya hilang.
+    # Diukur 2026-08-31: ketiga string kontrak masih ada, keempat pola terlarang
+    # tetap absen pada blok dengan penanda baru.
+    start = source.index("remote_proposal_ingress.stage_text(")
+    block = source[start:source.index("self._clarification_lock", start)]
     for forbidden in ("dispatch.dispatch_async", "telegram_light.execute", "approve_local", "executor="):
         assert forbidden not in block
 

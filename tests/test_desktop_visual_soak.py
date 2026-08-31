@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "desktop_visual_read_only_soak.py"
@@ -143,6 +145,50 @@ def test_visual_service_capture_exception_does_not_retain_partial_frame():
 
     assert calls == ["capture"]
     assert not vars(service).keys() & {"image", "last_image", "history", "screenshot_ref"}
+
+
+def test_capture_runs_inside_capture_pause_and_closes_it_even_on_failure():
+    """Capture wajib berada DI DALAM ``capture_pause``, dan pause wajib tertutup.
+
+    ``capture_pause`` menjeda authority/overlay Screen Control selama pengambilan
+    citra. Bila capture dilakukan di luar context manager-nya, jeda itu tak pernah
+    terjadi; bila ``with`` tidak menutup, authority bisa nyangkut. Keduanya
+    kegagalan authority, bukan sekadar kebocoran memori.
+
+    Tak ada tes yang memakai ``capture_pause`` sebelum 2026-08-31 — mutan yang
+    mengeluarkan capture dari ``with`` **selamat** tanpa satu pun tes merah.
+    Tes ini menutup celah itu, pada kedua arah: kegagalan dan keberhasilan.
+    """
+    from jarvis.automation.visual_observe import VisualObserveService
+
+    events: list[str] = []
+
+    class _Pause:
+        def __enter__(self):
+            events.append("enter")
+            return self
+
+        def __exit__(self, exc_type, exc, _tb):
+            events.append(f"exit(raised={exc_type is not None})")
+            return False              # jangan redam exception
+
+    def boom():
+        events.append("capture")
+        raise RuntimeError("raw image failure")
+
+    service = VisualObserveService(
+        foreground=lambda: ("Fixture", "Fixture"), capture=boom,
+        denylisted=lambda *_: False, capture_pause=_Pause,
+    )
+
+    with pytest.raises(RuntimeError):
+        service.observe(session_id="soak")
+
+    # Urutan membuktikan capture benar-benar terjadi di dalam pause.
+    assert events == ["enter", "capture", "exit(raised=True)"], events
+
+    # Dan pause tertutup meski exception sedang melintas.
+    assert "exit(raised=True)" in events
 
 
 def test_visual_soak_source_never_imports_ocr_or_persistence_apis():
