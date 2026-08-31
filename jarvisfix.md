@@ -10012,3 +10012,57 @@ perubahan itu sendiri belum punya tes RED.
 **Langkah aman berikutnya (sempit):** tulis RED yang menegaskan
 `speech_end_ms > 0` untuk ucapan dua-chunk (`add_transcription` parsial lalu
 final) sebelum menyentuh `main.py`.
+
+---
+
+## Fase 50 — RED untuk cacat `speech_end_ms = 0.0` (Fase 42)
+
+Tanggal: 2026-09-01. Berkas baru: `tests/test_phase42_speech_end_offset.py`
+(untracked, **ditambahkan**). Tidak ada berkas produksi yang diubah.
+
+### Mengapa Fase 42 mandek di SEBAGIAN sejak 2026-08-19
+
+Catatan aslinya mencatat lima emisi runtime dengan `speech_end_ms` tetap
+`0.0` dan menyimpulkan semantiknya "masih harus dikarakterisasi". Ternyata
+bukan misteri runtime. Tiga pengukuran, semuanya offline:
+
+1. `latency.mark()` menyimpan **selang sejak penanda terakhir**
+   (`latency.py:93`). Diverifikasi: `start@100.0`, `mark a@100.4`,
+   `mark b@100.9` -> `[('a',400.0),('b',500.0)]`.
+2. `_voice_intercept` memanggil `start` dan `mark("speech_end")` bersamaan
+   (`window_voice.py:125-126`) sesudah transkrip final tiba -> selang nol.
+3. **Lebih parah:** `_voice_intercept` tidak pernah dipanggil jalur Live.
+   Satu-satunya pemanggilnya adalah `write_log` (`window_voice.py:112`), dan
+   `main.py` tidak pernah menyentuh `ACTIVITY_LOG`. Penanda `voice_ack` ada
+   di cabang yang tak terhubung ke transkrip live.
+Titik `start` yang benar: `main.py:1506` (`if not in_buf:` = chunk pertama),
+lengkap dengan correlation id dan `_trace("turn.input_started")`. Jadi
+perbaikan Fase 42 **bukan** menambah hook baru, melainkan menyambungkan
+`latency.start` ke hook yang sudah ada.
+
+### Tes ini memaku cacat, belum memperbaikinya
+
+Tiga tes RED lolos saat ini. Itu **bukan** keberhasilan — itu berarti
+cacatnya masih ada, dan setiap assertion memuat instruksi eksplisit untuk
+membaliknya bila perbaikan nanti dilakukan.
+
+### 2/2 mutan mati
+
+| Mutan | Hasil |
+|---|---|
+| A: `start` dan `mark` pada waktu berbeda (perbaikan Fase 42) | KILLED — `speech_end` = 800.0 |
+| B: `start` dihapus, `mark` tetap | KILLED — `speech_end` = `None` |
+
+Kedua arah mati, jadi tes tidak bisa lolos dengan meniru kesalahan yang sama.
+
+### Batas jujur
+
+- Dua dari tiga tes membaca **sumber** (`main.py`). Itu rapuh terhadap ganti
+nama; karenanya keduanya sengaja ditekan pada **ketiadaan** (`latency` dan
+`ACTIVITY_LOG` absen), bukan pada kalimat tertentu, dan ditemani satu tes
+perilaku yang mengeksekusi `_voice_intercept` produksi yang sesungguhnya.
+- `test_jalur_live_memang_punya_titik_awal_ucapan` menegaskan keberadaan
+`if not in_buf:`. Bila penandaan itu kelak dipindah, tes ini harus diubah
+bukan dibiarkan merah.
+- Belum ada perubahan produksi. Angka `speech_end_ms` yang sesungguhnya
+masih menunggu sesi voice nyata; tes ini hanya mengunci wiring-nya.
