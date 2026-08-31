@@ -365,6 +365,13 @@ def test_dispatch_mints_overlay_after_real_registry_binding(monkeypatch):
 
     async def run(_task, **kwargs):
         captured["run"] = kwargs
+        # Read the registry binding HERE, while the task is live. The worker
+        # clears session.registry_task_id in its own ``finally`` right after
+        # on_done fires, so reading it back after ``done.wait`` races the
+        # teardown and fails intermittently in a full-suite run. The live
+        # moment is also the one that matters: the overlay's ``matches()``
+        # reads this attribute when a selected-tab tool is actually called.
+        captured["binding_during_run"] = kwargs["session"].registry_task_id
         return RunResult(ok=True, text="done", session_id=kwargs["session"].id)
 
     monkeypatch.setattr(dispatch, "available", lambda: True)
@@ -387,7 +394,7 @@ def test_dispatch_mints_overlay_after_real_registry_binding(monkeypatch):
     assert done.wait(2)
     assert captured["run"]["overlay"] == "overlay-real"
     session = captured["run"]["session"]
-    assert session.registry_task_id == "T-real"
+    assert captured["binding_during_run"] == "T-real"
     assert captured["mint"][0] == session.id
 
 
