@@ -8927,3 +8927,65 @@ RED sekadar ilusi.
    disengaja untuk pergantian panel — kemungkinan bug produksi kecil, bukan cacat tes. Dilaporkan.
 
 Komit `5f6755f`.
+## Fix — tes sinyal `ContentStage` menuntut perilaku yang tidak pernah dijanjikan (2026-08-31)
+
+`test_reactivating_same_panel_stays_active_and_forces_signal` mengaktifkan panel yang **sama** dua kali
+lalu menuntut `seen.count("ACTIVE") >= 2`. Diukur emit per panggilan:
+
+| Panggilan | Emit |
+|---|---|
+| `a` (dari EMPTY) | `['ACTIVE']` |
+| `b` (**ganti** panel) | `['ACTIVE']` ← `force=True` bekerja |
+| `a` (kembali, ganti panel) | `['ACTIVE']` |
+| `a` (panel **sama**, sudah ACTIVE) | `[]` ← ditekan dengan benar |
+
+Jadi emit yang dipaksa berjumlah **satu per pergantian**, bukan dua. Assertion lama menuntut perilaku
+yang tidak pernah dijanjikan desainnya. Mengaktifkan ulang panel yang sudah `ACTIVE` bukan perubahan
+keadaan, maka menekan sinyal adalah benar — **bukan bug**.
+
+**Bukan bug produksi**, dan ini diukur dari dua arah:
+- `toggle()` (baris 112) sudah mengembalikan lebih awal untuk menutup bila panel itu sedang aktif,
+  sehingga jalur "panel sama" hanya tercapai bila statusnya LOADING/ERROR — dan saat itulah status
+  memang berubah dan sinyal sudah ter-emit;
+- satu-satunya konsumen `status_changed` adalah `window_layout.py:145 _on_stage_status`, yang
+  **mengabaikan argumennya** (`_status`) dan membaca `self.stage.status` langsung. Ia idempoten dan
+  tidak pernah bergantung pada emit ganda.
+
+Komentar di `stage.py:99-101` menyiratkan force memang disengaja untuk *pergantian* panel — dan
+pengukuran membuktikan jalur itu bekerja.
+
+### Perbaikan
+
+Tes dipecah dua, masing-masing cocok dengan mekanismenya:
+- `test_switch_panel_while_active_notifies_every_time` — pergantian panel saat tetap ACTIVE
+  memancarkan **satu** sinyal per pergantian (menjaga `force=True`);
+- `test_reactivating_the_same_panel_emits_nothing` — mengaktifkan ulang panel yang sama tidak
+  memancarkan apa pun (mengunci penekanan duplikat).
+
+Produksi **tidak disentuh**: `git status --porcelain -- jarvis/ui/stage.py` kosong.
+
+### Bukti
+
+| Pengukuran | Hasil |
+|---|---|
+| Sebelum | **2 failed, 52 passed** |
+| Sesudah | **1 failed, 54 passed** (bertambah satu tes) |
+| **RED dengan mutan presisi** (hanya melucuti `force=True`) | kontrol **2 passed**; mutan gagal **hanya** pada `test_switch_panel_while_active_notifies_every_time` — tes menjaga tepat flag yang menjadi namanya, dan tidak menular |
+| Determinisme | **2/2** @ `1 failed, 54 passed` |
+| Suite GUI tetangga | **102 passed**, nol regresi |
+| Ruff / `py_compile` / `diff --check` / FROZEN | hijau / OK / exit 0 / **OK** |
+
+### Rancangan tes pertama saya ditolak sendiri
+
+Kandidat awal (`count("ACTIVE") >= 2` di atas tiga panggilan kumulatif) **lulus pada kontrolnya
+sendiri** — tetapi saya tolak setelah mengujinya dengan mutan presisi yang melucuti `force=True`:
+ia tetap hijau. Itu berarti ia mengukur **akumulasi lintas panggilan**, bukan `force=True`, dan akan
+mengesankan pengujian yang sebenarnya tidak menguji apa pun. Hanya versi yang sudah dikoreksi
+(emit per pergantian tunggal) yang diklaim sebagai bukti.
+
+### Kegagalan tersisa di file ini
+
+Tinggal `test_api_sheet_emits_once_and_clears_secret_after_emit` — konflik kepemilikan `clear_secret()`
+yang menyangkut kredensial, dilaporkan untuk keputusan pengguna dan sengaja tidak dipilih sendiri.
+
+Komit `5a58fa9`.
