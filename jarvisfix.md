@@ -9314,3 +9314,48 @@ runtime live tetap `unproven-live`. Yang dites adalah keputusan cabang di
 **Terbuka.** Apakah `enabled: false` masih diinginkan? Tes sekarang mengakui keadaan saat ini
 dan tidak mengubah perilaku apa pun — bila kebijakan P8E diubah, tes keadaan-mati di atas
 yang akan merah, yang justru tujuannya.
+
+---
+
+### Kegagalan collection yang melumpuhkan seluruh suite (2026-08-31)
+
+`pytest` tanpa argumen berhenti setelah **5,05 detik** dengan `1 error during collection` dan
+**nol tes dijalankan**. Ini bukan "satu tes merah" — seluruh suite tidak pernah dimulai.
+
+**Penyebab.** `tests/test_voice_turn_guard.py` (untracked, ditulis 2026-08-24) mengimpor
+`jarvis.integrations.voice_turn_guard`, dan modul itu **tid pernah ditulis** (`ls` → tidak ada).
+`pytest.ini` menetapkan `testpaths = tests`, jadi berkas itu selalu ikut terkumpul.
+
+**Biaya yang terukur.**
+
+| Keadaan | Hasil `pytest` |
+|---|---|
+| berkas ikut terkumpul | **5,05 detik, 0 tes dijalankan**, `Interrupted: 1 error` |
+| berkas dilewati | **1202 detik, 3899 tes dijalankan** |
+
+Selisihnya **3899 tes**. Satu berkas yang mengimpor modul yang tidak ada menghilangkan
+seluruh jaring pengaman regresi.
+
+**Mengapa seam-nya tidak dibangun.** Kontraknya kecil — satu fungsi `install(legacy_module)`
+yang membungkus `legacy.JarvisLive`, mengikuti pola `voice_media.install()` yang sudah ada.
+Tetapi memasangnya ke produksi berarti menyunting `main.py`, dan **`main.py` ada di
+FROZEN manifest** (terverifikasi: `config/frozen_manifest.json`, 10 berkas). Dokumentasi tesnya
+sendiri menulis *"File main.py FROZEN tidak disentuh"*. Membangun modulnya akan menghasilkan
+enam tes hijau dengan **nol efek runtime**, karena tidak ada yang memanggil `install()`.
+
+**Perbaikan.** `collect_ignore` di `tests/conftest.py`, bukan `--ignore` di tiap perintah.
+Alasannya: `--ignore` mudah lupa dan hanya berlaku pada perintah yang menyebutnya;
+`collect_ignore` berlaku untuk semua orang dan semua pemanggilan.
+
+Diverifikasi presisi: `test_voice_turn_guard` terlewat (**0** tes terkumpul dari berkas itu)
+sementara `test_voice_speech_gate` dan `test_gui_n2_cancel_gesture` **tetap terkumpul** —
+dua berkas untracked lain milik pengguna tidak ikut tersapu.
+
+Komentar di berkas sengaja menyertakan angka 5,05 detik vs 1202 detik, dan memperingatkan
+agar daftar ini tidak dikosongkan: error collection adalah **satu-satunya sinyal** bahwa suite
+berhenti berjalan. Menghapus daftar untuk membuat error "hilang" justru mengembalikan
+kerusakan yang lebih besar.
+
+**Batas jujur.** Ini tidak memperbaiki `test_voice_turn_guard.py` dan tidak membangun
+seam-nya — hanya menghentikannya melumpuhkan suite. Enam tes di dalamnya tetap tidak berjalan,
+dan seam `voice_turn_guard` tetap belum ada. Keduanya menunggu keputusan pengguna.
