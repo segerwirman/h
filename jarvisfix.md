@@ -9359,3 +9359,183 @@ kerusakan yang lebih besar.
 **Batas jujur.** Ini tidak memperbaiki `test_voice_turn_guard.py` dan tidak membangun
 seam-nya — hanya menghentikannya melumpuhkan suite. Enam tes di dalamnya tetap tidak berjalan,
 dan seam `voice_turn_guard` tetap belum ada. Keduanya menunggu keputusan pengguna.
+
+---
+
+## Fase 18 — `test_voice_speech_gate.py`: dari 6 failed menjadi 11 passed, dan tiga lubang cakupan yang tertutup
+
+Tanggal: 2026-08-31. Berkas: `tests/test_voice_speech_gate.py` (untracked, milik pengguna),
+`jarvis/integrations/voice_speech_gate.py` (141 baris, tracked, **tidak diubah**).
+
+### Keadaan awal yang diukur
+
+    pytest tests/test_voice_speech_gate.py -q
+    -> 6 failed, 2 passed
+
+Enam kegagalan itu semula tampak seperti produksi yang rusak. Setelah dibaca berurutan,
+tidak satu pun berasal dari produksi — semuanya dari fake di berkas tes yang tidak
+memenuhi prasyarat `install()`:
+
+| Gejala | Sebab terukur |
+|---|---|
+| 4 x `AttributeError` | `_FakeLive` tidak punya `speak`, padahal `install()` membaca `cls.speak` dan mengembalikan `False` bila tidak callable (`voice_speech_gate.py:117-120`). Gerbang tak pernah terpasang. |
+| `AttributeError` saat install | Kedua `_CaptureLog` hanya punya `warning`; `install()` memanggil `_logger.info(...)` di baris 136. |
+| Bypass scope tidak jalan | Patch diarahkan ke `voice_speech.config` — modul itu menyebut `config` **nol kali**. Yang membaca konfigurasi adalah `voice_speech_gate`. |
+| Bypass scope tidak jalan (2) | `current_delivery_scope` ditimpa di `voice_speech_gate`, padahal `speak()` mengimpornya **lambat** dari `voice_speech` (baris 128). |
+| Drain tak pernah jalan | `turn_boundary_safe` ditempel di `voice_speech_gate`, padahal fungsinya hidup di `voice_speech.py:219` dan dipanggil sebagai `voice_speech.turn_boundary_safe`. |
+| Drain macet total | **Akar yang tidak kentara**, diurai di bawah. |
+
+### Penemuan kunci: deadlock short-circuit
+
+`_await_boundary` (baris 93-105) mengevaluasi:
+
+    if not _lane_busy(live) and voice_speech.turn_boundary_safe(live):
+
+`and` di Python **short-circuit**: selama lane sibuk, sisi kanan **tidak pernah dievaluasi**.
+Jadi `turn_boundary_safe` dipanggil **0 kali** — fake apa pun yang diletakkan di sana tidak
+pernah berjalan dan tidak bisa melepaskan lane. Dua percobaan pertama saya gagal
+karena merancang pelepas lane di tempat yang tidak pernah dipanggil.
+
+Bukti: instrumentation langsung mencatat jumlah panggilan `turn_boundary_safe`.
+Jalan keluarnya: buat lane sibuk lewat **antrean penuh** (`_FakeQueue`, bukan
+`_is_speaking`), lalu kosongkan antrean itu **dari luar** lewat `live.drain_lane()`.
+Dibuktikan dulu dengan skrip berdiri sendiri sebelum menyentuh berkas tes
+(hasil: `['first','second','third']`).
+
+### Hasil setelah enam perbaikan
+
+    8 passed  (dari 6 failed, 2 passed)
+
+### Tahap berikutnya: jangan percaya hijau — mutasi produksinya
+
+Delapan hijau bukan bukti tes menguji sesuatu. Saya menulis harness mutasi yang merusak
+**satu** perilaku produksi, menjalankan berkas tes aslinya, lalu memulihkan berkas.
+Tujuh mutan, hasil pertama:
+
+| Mutan | Hasil |
+|---|---|
+| A: FIFO dibalik (`pop()` mengganti `pop(0)`) | KILLED — `test_fifo_ordering_preserved` |
+| B: bypass scope dihapus | KILLED — `test_speak_bypassbila_delivery_scope_active` |
+| C: penahan dihapus (selalu kirim seketika) | KILLED — `test_hold_until_boundary_with_timeout_safe` |
+| D: timeout **membuang** teks, bukan mengirim | KILLED — `test_hold_until_boundary_with_timeout_safe` |
+| E: penjaga drainer tunggal dihapus | **SURVIVED** |
+| F: `install()` tak lagi menolak kelas tanpa `speak` | **SURVIVED** |
+| G: exception TTS diteruskan, tidak ditelan | **SURVIVED** |
+
+Tiga yang selamat **bukan kemenangan** — itu berarti tiga klaim di berkas tes tidak
+benar-benar diuji. Penelusuran masing-masing:
+
+- **F**: tidak ada satu pun tes yang memanggil `install()` pada kelas tanpa `speak`.
+  Jalur penolakan tidak pernah dieksekusi.
+- **G**: `test_error_handling_graceful` pada dasarnya **kosong**. Ia menimpa
+  `original_speak` pada *instance*, padahal `install()` menangkap `original_speak`
+  dari *kelas* (baris 117). Speak yang rusak itu tidak pernah dipanggil, tidak ada
+  `send_failed` yang tercatat, dan tesnya tidak menegaskan apa pun selain "tidak crash".
+- **E**: `test_concurrent_holds_safe` hanya memeriksa **isi akhir** antrean. Sepuluh
+  thread yang mengirim serentak tetap menghasilkan daftar dengan urutan sama, jadi
+  penghapusan penjaga tidak terdeteksi.
+
+### Kesalahan proses saya sendiri (penting)
+
+Percobaan E yang pertama melaporkan **tidak ada perbedaan** (bersih dan mutan sama-sama
+`max_concurrent == 1`). Kesimpulan "E tidak bisa diamati" itu **salah**, dan sumbernya
+adalah harness, bukan mutan: skrip itu menulis mutasi ke berkas lalu menghapus
+`sys.modules`, tetapi `del sys.modules[...]` **tidak** menghapus atribut yang sudah
+terikat di modul induk, sehingga `from jarvis.integrations import voice_speech_gate`
+mengembalikan modul lama — mutan tidak pernah dimuat.
+
+Setelah mutasi dilakukan **in-process** (mengganti `_SpeechGate._drain`, tanpa
+menyentuh berkas, tanpa reload), hasilnya terbalik dan tegas:
+
+    CLEAN   : max_concurrent = [1, 1, 1, 1, 1]
+    MUTANT E: max_concurrent = [10, 10, 10, 10, 10]
+
+5/5 run pada kedua arah. Pelanggarannya teramati dan deterministik — yang berbohong
+adalah alat ukur saya, bukan kodenya. Ini alasan protokol proyek menuntut UKUR DULU:
+saya hampir melaporkan "tidak bisa diuji" berdasarkan pengukuran yang rusak.
+
+### Tiga tes penjaga baru
+
+1. `test_install_ditolak_bila_kelas_tanpa_speak` — mengeksekusi jalur penolakan.
+2. `test_hanya_satu_drainer_yang_mengirim` — menghitung **konkurensi pengiriman**
+   (`max_concurrent`), bukan isi akhir. Penghitung ditempatkan di `speak`, karena
+   `install()` menangkap `getattr(cls, "speak")` sebagai `original_speak`.
+   Kesalahan pertama saya menaruhnya di `original_speak` — hasilnya `max_concurrent == 0`
+   sementara sepuluh teks sudah terkirim. Kegagalan itu justru membuktikan tesnya
+   mengukur sesuatu yang nyata.
+3. `test_kegagalan_kirim_dicatat_bukan_dilempar` — kegagalan ditempatkan di **kelas**
+   (bukan instance), lalu menegaskan `send_failed` benar-benar tercatat.
+
+### Bukti akhir: 7/7 mutan mati
+
+| Mutan | Mati oleh |
+|---|---|
+| A: FIFO dibalik | `test_fifo_ordering_preserved`, `test_hanya_satu_drainer_yang_mengirim`, `test_concurrent_holds_safe` |
+| B: bypass scope dihapus | `test_speak_bypassbila_delivery_scope_active` |
+| C: penahan dihapus | 4 tes |
+| D: timeout membuang teks | `test_hold_until_boundary_with_timeout_safe` |
+| E: penjaga drainer dihapus | `test_hanya_satu_drainer_yang_mengirim` |
+| F: penolakan dihapus | `test_install_ditolak_bila_kelas_tanpa_speak` |
+| G: exception diteruskan | `test_kegagalan_kirim_dicatat_bukan_dilempar` |
+
+`restored identical to baseline: True` — produksi dipulihkan bitas-demi-bitas.
+
+### Verifikasi
+
+    pytest tests/test_voice_speech_gate.py -q -p no:randomly   -> 11 passed  (3x)
+    pytest tests/test_voice_speech_gate.py -q                   -> 11 passed  (3x)
+    ruff check tests/test_voice_speech_gate.py                  -> All checks passed!
+    md5sum jarvis/integrations/voice_speech_gate.py
+      -> c03b336e1c8f884ab9d3ad9f852b77dc  (identik dengan sebelum pengerjaan)
+    git status --porcelain jarvis/integrations/voice_speech_gate.py -> kosong
+
+Deterministik 6/6: tiga run dengan `-p no:randomly`, tiga run dengan urutan acak —
+penting karena gerbang ini menjalankan thread dan `time.sleep`.
+
+### Batas jujur
+
+- **Produksi tidak disentuh.** Seluruh 11 tes menguji `voice_speech_gate.py` yang
+  persis sama seperti sebelum fase ini — md5 membuktikannya. Tidak ada perbaikan
+  perilaku runtime di sini; yang berubah adalah cakupan pengujiannya.
+- Tes memakai fake live/thread, bukan Gemini Live, bukan audio nyata, bukan TTS
+  nyata. Hasil offline ini **bukan** bukti bahwa kalimat tidak terpotong pada
+  runtime suara nyata.
+- Jalur lane-idle **sengaja tidak menelan** exception — `hold_or_send` memanggil
+  `original_speak` langsung untuk mempertahankan perilaku lama. Perlindungan
+  `send_failed` hanya berlaku bagi teks yang ditahan. Ini dicatat di dokstring tes
+  agar tidak disangka celah.
+- `test_error_handling_graceful` yang lama **tetap ada** dan tetap tidak
+  menegaskan apa pun. Saya tidak menghapusnya: berkas ini milik pengguna, dan
+  menghapus tes orang lain bukan keputusan saya. Ia kini didampingi tes yang
+  benar-benar menggigit.
+
+### Dampak pada suite penuh
+
+    # sebelum fase ini
+    13 failed, 3885 passed, 1 skipped
+    # sesudah fase ini
+     7 failed, 3894 passed, 1 skipped   (1290.30s / 21m30s)
+
+Penurunan **tepat 6** — sama dengan jumlah tes yang diperbaiki — dan
+`voice_speech_gate` muncul **nol kali** di daftar gagal sesudahnya. Tidak ada
+kegagalan baru.
+
+### Kegagalan tersisa yang diukur pada fase ini: `test_gui_n2_cancel_gesture.py`
+
+Dua kegagalan, satu sebab:
+
+    AttributeError: 'MainWindow' object has no attribute '_request_cancel_tasks'
+
+Ini **bukan regresi**. `_request_cancel_tasks` adalah handler duplikat yang
+sengaja dihapus pada fase konsolidasi sebelumnya: dua handler
+(`_request_cancel_tasks` di `WindowPanelsMixin` dan `_on_cancel_tasks_clicked`
+di `CommandActionsMixin`) terhubung ke `cancel_clicked` yang sama, sehingga
+satu klik memanggil `dispatch.cancel_all()` **dua kali**. Yang tersisa kini
+hanya `_on_cancel_tasks_clicked()` (`jarvis/ui/window_actions.py:64`).
+
+Penemuan ini **sudah tercatat** di `jarvisfix.md` baris 7223 dari fase
+sebelumnya — jadi kegagalan ini sudah dikenal, bukan baru, dan bukan akibat
+pekerjaan fase ini.
+
+Tesnya untracked dan milik pengguna. Memperbaikinya berarti menentukan nama
+mana yang benar, dan itu keputusan pengguna — bukan saya. Dibiarkan apa adanya.
