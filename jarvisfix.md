@@ -9539,3 +9539,109 @@ pekerjaan fase ini.
 
 Tesnya untracked dan milik pengguna. Memperbaikinya berarti menentukan nama
 mana yang benar, dan itu keputusan pengguna — bukan saya. Dibiarkan apa adanya.
+
+---
+
+## Fase 19 — `test_gui_n2_cancel_gesture.py`: rename ke nama handler yang benar, dibuktikan dengan 4 mutan
+
+Tanggal: 2026-08-31. Berkas: `tests/test_gui_n2_cancel_gesture.py` (untracked,
+milik pengguna), `jarvis/ui/window_actions.py` (tracked, **tidak diubah**).
+
+### Kegagalan yang diukur
+
+    pytest tests/test_gui_n2_cancel_gesture.py -q
+    -> 2 failed, 6 passed
+    AttributeError: 'MainWindow' object has no attribute '_request_cancel_tasks'
+
+Dua kegagalan, satu sebab. Sebelum mengubah apa pun, saya mengukur apakah ini
+regresi atau kesalahan nama di tes.
+
+### Bukan regresi: nama itu tidak pernah ada di produksi
+
+`git log -S "_request_cancel_tasks"` pada seluruh sejarah (`--all`) hanya
+menemukannya di **dokumentasi** — `docs/NEXTJARVIS_AUDIT.md` dan `jarvisfix.md`.
+Tidak ada satu pun berkas di `jarvis/` yang pernah memilikinya, dan di working
+tree kini pun tidak ada. `grep -rn` pada `*.py` di produksi menghasilkan nol.
+
+Jadi nama itu tidak pernah hidup di kode yang terlacak. Dua kemungkinan —
+pernah ada hanya di working tree pengguna lalu dihapus sendiri, atau memang
+cuma rencana yang ditulis di tes — keduanya berujung sama:
+**`_on_cancel_tasks_clicked()` adalah satu-satunya nama yang pernah ada di
+produksi** (`jarvis/ui/window_actions.py:64`).
+
+### Kecocokan semantik diukur, bukan diasumsikan
+
+Tes menuntut tiga hal; ketiganya dipenuhi persis oleh handler produksi:
+
+| Dituntut tes | Produksi (`window_actions.py:64-91`) |
+|---|---|
+| jumlah + "dibatalkan" | `f"{count} tugas dibatalkan, sir."` |
+| "tidak ada tugas" saat nol | `"Tidak ada tugas yang sedang berjalan, sir."` |
+| dispatch meledak → tidak raise | `try/except Exception` → catat, `return` |
+
+Wiring juga diukur lengkap: `actionpanel.py:234` (signal `cancel_clicked`) →
+`window.py:328` → `_on_cancel_tasks_clicked`. **Satu** owner, satu koneksi —
+konsolidasi yang menghapus handler duplikat memang benar, dan tidak ada
+jalur kedua.
+
+### Perubahan: murni rename, 3 baris
+
+    win._request_cancel_tasks()   ->   win._on_cancel_tasks_clicked()
+
+`diff` terhadap salinan cadangan menunjukkan **hanya** 3 baris itu berubah.
+
+    8 passed  (dari 2 failed, 6 passed)
+
+### Bukti bahwa rename itu benar-benar menggigit: 4 mutan
+
+Hijau sesudah rename belum membuktikan apa-apa — pola yang sama dengan Fase 18.
+Produksi dimutasi satu perilaku per kali:
+
+| Mutan | Hasil |
+|---|---|
+| H: pesan jumlah kehilangan angkanya | KILLED — `test_cancel_handler_reports_count_and_zero_case` |
+| I: kasus nol tak lagi menyebut "tidak ada tugas" | KILLED — `test_cancel_handler_reports_count_and_zero_case` |
+| J: exception dispatch tidak ditangkap | KILLED — `test_cancel_handler_survives_dispatch_failure` |
+| K: handler berhenti menulis log sama sekali | **SURVIVED** |
+
+### K adalah mutan SETARA, bukan kelemahan tes
+
+Alih-alih menambah tes secara membabi buta, saya ukur apakah K mengubah
+perilaku yang dapat diamati. Ternyata tidak:
+
+    MUTANT-K logs:
+        'Jarvis: 3 tugas dibatalkan, sir.'
+    number still visible to the user: True
+    dibatalkan still visible: True
+
+Sebabnya: `_speak_line` (`jarvis/ui/window_voice.py:236`) **sendiri** memanggil
+`write_log(f"Jarvis: {line}")` dengan kalimat yang sama. Menghapus
+`write_log(f"SYS: {msg}")` di handler hanya membuang satu dari **dua** kanal —
+teksnya tetap sampai ke pengguna. Tidak ada yang hilang, dan tes tidak pernah
+mengklaim sebaliknya.
+
+Menambah tes untuk membunuh K justru akan menguji detail implementasi
+(kanal mana yang menulis), yang berarti tes akan rusak saat refactoring yang
+sah. K dibiarkan sebagai mutan setara dan dicatat di sini.
+
+### Verifikasi
+
+    pytest tests/test_gui_n2_cancel_gesture.py -q -p no:randomly  -> 8 passed  (3x)
+    pytest tests/test_gui_n2_cancel_gesture.py -q                  -> 8 passed  (2x)
+    ruff check tests/test_gui_n2_cancel_gesture.py                 -> All checks passed!
+    scripts/verify_frozen.py                                       -> FROZEN integrity: OK
+    md5sum jarvis/ui/window_actions.py
+      -> 45eca3413a6ffc4bcafa5e127cbe1f54  (identik sebelum & sesudah)
+    git diff --stat jarvis/ui/window_actions.py -> kosong
+
+### Batas jujur
+
+- **Produksi tidak disentuh.** md5 identik, `git diff` kosong. Yang berubah
+  hanya nama yang dipanggil tes.
+- Ini **bukan** bukti bahwa klik tombol cancel di UI nyata membatalkan tugas —
+  tes memakai `QApplication` offscreen, `EmbeddedBrowser` stub, dan
+  `dispatch.cancel_all` yang dimonkeypatch. Tidak ada dispatch nyata, tidak
+  ada task nyata, tidak ada suara nyata.
+- Tiga dari empat mutan mati, satu setara. Cakupan tes ini **tidak** mencakup
+  kanal `notifications.push` maupun isi `_speak_line` — keduanya tidak ditegaskan
+  oleh tes mana pun di berkas ini, dan itu boleh jadi layak diuji nanti.
