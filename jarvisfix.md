@@ -8727,6 +8727,244 @@ bypass, click-through, outsourcing, maupun ref pra-CAPTCHA reuse.
 Langkah aman berikutnya: stage dan commit hanya exact Task 8 paths/hunks setelah cached patch diperiksa
 lengkap, jalankan post-commit offline verification, lalu bangkitkan prompt fase lanjutan; jangan lakukan live
 Chrome/browser/desktop validation tanpa otorisasi terpisah.
+
+---
+
+### Task 9 — kesiapan Bagikan Tab dan ikon Screen Share vector-painted (2026-08-31)
+
+Pertanyaan yang memicu slice ini: mengapa klik ikon panel "bagikan tab Chrome" tidak menghasilkan apa pun yang
+terlihat. Diagnosis dibaca dari source dan config aktual, bukan ditebak:
+
+1. klik **sudah terhubung**: `ActionPanel.screen_control_clicked` → `WindowPanelsMixin._toggle_screen_control()`
+   (`jarvis/ui/window.py:325`); sinyal ini tidak mati;
+2. gate pertama membaca `screen_control.enabled`; nilai di `config.yaml:326` saat ini **`false`**, sehingga klik
+   berhenti pada log + notifikasi "Dinonaktifkan di konfigurasi" tanpa membuka apa pun. Inilah jawaban utama
+   untuk "kenapa belum bisa share from tab";
+3. bila gate itu aktif, picker tetap memerlukan **tepat satu task agent lokal RUNNING** dari
+   `dispatch.screen_control_scope()`. Klik saat idle, task selesai, atau lebih dari satu task aktif ditolak;
+4. setelah dua gate lolos, `TabShareSheet.present()` baru memanggil `SelectedTabBrowserHost.begin_picker()` di
+   worker thread, yang memerlukan Playwright berfungsi **dan** Chrome yang sejak awal dimulai dengan
+   `--remote-debugging-port=9222`. Chrome biasa yang telanjur berjalan tidak bisa di-attach belakangan;
+5. inventory hanya menerima page `http://`/`https://`.
+
+Slice ini **tidak** mengubah kelima fakta itu. Yang diubah hanya dua hal sempit: klik yang terblokir sekarang
+memberi penjelasan lokal yang terlihat (9A), dan glyph `⌖` diganti ikon vector-painted (9B). Tidak ada
+auto-enable, auto-launch Chrome, grant idle, atau probe CDP tanpa exact task.
+
+RED dan implementasi:
+
+- RED awal **5 failed / 1 passed** dengan kegagalan pada assertion perilaku, bukan import/setup: dua
+  `assert readiness == []` (koordinator memanggil `present_readiness` nol kali), dua `AttributeError:
+  'TabShareSheet' object has no attribute 'present_readiness'`, satu `ImportError: cannot import name
+  'ScreenShareButton'`. Itu membuktikan test menggigit sebelum implementasi ada;
+- 9A GREEN: `TabShareSheet.present_readiness(state, parent_w, parent_h)` hanya menerima state
+  `feature_disabled` / `task_required`, menaikkan generation, mengosongkan scope/picker/target/candidate,
+  memanggil `set_runtime_state()`, lalu membuka sheet. State baru ditambahkan ke `_STATE_TEXT` dan ke himpunan
+  pembersih preview; tombol `BAGIKAN` dan `HENTIKAN` tetap nonaktif dan tombol pembatal menjadi `TUTUP`.
+  `_toggle_screen_control()` diurutkan ulang secukupnya agar sheet/central widget tersedia sebelum return,
+  tanpa melonggarkan gate mana pun sebelum `present()`/`begin_picker()`;
+- 9B GREEN: `ScreenShareButton(QPushButton)` mengikuti pola owner/painter `CameraButton` — tile rounded-square
+  gelap dari `theme.PAL.panel`, monitor/window linework memakai `theme.PAL.text`/`text_dim`, aksen cyan dari
+  `theme.PAL.accent`, aksen merah muda dari `theme.PAL.alert`, dan active state berupa underline cyan berbentuk
+  agar tidak sekadar color-only. `ActionPanel.set_indicator()` diperluas menerima kelas ini; tidak ada import
+  automation, coordinator, browser, atau native input di `ActionPanel`.
+
+Kesalahan rancangan yang ditemukan di tengah jalan:
+
+- **PyQt6 tidak punya overload `QPainter.drawLine(float, float, float, float)` empat argumen.** Pemanggilan
+  itu membuat proses Qt mati (exit code 127) saat render test dijalankan, bukan gagal assertion. Perbaikan:
+  import `QLineF` dari `PyQt6.QtCore` dan bungkus seluruh `drawLine` menjadi `painter.drawLine(QLineF(...))`.
+  Ini ditemukan dengan menjalankan test struktur dulu (PASSED) baru test render (crash), sehingga lokasinya
+  terisolasi;
+- `--timeout=600` tidak dikenali pytest di repo ini (pytest-timeout tidak terpasang) dan harus dibuang.
+
+Verifikasi aktual:
+
+- 9A GREEN: **5 passed** (`0.77s`); 9B GREEN: **4 passed** (`0.69s`);
+- focused suite (`test_screen_control_coordinator.py`, `test_tab_share_sheet.py`,
+  `test_browser_takeover_and_panel.py`, `test_selected_tab_lifecycle.py`): **61 passed** (`1.82s`);
+- adjacent suite 10 file (selected-tab capabilities/host/semantics/actions/cursor, captcha_handoff,
+  action_hint_and_back, parity_panels, actionpanel_awareness_retire, phase5_stage_home): **179 passed**
+  (`9.41s`);
+- scoped Ruff: **All checks passed!**; scoped `py_compile` lulus; scoped `git diff --check` bersih;
+  FROZEN integrity **OK** (10 files, baseline `094b696`);
+- diff slice (tanpa `window_panels.py`): `actionpanel.py +99`, `tab_share_sheet.py +32`,
+  `test_browser_takeover_and_panel.py +42`, `test_screen_control_coordinator.py +18`,
+  `test_tab_share_sheet.py +30` → **217 insertions / 4 deletions**.
+
+Broad suite — diukur, bukan ditebak. `pytest` penuh mengumpulkan 3893 test dan berhenti di ~33% dengan exit
+127. Dengan memetakan karakter `F` pada progress bar ke daftar test terurut, titik berhentinya adalah satu
+test tunggal: `test_send_button_and_enter_share_one_submission_seam`. Repro minimal membuktikan penyebabnya:
+`CommandBar._send.clicked` terhubung ke `_submit(submitted_text=None)`, tetapi sinyal Qt `clicked` mengirim
+`checked=False`, sehingga `_submit(False)` memanggil `False.strip()` → `AttributeError`, dan proses mati
+(exit 127) alih-alih gagal bersih. Test itu dan `window_widgets.py` **sudah ada di HEAD dan tidak disentuh
+slice ini**; `-p no:randomly` sudah dipakai, jadi ini bukan flake.
+
+Dengan test itu di-deselect, sisa suite berjalan penuh: **23 failed, 3868 passed, 1 skipped, 1 deselected**
+(`1450.74s`). Untuk memisahkan mana yang pre-existing, suite yang sama dijalankan di worktree detached bersih
+pada `HEAD cf19335`: **38 failed, 3816 passed, 1 skipped, 1 deselected** (`1037.37s`). Perbandingan himpunan:
+
+- **14 kegagalan ada di keduanya** (pre-existing, bukan regresi slice): 5× `test_gui_p5a_facade_input_char.py`,
+  4× `test_iteration_limit_honesty.py`, `test_config_contract.py::test_real_repository_config_has_no_drift`,
+  `test_desktop_visual_soak.py::…capture_exception_does_not_retain_partial_frame`,
+  `test_remote_proposal_wiring.py::…telegram_ingress…`, dan dua selected-tab:
+  `test_selected_tab_capabilities.py::test_dispatch_mints_overlay_after_real_registry_binding` serta
+  `test_selected_tab_host.py::test_process_host_is_lazy_and_can_shutdown_without_import_thread_leak`;
+- dua selected-tab itu **terbukti pre-existing dengan reproduksi langsung**: `pytest
+  tests/test_gui_p5b_state_stage_taskdeck_bus.py tests/test_selected_tab_host.py` gagal **identik di worktree
+  HEAD bersih**. Mekanismenya: p5b membangun `MainWindow` sungguhan, `window.py:271` membuat
+  `TabShareSheet(parent=central)`, konstruktor sheet memanggil `get_host()` (`tab_share_sheet.py:79`) yang
+  melahirkan singleton `_HOST`, dan tidak ada jalur shutdown; test host kemudian menemukan `_HOST is not None`.
+  Ini celah kebocoran state lintas-test yang nyata, tetapi **bukan milik slice ini** dan tidak disentuh;
+- **23 kegagalan hanya muncul di worktree HEAD** (dokumen/voice/document/toolgroups) berasal dari file dirty
+  milik fase lain yang memperbaiki atau menggeser behavior tersebut. Slice ini tidak mengklaim sebagai
+  perbaikan; itu milik fase yang bersangkutan;
+- **9 kegagalan hanya muncul di working tree** (`test_voice_speech_gate.py` 5×,
+  `test_gui_n2_cancel_gesture.py` 2×, `test_phase42_voice_ack_dark_range.py`, `test_error_handling_graceful`)
+  — semuanya berasal dari file yang tidak disentuh slice ini: `tests/test_voice_speech_gate.py` dan
+  `tests/test_gui_n2_cancel_gesture.py` **untracked** (milik user), `test_phase42_voice_ack_dark_range.py`
+  berisi RED Fase 42 yang memang belum GREEN. Keduanya tidak dirombak untuk memaksa hijau.
+
+Batas jujur — yang BELUM terbukti:
+
+- seluruh bukti bersifat `source-present`, `focused-tested`, dan `runtime-wired-with-offline-fakes`. Semua
+  dependency browser/Page/Qt/BUS/timer/screenshot pada slice ini adalah fake/offline;
+- tidak ada satu pun hal berikut yang terbukti: Chrome nyata dapat di-attach, tab nyata terlihat dan dapat
+  dipilih, screenshot nyata diambil, aksi Playwright nyata berjalan pada situs nyata, pemetaan kursor
+  mixed-DPI nyata benar, lifecycle CAPTCHA nyata, dan timing close/disconnect nyata. Semua itu
+  `unproven-live`;
+- ikon sudah benar secara struktur dan render offscreen tanpa crash, tetapi **kesamaan visualnya dengan
+  screenshot belum diverifikasi**: file `Screenshot 2026-08-30 235531.png` tidak ditemukan di working tree,
+  jadi bentuknya disusun dari deskripsi teks pengguna (tile gelap rounded, glyph monitor/window terang, aksen
+  cyan dan merah muda), bukan dicocokkan per piksel;
+- perubahan pada `jarvis/ui/window_panels.py` **tidak boleh di-commit utuh**: file itu sudah membawa 5 baris
+  milik user yang tidak terkait (`PALM_HOLD_3S` → `BUS.publish("emergency.stop", source="gesture")` dan
+  deteksi `"EMERGENCY STOP"` di `_on_vision_status`). Hanya 3 hunk slice yang boleh di-stage.
+
+Langkah aman berikutnya: minta persetujuan, lalu stage **hanya** hunk milik slice (ketiga file test,
+`actionpanel.py`, `tab_share_sheet.py`, dan 3 hunk `window_panels.py` di `_toggle_screen_control`), commit
+dengan pesan berbasis sebab, tanpa push dan tanpa menyapu baris emergency-stop milik user. Setelah itu,
+kandidat fase lanjutan yang paling bernilai dan masih sempit: perbaiki kebocoran `_HOST` lintas-test agar
+`test_selected_tab_host.py` tidak bergantung pada urutan file — tetapi itu fase terpisah, bukan kelanjutan
+Task 9.
+
+---
+
+### Fix — tombol kirim `CommandBar` mematikan aplikasi (2026-08-31)
+
+Ditemukan saat memverifikasi kenapa broad suite berhenti di ~33% dengan exit 127. Awalnya dikira sekadar test
+yang merah, ternyata **crash produksi nyata**.
+
+Mekanisme: `CommandBar._send.clicked` terhubung langsung ke `_submit`, yang menjadikan parameter posisi
+pertamanya sebagai teks yang akan dikirim. Sinyal Qt `clicked` selalu mengirim `checked=False`. Karena `False`
+bukan `None`, ia masuk cabang pertama lalu memanggil `False.strip()` → `AttributeError` di dalam slot. PyQt6
+memanggil `abort()` pada exception tak tertangani di slot, sehingga proses mati alih-alih gagal bersih.
+
+Dua percobaan yang mengubah diagnosis:
+
+| Percobaan | Hasil |
+|---|---|
+| `bar._send.click()` — jalur klik pengguna nyata | proses mati, **exit 127** |
+| idem + `sys.excepthook` terpasang | `AttributeError` tertangkap, tetapi `submitted == []` — tombol tetap tidak berfungsi |
+
+Jadi di aplikasi nyata, **setiap klik tombol `▶` mematikan Jarvis**, bukan sekadar mengabaikan input.
+
+Asal-usul: kabel ini ditambahkan di `7a7b256` (Fase 40). Test-nya ditambahkan di `9437246`; saya jalankan
+persis di commit itu dan mendapat **exit 127 juga**, jadi test tersebut **tidak pernah hijau sejak lahir**.
+Ia mati diam-diam dan menghentikan seluruh suite, menyembunyikan ~2500 test di belakangnya.
+
+GREEN: tombol kini melalui `_submit_from_button(_checked=False)` yang menelan argumen `checked` lalu memanggil
+`_submit()` tanpa teks sehingga jatuh ke pembacaan input box. Perubahan **6 baris pada satu file**.
+
+Verifikasi aktual:
+
+- seluruh `tests/test_gui_p5a_facade_input_char.py`: **49 passed** (sebelumnya 48 passed + 1 deselected);
+- focused pasca-commit (coordinator, tab_share_sheet, takeover_and_panel, lifecycle, host, capabilities):
+  **98 passed**;
+- scoped Ruff **All checks passed!**; `py_compile` lulus; FROZEN integrity **OK**.
+
+Catatan jujur tentang metode: menjalankan satu test saja dari file p5a **masih** menghasilkan exit 127, termasuk
+test yang sama sekali tidak menyentuh `_send` (misal `test_empty_submit_emits_nothing`). Jadi exit 127 untuk
+eksekusi test tunggal adalah karakteristik file p5a yang sudah ada dan tidak terkait perbaikan ini; yang
+membuktikan perbaikan adalah angka 49 passed pada eksekusi se-file dan repro klik nyata yang kini selamat.
+
+Komit terpisah `6939e69`.
+
+### Commit slice Task 9 + fix — 2026-08-31
+
+Dua commit terpisah, tanpa push:
+
+- `6939e69` — perbaikan crash tombol kirim, 1 file, 6 baris;
+- `8c69af4` — Task 9 (ikon + sheet kesiapan), 6 file, 225 insertions / 6 deletions.
+
+Isolasi hunk pada `jarvis/ui/window_panels.py` berhasil: index berisi **nol** baris `PALM_HOLD_3S` /
+`EMERGENCY STOP` milik user, sementara berkas kerja tetap memuat keduanya (`grep -c` = 1 dan 1). Berkas
+untracked user (`SOUL.md`, `check_mail.ps1`, `docs/P8_OPERATIONAL_CHECK.md`, dll.) tidak tersentuh.
+
+Kesalahan proses yang terjadi dan diperbaiki di sesi ini (dicatat agar tidak terulang):
+
+1. `git checkout -- jarvis/ui/window_panels.py` dijalankan sebelum patch sempat diterapkan, sehingga
+   **menghapus 5 baris emergency-stop milik user** bersama hunk slice. Dipulihkan utuh dari
+   `.claude/scratch/wpanels-full.patch` (13 insertions / 2 deletions, identik dengan keadaan sebelum);
+2. `git commit` tanpa path meng-commit **seluruh** index, mencampur perbaikan crash dengan Task 9 dalam satu
+   commit. Dibatalkan dengan `git reset --soft HEAD~1`, lalu Task 9 di-unstage dan kedua perubahan
+   di-commit terpisah.
+
+Batas jujur yang tetap berlaku setelah commit: Chrome attach, tab nyata, screenshot nyata, aksi Playwright
+nyata, pemetaan kursor mixed-DPI, dan lifecycle CAPTCHA nyata masih `unproven-live`. Kesamaan visual ikon
+dengan screenshot belum terverifikasi karena berkas gambarnya tidak ada di working tree. Kegagalan
+`test_selected_tab_host.py` (`_HOST` bocor dari `MainWindow` yang dibangun p5b) terbukti pre-existing dan
+sengaja tidak disentuh — itu fase terpisah.
+
+Langkah aman berikutnya: perbaiki kebocoran `_HOST` lintas-test (`window.py:271` membuat `TabShareSheet`,
+konstruktornya memanggil `get_host()` di `tab_share_sheet.py:79`, dan tidak ada jalur shutdown) agar
+`test_selected_tab_host.py` tidak bergantung pada urutan file. Fase sempit dan terpisah, bukan kelanjutan
+Task 9.
+
+---
+
+### Fix — `MainWindow` membocorkan thread owner selected-tab (2026-08-31)
+
+Akar masalah: `TabShareSheet.__init__` memanggil `get_host()` secara eager, sementara `MainWindow`
+membuat sheet di `__init__` (`window.py:271`). Akibatnya **setiap pembuatan window melahirkan thread owner
+process-local dan membocorkannya seumur proses**, meski pengguna tidak pernah membagikan tab. Ini juga
+membuat kontrak laziness host tidak dapat diuji: test Qt mana pun yang membangun window meninggalkan
+`_HOST` terisi, sehingga `test_process_host_is_lazy_and_can_shutdown_without_import_thread_leak` gagal
+bergantung urutan berkas — terbukti reproduktif dengan menjalankan `test_gui_p5b_state_stage_taskdeck_bus.py`
+sebelum `test_selected_tab_host.py`.
+
+Diverifikasi langsung sebelum diubah: konstruksi sheet mengubah `_HOST` dari `None` menjadi objek host, dan
+`close()` tidak mengembalikannya ke `None`.
+
+RED: 3 test baru di `tests/test_selected_tab_host.py` yang mengukur perilaku, bukan teks sumber —
+konstruksi sheet tidak melahirkan host/thread, host hanya muncul saat pemakaian pertama dan di-cache, serta
+host yang di-inject tidak menyentuh singleton. RED menghasilkan **2 failed** pada assertion perilaku
+(`assert selected_tab_browser._HOST is None`), tepat seperti yang diharapkan; test ketiga lolos sejak awal
+karena fake tidak menyentuh singleton, dan sengaja dipertahankan sebagai pengunci regresi.
+
+GREEN: host di-resolve lewat property, bukan di `__init__`. Host yang di-inject tetap menang dan tidak
+menyentuh singleton. Shutdown produksi tidak terdampak: `screen_control.shutdown()` memanggil
+`shutdown_host()`, yang mengembalikan `False` bila host tak pernah dibuat. Perubahan **19 baris pada satu
+file produksi**.
+
+Verifikasi aktual:
+
+- urutan yang dulunya gagal deterministik (`p5b` → `test_selected_tab_host.py`): **65 passed**;
+- `p5b` → `test_selected_tab_capabilities.py`: **47 passed**;
+- `tests/test_selected_tab_host.py` berdiri sendiri: **29 passed**;
+- sepuluh suite selected-tab bersamaan (coordinator, tab_share_sheet, takeover_and_panel, lifecycle, host,
+  capabilities, actions, cursor, semantics, captcha_handoff): **189 passed** (`8.66s`);
+- probe langsung: **nol** thread owner setelah konstruksi, **satu** setelah pemakaian pertama, objek
+  di-cache pada akses berikutnya, dan `shutdown_host()` tetap mengembalikan `True`;
+- scoped Ruff **All checks passed!**; `py_compile` lulus; FROZEN integrity **OK**.
+
+Yang sengaja TIDAK diselesaikan di sini: host tetap tidak dilepas saat window ditutup — hanya
+`supervisor` shutdown yang memanggil `shutdown_host()`. Melepas host saat sheet ditutup berisiko mematikan
+host yang sedang mid-picker atau dipakai sheet yang dibuka ulang, sehingga itu perubahan terpisah dan lebih
+sempit. Keterbatasan ini dicatat agar tidak dikira sudah beres.
+
+Komit `431d212`.
+
 ## Karakterisasi — `test_selected_tab_capabilities.py::test_dispatch_mints_overlay_after_real_registry_binding` (2026-08-31)
 
 Gejala: pada full suite tanpa deselect, tes ini gagal dengan
@@ -8768,6 +9006,7 @@ hijau. Butuh persetujuan terpisah untuk menyentuh tes ini. Scratch reproducer su
 ada file tes atau produksi yang berubah pada fase karakterisasi ini.
 
 Komit: — (fase karakterisasi, tidak ada perubahan kode).
+
 ## Fix — assertion race di `test_selected_tab_capabilities.py` (2026-08-31)
 
 Tes `test_dispatch_mints_overlay_after_real_registry_binding` membaca
@@ -8804,6 +9043,7 @@ diulang.
 Komit `b89b42b`. Commit dilakukan **tanpa path** (`git commit` murni dari index), karena
 `git commit -- <path>` maupun `-o -- <path>` mengambil konten working tree dan berpotensi menyapu
 perubahan pre-existing pengguna — kesalahan yang sudah terjadi sekali pada fase dokumentasi sebelumnya.
+
 ## Fix — fixture `_Descriptor` ketinggalan field `direct_grant` (2026-08-31)
 
 Dua tes di `tests/test_iteration_limit_honesty.py` gagal dengan
@@ -8857,6 +9097,7 @@ gagal pada `assert adapter.asked == []` — bukan `AttributeError`. Ini gejala b
 berhubungan dengan `direct_grant`; keduanya juga gagal pada state pengguna sebelum perbaikan saya.
 
 Komit `bda1768`.
+
 ## Fix — fixture `stage` tidak pernah di-`show()`, assertion visibilitas p5a mengukur artefak Qt (2026-08-31)
 
 Tiga tes di `tests/test_gui_p5a_facade_input_char.py` menegaskan `isVisible()` dan gagal, padahal
@@ -8927,6 +9168,7 @@ RED sekadar ilusi.
    disengaja untuk pergantian panel — kemungkinan bug produksi kecil, bukan cacat tes. Dilaporkan.
 
 Komit `5f6755f`.
+
 ## Fix — tes sinyal `ContentStage` menuntut perilaku yang tidak pernah dijanjikan (2026-08-31)
 
 `test_reactivating_same_panel_stays_active_and_forces_signal` mengaktifkan panel yang **sama** dua kali
