@@ -260,6 +260,13 @@ def test_declined_confirmation_is_not_asked_again_in_the_same_session(
         id = "whatsapp.call"
         toolset = "whatsapp"
         risk = "high"
+        # Mirrors CapabilityDescriptor's field. Without it, registry.py's
+        # _direct_confirmation_granted() raises AttributeError while deciding
+        # whether this high-risk tool may run unconfirmed — so the fixture
+        # would exercise an exception path instead of the confirmation gate.
+        # False is also the correct value: "whatsapp.call" is not in the
+        # _DIRECT_GRANT_IDS allowlist, so it must still ask.
+        direct_grant = False
 
     from jarvis.agent import capabilities
     monkeypatch.setattr(capabilities.REGISTRY, "descriptor_for_tool",
@@ -313,6 +320,10 @@ def test_a_different_argument_is_still_asked(monkeypatch):
         id = "whatsapp.call"
         toolset = "whatsapp"
         risk = "high"
+        # See the other _Descriptor in this file: registry.py reads
+        # direct_grant before consulting the confirmation gate, and this id is
+        # not allowlisted, so it stays False — the tool must still ask.
+        direct_grant = False
 
     from jarvis.agent import capabilities
     monkeypatch.setattr(capabilities.REGISTRY, "descriptor_for_tool",
