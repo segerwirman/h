@@ -76,7 +76,12 @@ class TabShareSheet(QWidget):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self._host = host if host is not None else get_host()
+        # Lazy: MainWindow builds a sheet in __init__, and an eager get_host()
+        # would spawn the process-local owner thread for every window ever
+        # constructed — leaking it for the life of the process even when the
+        # user never shares a tab. The host appears on first real browser work.
+        self._injected_host = host
+        self._process_host = None
         self._coordinator = coordinator
         self._ttl_provider = ttl_provider
         self._scope: _Scope | None = None
@@ -493,6 +498,19 @@ class TabShareSheet(QWidget):
         if self.state != "sharing":
             self.cancel_local()
         event.accept()
+
+    @property
+    def _host(self):
+        """Resolve the browser host on first use, not at construction time.
+
+        An injected host (tests, explicit wiring) always wins and never
+        touches the process singleton.
+        """
+        if self._injected_host is not None:
+            return self._injected_host
+        if self._process_host is None:
+            self._process_host = get_host()
+        return self._process_host
 
     def _open(self, parent_w: int, parent_h: int) -> None:
         width = min(720, max(360, int(parent_w) - 40))

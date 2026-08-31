@@ -280,6 +280,108 @@ def test_process_host_is_lazy_and_can_shutdown_without_import_thread_leak():
     ) == before
 
 
+# ── sheet must not eagerly spawn the process host ────────────────────────────
+#
+# MainWindow constructs a TabShareSheet in __init__. An eager get_host() there
+# spawns the owner thread for every window ever built, leaking it for the life
+# of the process and breaking the laziness contract above whenever any Qt test
+# runs first. The host must appear only when browser work is actually needed.
+
+
+def _owner_threads() -> int:
+    return sum(t.name == "selected-tab-browser-owner" for t in threading.enumerate())
+
+
+def test_constructing_tab_share_sheet_does_not_spawn_the_process_host():
+    from jarvis.integrations import selected_tab_browser
+    from jarvis.ui.tab_share_sheet import TabShareSheet
+
+    selected_tab_browser.shutdown_host()
+    assert selected_tab_browser._HOST is None
+
+    from PyQt6.QtWidgets import QApplication, QWidget
+
+    app = QApplication.instance() or QApplication([])
+    assert app is not None
+    parent = QWidget()
+    parent.resize(900, 700)
+    parent.show()
+    before = _owner_threads()
+    sheet = TabShareSheet(
+        host=None,
+        coordinator=None,
+        ttl_provider=lambda: 30.0,
+        parent=parent,
+    )
+    try:
+        # The single most important assertion: building a sheet is not browser
+        # work, so no owner thread and no process host may exist yet.
+        assert selected_tab_browser._HOST is None
+        assert _owner_threads() == before
+    finally:
+        sheet.close()
+        parent.close()
+        selected_tab_browser.shutdown_host()
+
+
+def test_sheet_reaches_the_process_host_only_when_browser_work_is_needed():
+    from jarvis.integrations import selected_tab_browser
+    from jarvis.ui.tab_share_sheet import TabShareSheet
+
+    selected_tab_browser.shutdown_host()
+    from PyQt6.QtWidgets import QApplication, QWidget
+
+    app = QApplication.instance() or QApplication([])
+    assert app is not None
+    parent = QWidget()
+    parent.resize(900, 700)
+    parent.show()
+    sheet = TabShareSheet(
+        host=None,
+        coordinator=None,
+        ttl_provider=lambda: 30.0,
+        parent=parent,
+    )
+    try:
+        assert selected_tab_browser._HOST is None
+        host = sheet._host          # first real need
+        assert host is selected_tab_browser._HOST
+        assert host is not None
+        assert sheet._host is host  # cached, not rebuilt per access
+    finally:
+        sheet.close()
+        parent.close()
+        selected_tab_browser.shutdown_host()
+
+
+def test_injected_host_keeps_the_singleton_untouched():
+    from jarvis.integrations import selected_tab_browser
+    from jarvis.ui.tab_share_sheet import TabShareSheet
+
+    selected_tab_browser.shutdown_host()
+    from PyQt6.QtWidgets import QApplication, QWidget
+
+    app = QApplication.instance() or QApplication([])
+    assert app is not None
+    parent = QWidget()
+    parent.resize(900, 700)
+    parent.show()
+    fake = object()
+    sheet = TabShareSheet(
+        host=fake,
+        coordinator=None,
+        ttl_provider=lambda: 30.0,
+        parent=parent,
+    )
+    try:
+        assert sheet._host is fake
+        assert selected_tab_browser._HOST is None
+    finally:
+        sheet.close()
+        parent.close()
+        selected_tab_browser.shutdown_host()
+
+
 def test_async_owner_loop_services_lifecycle_event_while_idle():
     from jarvis.integrations.selected_tab_browser import SelectedTabBrowserHost
 
