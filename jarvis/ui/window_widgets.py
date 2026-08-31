@@ -220,7 +220,7 @@ class CommandBar(QWidget):
         self._send.setStyleSheet(
             f"QPushButton {{ background: transparent; color: {theme.PAL.accent};"
             f" border: none; font-size: 14px; }}")
-        self._send.clicked.connect(self._submit)
+        self._send.clicked.connect(self._submit_from_button)
         self._send.hide()
         lay.addWidget(self._send)
         self.input.focus_changed.connect(self._send.setVisible)
@@ -234,6 +234,11 @@ class CommandBar(QWidget):
             self.input.setPlainText(self._suggestion)
             self.input.moveCursor(QTextCursor.MoveOperation.End)
             self.input.set_ghost("")
+
+    def _submit_from_button(self, _checked: bool = False) -> None:
+        """QPushButton.clicked always sends ``checked``; never feed it to
+        ``_submit``, which reads its first argument as the text to submit."""
+        self._submit()
 
     def _submit(self, submitted_text: str | None = None) -> None:
         text = (submitted_text if submitted_text is not None else self.input.toPlainText()).strip()
