@@ -8857,3 +8857,73 @@ gagal pada `assert adapter.asked == []` — bukan `AttributeError`. Ini gejala b
 berhubungan dengan `direct_grant`; keduanya juga gagal pada state pengguna sebelum perbaikan saya.
 
 Komit `bda1768`.
+## Fix — fixture `stage` tidak pernah di-`show()`, assertion visibilitas p5a mengukur artefak Qt (2026-08-31)
+
+Tiga tes di `tests/test_gui_p5a_facade_input_char.py` menegaskan `isVisible()` dan gagal, padahal
+produksinya benar: `begin_loading()` memanggil `_loading_label.show()` (baris 76) dan `activate()`
+memanggil `incoming.show()` (baris 93). Akar masalahnya diukur, bukan dikira:
+
+```
+child.show(), parent never shown -> False
+after parent.show()             -> True
+```
+
+Visibilitas Qt bersifat **hierarkis** — `isVisible()` child tetap `False` selama ancestor-nya tersembunyi,
+betapa pun sering `child.show()` dipanggil. Fixture `stage` membuat `ContentStage` tanpa pernah
+`show()`, jadi ketiga assertion membaca artefak Qt, bukan perilaku stage. Perbaikan ada di fixture,
+bukan produksi.
+
+**Pemeriksaan yang mencegah regresi:** `register()` memanggil `widget.hide()` secara eksplisit, dan
+`show()` pada parent **tidak** membatalkan `hide()` child — terverifikasi langsung:
+
+```
+parent shown, child explicitly hidden -> isHidden: True  | isVisible: False
+after child.show()                    -> isHidden: False | isVisible: True
+```
+
+Karena itu `test_stage_starts_empty_and_registers_hidden` (yang sudah lulus) tetap aman.
+
+### Bukti
+
+| Pengukuran | Hasil |
+|---|---|
+| Sebelum | **5 failed** |
+| Sesudah | **2 failed, 52 passed** — tepat 3 kasus visibilitas hilang |
+| Determinisme | **3/3** @ `52 passed, 2 failed` |
+| Suite GUI tetangga (p5b, stage, api_key_activation) | **100 passed**, nol regresi |
+| Ruff / `py_compile` / `diff --check` / FROZEN | hijau / OK / exit 0 / **OK** |
+
+**Bukti RED dengan kontrol, per mutasi** — bukan sekadar "tes jadi gagal":
+
+| Mutasi | Tes yang berubah pass → fail |
+|---|---|
+| `begin_loading` dijadikan no-op | **hanya** `test_begin_loading` |
+| `activate` dijadikan no-op | **hanya** `test_activate_mounts` + `test_panel_switch` |
+
+Tiap tes mengamati perilaku yang menjadi namanya, dan mutasi tidak menular ke tes lain.
+
+### Kesalahan proses: bukti RED pertama saya cacat
+
+Percobaan RED yang pertama menghasilkan **mutan dan kontrol gagal identik (4 failed)**. Itu seharusnya
+langsung membunyikan alarm: mutasi yang tidak mengubah hasil tidak membuktikan apa pun. Saya tidak
+melaporkannya sebagai bukti — saya mengusutnya, dan menemukan file scratch mengganti nama parameter
+fixture menjadi `stage_mutant` tanpa memperbarui isi tes, sehingga `stage` terbaca sebagai objek
+`FixtureFunctionDefinition`. Bukti itu **dibuang dan dikerjakan ulang**; hanya pasangan
+kontrol/mutan yang sudah dikoreksi yang diklaim. Pelajaran: kontrol yang tidak dijalankan membuat bukti
+RED sekadar ilusi.
+
+### Kegagalan tersisa di file ini (akar berbeda, sengaja tidak disentuh)
+
+1. `test_api_sheet_emits_once_and_clears_secret_after_emit` — menegaskan `sheet._key.text() == ""`,
+   tetapi `clear_secret()` **tidak pernah dipanggil di dalam `ApiKeySheet`**; satu-satunya pemanggil
+   adalah `window_voice.py:416`, setelah `secrets_store.set()` berhasil. Provenance terukur:
+   `e0976f6` (2026-08-17) memperkenalkan `clear_secret()` + pemanggilnya, `9437246` (2026-08-20) menulis
+   tes ini, dan `merge-base --is-ancestor` = **YES**. `test_api_key_activation.py` yang lulus tidak
+   pernah menegaskan penghapusan — jadi dua tes **bertentangan** tentang siapa pemilik penghapusan
+   secret. Ini menyangkut kredensial, sehingga dilaporkan untuk keputusan pengguna, bukan dipilih sendiri.
+2. `test_reactivating_same_panel_stays_active_and_forces_signal` — `activate("alpha")` kedua mengambil
+   jalur baris 81-86 yang memanggil `_set_status(ACTIVE)` **tanpa `force`**, sehingga guard
+   mengembalikan lebih awal dan `count("ACTIVE") == 1`. Komentar di baris 99-101 menyiratkan force memang
+   disengaja untuk pergantian panel — kemungkinan bug produksi kecil, bukan cacat tes. Dilaporkan.
+
+Komit `5f6755f`.
