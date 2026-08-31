@@ -8804,3 +8804,56 @@ diulang.
 Komit `b89b42b`. Commit dilakukan **tanpa path** (`git commit` murni dari index), karena
 `git commit -- <path>` maupun `-o -- <path>` mengambil konten working tree dan berpotensi menyapu
 perubahan pre-existing pengguna — kesalahan yang sudah terjadi sekali pada fase dokumentasi sebelumnya.
+## Fix — fixture `_Descriptor` ketinggalan field `direct_grant` (2026-08-31)
+
+Dua tes di `tests/test_iteration_limit_honesty.py` gagal dengan
+`AttributeError: '_Descriptor' object has no attribute 'direct_grant'`. `_direct_confirmation_granted()`
+di `jarvis/agent/registry.py:175` membaca `descriptor.direct_grant` sebelum memutuskan apakah tool
+berstatus `requires_confirmation` boleh berjalan tanpa bertanya lagi. Fixture `_Descriptor` di baris 263
+dan 316 hanya mendefinisikan `id`, `toolset`, `risk` — jadi kedua tes justru melewati **jalur exception**,
+bukan gate konfirmasi yang menjadi nama mereka.
+
+**Provenance menentukan siapa yang ketinggalan**, dan ini diukur, bukan diasumsikan:
+
+| Fakta | Nilai |
+|---|---|
+| `_Descriptor` ditambahkan | `73adaa0`, **2026-08-05** |
+| `direct_grant` hadir | `190e96a`, **2026-08-27** |
+| `git merge-base --is-ancestor 73adaa0 190e96a` | **YES** — fixture mendahului field-nya 22 hari |
+
+Produksi selalu menyediakan field itu: `descriptor_for_tool()` hanya pernah mengembalikan instance
+`CapabilityDescriptor` asli dari `by_tool_name()`/`descriptors()`. Jadi perbaikan berada di fixture,
+**bukan** pada kode produksi defensif — membungkus produksi dengan `getattr` justru akan menyembunyikan
+ketidakcocokan ini dan mengubah kegagalan keras menjadi kegagalan senyap pada jalur authority.
+
+Nilai `False` bukan sekadar yang bikin tes lewat: `"whatsapp.call"` tidak ada di `_DIRECT_GRANT_IDS`,
+maka tool high-risk ini memang harus tetap meminta konfirmasi.
+
+### Bukti
+
+| Pengukuran | Hasil |
+|---|---|
+| Baseline per-file (state pengguna saja, edit saya di-stash) | **4 failed, 6 passed** |
+| Sesudah perbaikan | **2 failed, 8 passed** — turun tepat 2 |
+| **Bukti RED** | `_direct_confirmation_granted` di-monkeypatch agar selalu `True`; tes yang dipulihkan **gagal** dengan `ok=True` → panggilan telepon tereksekusi tanpa bertanya. Tes kini benar-benar menjaga gate |
+| Determinisme | **3/3 passed** |
+| Suite terkait bersamaan | **74 passed**, hanya 2 kegagalan `asked == []` yang tersisa |
+| Ruff / `py_compile` / `diff --check` / FROZEN | hijau / OK / exit 0 / **OK** |
+
+### Perbaikan proses
+
+Mutasi untuk bukti RED kali ini disuntikkan lewat `monkeypatch` di **file scratch**, bukan menyunting
+`jarvis/agent/registry.py` — mengoreksi kesalahan proses pada fase `dispatch.py` sebelumnya. Hasilnya:
+`registry.py` tersentuh **nol**, terverifikasi md5 identik `53a3d16aa05517db823d4684ae10255d`.
+
+File ini adalah dirty file pengguna (4 baris `embed` yang bukan pekerjaan saya), sehingga perubahan
+di-stage sebagai **blob eksplisit** agar hanya 11 baris milik saya yang ter-commit: terverifikasi
+`grep -c "Simulate embed"` pada diff staged = **0**, dan file tetap `M` di working tree setelah commit.
+
+### Kegagalan tersisa di file ini (akar berbeda, sengaja tidak disentuh)
+
+`test_interactive_run_offers_to_stop_before_the_wall` dan `test_no_answer_keeps_working_instead_of_blocking`
+gagal pada `assert adapter.asked == []` — bukan `AttributeError`. Ini gejala berbeda yang tidak
+berhubungan dengan `direct_grant`; keduanya juga gagal pada state pengguna sebelum perbaikan saya.
+
+Komit `bda1768`.
