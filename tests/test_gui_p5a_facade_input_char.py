@@ -451,6 +451,13 @@ def stage():
     s = ContentStage()
     s.register("alpha", QWidget())
     s.register("beta", QWidget())
+    # Qt visibility is hierarchical: a child's isVisible() stays False while any
+    # ancestor is hidden, even after child.show(). Without this, begin_loading()
+    # and activate() can call show() correctly and still read as hidden, so the
+    # tests below would assert on a Qt artifact instead of stage behaviour.
+    # register() already hides each child explicitly, and a parent show() does
+    # not override that, so "starts empty and registers hidden" still holds.
+    s.show()
     return s
 
 
