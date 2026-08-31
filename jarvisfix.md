@@ -8768,3 +8768,39 @@ hijau. Butuh persetujuan terpisah untuk menyentuh tes ini. Scratch reproducer su
 ada file tes atau produksi yang berubah pada fase karakterisasi ini.
 
 Komit: — (fase karakterisasi, tidak ada perubahan kode).
+## Fix — assertion race di `test_selected_tab_capabilities.py` (2026-08-31)
+
+Tes `test_dispatch_mints_overlay_after_real_registry_binding` membaca
+`session.registry_task_id` **setelah** menunggu `on_done`. Padahal `dispatch.py` mengisi field itu di
+baris 951 dan mengosongkannya lagi di `finally` worker baris 1246 — sesaat setelah `on_done` dipanggil
+(baris 1185-1192). Jadi assertion itu berlomba dengan teardown: lulus standalone, gagal di full suite.
+
+Perbaikan: tangkap nilainya **di dalam** tugas yang di-dispatch. Ini bukan sekadar menghindari timing —
+`LocalRunCapabilityOverlay.matches()` membaca `registry_task_id` setiap kali tool selected-tab dipanggil,
+jadi momen live adalah momen di mana binding itu benar-benar membawa authority. Assertion dipindah ke
+tempat yang secara semantik tepat, bukan sekadar ke tempat yang kebetulan menang race.
+
+Yang DIUKUR:
+
+| Bukti | Hasil |
+|---|---|
+| Baseline standalone | **11 passed** sebelum dan sesudah |
+| **Bukti RED lewat mutasi** | mengubah `session.registry_task_id = bg_task.id` menjadi `= ""` membuat assertion baru **gagal** dengan `assert '' == 'T-real'` — jadi ia benar-benar menjaga binding, bukan sekadar ikut lewat |
+| Determinisme dengan race dipaksa | `sleep(0.3)` disisipkan setelah `done.wait(2)` (kondisi yang membuat assertion lama gagal deterministik): assertion baru **passed 3/3** |
+| 10 suite yang menyentuh `registry_task_id` | **210 passed** (`10.45s`) |
+| Blok kontigu 14 file asal kegagalan | **160 passed** (`8.78s`) |
+| Ruff / `py_compile` / `git diff --check` | **All checks passed** / lulus / exit 0 |
+| FROZEN integrity | **OK** (10 file, baseline `094b696`) |
+
+`dispatch.py` dimutasi untuk bukti RED lalu dipulihkan **byte-for-byte** — md5
+`4f7faeacf717e0bca8cbbdd5ca2522d0` diverifikasi identik sebelum dan sesudah percobaan. Tidak ada kode
+produksi yang berubah pada fase ini; diff commit **8 insertions / 1 deletion, satu file tes**.
+
+Catatan proses: mutasi sengaja dilakukan pada file dirty milik pengguna, sehingga saya backup ke scratch
+terlebih dahulu dan verifikasi md5 setelah pemulihan. Ini risiko yang seharusnya dihindari dengan
+menyuntikkan mutasi lewat `monkeypatch` di file scratch, bukan menyunting file asli — dicatat agar tidak
+diulang.
+
+Komit `b89b42b`. Commit dilakukan **tanpa path** (`git commit` murni dari index), karena
+`git commit -- <path>` maupun `-o -- <path>` mengambil konten working tree dan berpotensi menyapu
+perubahan pre-existing pengguna — kesalahan yang sudah terjadi sekali pada fase dokumentasi sebelumnya.
