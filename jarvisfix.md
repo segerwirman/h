@@ -8727,3 +8727,44 @@ bypass, click-through, outsourcing, maupun ref pra-CAPTCHA reuse.
 Langkah aman berikutnya: stage dan commit hanya exact Task 8 paths/hunks setelah cached patch diperiksa
 lengkap, jalankan post-commit offline verification, lalu bangkitkan prompt fase lanjutan; jangan lakukan live
 Chrome/browser/desktop validation tanpa otorisasi terpisah.
+## Karakterisasi — `test_selected_tab_capabilities.py::test_dispatch_mints_overlay_after_real_registry_binding` (2026-08-31)
+
+Gejala: pada full suite tanpa deselect, tes ini gagal dengan
+`assert session.registry_task_id == "T-real"` → `assert '' == 'T-real'` (baris 390), tetapi **lulus
+standalone** (`1 passed in 1.23s`). Awalnya saya mengasumsikan polusi state lintas-test seperti kasus
+`_HOST` sebelumnya, dan mulai mem-biseksi file-file yang mendahuluinya.
+
+Yang DIUKUR, dan yang membatalkan asumsi itu:
+
+1. **Blok kontigu 14 file** sebelum tes tersebut
+   (`test_response_composer` … `test_selected_tab_actions` lalu `test_selected_tab_capabilities`):
+   **160 passed**, `EXIT=0`. Ditambah 8 file yang sebelumnya diuji satu-satu (semuanya `EXIT=0`).
+   Tidak satu pun reproduce. Karena seluruh blok lulus berurutan, polusi state lintas-test gugur
+   sebagai penyebab — hipotesis awal saya salah.
+2. Membaca mekanisme di `jarvis/agent/dispatch.py`: `registry_task_id` diisi di **baris 951**
+   (`session.registry_task_id = bg_task.id`), dipakai selama eksekusi, lalu **dikosongkan di
+   `finally` worker pada baris 1246** — *setelah* callback `on_done` dipanggil
+   (`_finish_with_delivery`, baris 1185-1192). Jadi ada jendela race antara sinyal selesai dan
+   teardown session.
+3. **Reproducer deterministik di scratch** (bukan menyunting tes asli): menyisipkan `_t.sleep(0.15)`
+   setelah `done.wait(2)` agar worker menang race. Hasil: **gagal deterministik** — `assert '' ==
+   'T-real'`, identik dengan kegagalan full suite. Ini mengubah diagnosis dari "state kotor" menjadi
+   **assertion race di dalam tes itu sendiri**.
+4. **Pembuktian bahwa binding-nya tidak rusak**: menangkap nilai di dalam tugas yang sedang berjalan
+   (`captured["binding_during_run"] = kwargs["session"].registry_task_id`). Hasil:
+   `BINDING_DURING_RUN= T-real`, `BINDING_AFTER_TEARDOWN= ''`. Authority binding benar dan utuh
+   selama eksekusi — satu-satunya yang membaca nilai kosong adalah assertion yang berjalan *setelah*
+   worker membersihkan session-nya.
+
+Kesimpulan: ini **bukan** bug produksi dan **bukan** regresi dari `6939e69` / `8c69af4` / `431d212` —
+ia juga gagal di HEAD bersih (masuk dalam 14 kegagalan bersama baseline). Ini cacat tes: ia
+mengamati atribut yang secara desain dibersihkan saat teardown, sehingga hasilnya bergantung pada
+siapa yang menang race. Perbaikan yang benar adalah mengamati binding **di dalam** tugas (tempat
+authority itu bermakna), bukan sesudahnya.
+
+Sengaja **tidak** diperbaiki sekarang: ini blocker pre-existing yang tidak terkait slice, dan
+instruksi yang mengikat adalah tidak memperbaiki blocker unrelated hanya untuk memaksa full suite
+hijau. Butuh persetujuan terpisah untuk menyentuh tes ini. Scratch reproducer sudah dihapus; tidak
+ada file tes atau produksi yang berubah pada fase karakterisasi ini.
+
+Komit: — (fase karakterisasi, tidak ada perubahan kode).
