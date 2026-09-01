@@ -10745,3 +10745,60 @@ dan tidak meluncurkan Chrome atas nama Jarvis. Pengukuran memakai satu tab
 ``example.com`` yang saya buka lalu tutup sendiri. Tidak ada cookie, storage,
 credential, atau aksi halaman yang disentuh. Angka dan state di atas berasal
 dari Chrome nyata di mesin ini pada 2026-09-01.
+
+## Fase 61 — Pembersihan sesi debug live: diukur dulu, baru dihapus
+
+Fase 60 meninggalkan satu artefak terbuka: Chrome ber-flag
+``--remote-debugging-port=9222`` dengan profil terisolasi, plus 262,5 MB
+direktori profil. Langkah lanjut yang sempit dan aman adalah menutup sesi
+debug itu. Fase 61 melakukannya dengan urutan yang benar: **ukur dulu apa yang
+sebenarnya hidup, verifikasi dulu apa yang sebenarnya berisi, baru hapus.**
+
+**Temuan 1 — Chrome sudah mati dengan sendirinya; tidak ada yang perlu ditutup.**
+Terukur pada saat eksekusi: ``chrome.exe`` = **0 proses**, tidak ada satu pun
+yang membawa ``--remote-debugging-port``, tidak ada yang memakai
+``jarvis-cdp-profile``. Port 9222 tidak di-listen oleh proses mana pun
+(diperiksa juga rentang 9222–9230: kosong), dan HTTP probe ke
+``/json/version`` gagal dengan "Unable to connect to the remote server".
+
+Ini penting dicatat apa adanya: langkah penutupan **tidak perlu dieksekusi**
+karena tidak ada yang hidup. Mengklaim "saya sudah menutup Chrome" padahal
+Chrome-nya sudah mati akan menjadi klaim sukses yang tidak terbukti.
+
+**Temuan 2 — profil terisolasi murni artefak ukuran, bukan data pemakai.**
+Sebelum menghapus 262,5 MB / 1.680 item, isinya diverifikasi (SQLite dibuka
+read-only agar tidak mengubah apa pun):
+
+| Berkas | Baris | Isi |
+|---|---|---|
+| ``History`` | 2 | hanya ``https://example.com/`` dan ``https://example.com/?a=1&token=RAHASIA#top`` — dua tab uji yang saya buka sendiri |
+| ``Login Data`` | 0 | tidak ada kredensial tersimpan |
+| ``Web Data`` | 0 | tidak ada data autofill |
+| ``Cookies`` | tidak ada | — |
+| ``Bookmarks`` | tidak ada | — |
+
+Jadi tidak ada satu pun data pemakai yang ikut terhapus. ``DevToolsActivePort``
+tidak ada lagi di direktori itu, konsisten dengan Chrome yang sudah mati.
+
+**Tindakan.** Menghapus ``$env:TEMP\jarvis-cdp-profile``. Terverifikasi
+``Test-Path`` sebelum = True, sesudah = False.
+
+**Verifikasi akhir (terukur setelah penghapusan):** ``chrome.exe`` = 0, port
+9222 tertutup, direktori profil tidak ada.
+
+**Hal yang sengaja TIDAK disentuh.** Pemeriksaan TEMP memperlihatkan sekitar
+190 direktori ``jarvis-*`` lama (basetemp pytest, direktori bukti fase
+sebelumnya). Itu di luar ruang lingkup langkah ini dan tidak dihapus tanpa
+perintah pemakai — instruksi berlaku adalah mempertahankan berkas pemakai, dan
+sebagian direktori itu mungkin masih menjadi bukti yang ingin dipertahankan.
+
+**Perubahan produksi: TIDAK ADA.** Fase ini murni pengukuran dan pembersihan
+artefak ukuran sendiri. Tidak ada file produksi, config, atau test yang
+diubah. ``screen_control.enabled`` tetap ``false``; gate default-off tetap
+keputusan operator.
+
+**Status kumulatif setelah Fase 61.** Yang terukur berhasil: rantai
+picker → CDP → Chrome → sharing (Fase 60), sanitasi origin agent-visible,
+dan penolakan binding task. Yang tetap ``blocked/not-run``: jalur klik ikon
+panel Qt secara utuh (gate 1–3 masih menolak). Yang tetap ``unproven-live``:
+attach otomatis ke Chrome harian pemakai dan aksi bounded pada tab nyata.
