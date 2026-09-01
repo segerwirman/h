@@ -10802,3 +10802,102 @@ picker → CDP → Chrome → sharing (Fase 60), sanitasi origin agent-visible,
 dan penolakan binding task. Yang tetap ``blocked/not-run``: jalur klik ikon
 panel Qt secara utuh (gate 1–3 masih menolak). Yang tetap ``unproven-live``:
 attach otomatis ke Chrome harian pemakai dan aksi bounded pada tab nyata.
+
+## Fase 62 — Ikon screen share sudah ada; yang bocor adalah test-nya yang tidak mengunci apa pun
+
+Rekomendasi langkah lanjut Fase 61 berbunyi: buka satu RED untuk membuktikan
+tombol ``screen_control`` masih berupa glyph font (``""`` di
+``actionpanel.py:203``) bukan komponen vector-painted. **Rekomendasi itu
+keliru.** Pengukuran menunjukkan 9B sudah selesai: ``actionpanel.py:265``
+memakai ``ScreenShareButton``, dan kelasnya (``actionpanel.py:62``) menggambar
+keempat lapis dengan ``QPainter`` — tile rounded-square, monitor + kaki, aksen
+cyan, titik alert, dan lampu aktif. Kolom glyph di ``_ICONS`` memang sengaja
+kosong karena tidak dipakai.
+
+Ini rekomendasi kedua yang terbukti salah setelah Fase 56 (``run_sync``) dan
+Fase 58 (``os._exit``). Polanya sama: keyakinan tanpa angka.
+
+**Temuan sebenarnya — test render lolos walaupun tombol berhenti menggambar.**
+Uji mutasi terhadap test NYATA (``test_browser_takeover_and_panel.py``)
+membuktikan tiga mutan **hidup**:
+
+| Mutan | Perubahan | Hasil |
+|---|---|---|
+| A | ``drawRoundedRect(tile, ...)`` dihapus | HIDUP |
+| B | aksen cyan dihapus | HIDUP |
+| C | lampu aktif dihapus | HIDUP |
+
+Penyebabnya terukur: satu-satunya pemeriksa pada
+``test_screen_share_button_renders_offscreen_in_inactive_and_active_states``
+adalah ``assert pixmap.isNull() is False``. Pemeriksaan itu lolos selama
+``paintEvent`` tidak melempar — termasuk ketika ia tidak menggambar apa pun.
+
+**Perbaikan: satu test baru pada tingkat piksel.**
+``test_screen_share_button_benar_benar_menggambar_empat_lapis_visual``
+mengunci empat hal pada piksel hasil render, bukan pada "tidak crash":
+tile berwarna panel (>200 piksel), kehadiran warna ``accent`` (cyan),
+kehadiran warna ``alert``, dan pertambahan warna ``accent`` pada pita bawah
+saat aktif (lampu aktif).
+
+**Dua kelemahan rancangan test yang terungkap saat pengukuran, dan perbaikannya:**
+
+1. Menghitung *piksel buram* tidak mendeteksi tile yang hilang — terukur
+   seluruh kanvas 1760 piksel buram karena widget mengecat latarnya sendiri.
+   Diganti menjadi kecocokan warna terhadap ``theme.PAL.panel``.
+2. Menghitung *selisih seluruh kanvas* antara aktif dan tidak aktif tidak
+   mendeteksi lampu yang hilang — terukur 1073 dari 1760 piksel berubah saat
+   aktif karena tile ikut diterangkan, sehingga sinyal lampu tenggelam.
+   Diganti menjadi pengukuran warna ``accent`` yang terlokalisasi pada pita
+   bawah (80% ke bawah).
+
+Ukuran 44x40 juga terbukti tidak bisa dibesarkan: ``button.resize()`` ditimpa
+panel, sehingga kanvas tetap 1760 piksel pada ukuran 44, 64, maupun 96. Baris
+``resize`` dibuang saja daripada dipertahankan sebagai pengukuran palsu.
+
+**Hasil akhir uji mutasi: ketiga mutan MATI.** Baseline hijau, A/B/C masing-
+masing menghasilkan exit=1. Produksi terverifikasi pulih identik
+(``git diff -- jarvis/ui/actionpanel.py`` kosong) setelah seluruh mutasi.
+
+**Perubahan produksi: TIDAK ADA.** Hanya ``tests/test_browser_takeover_and_
+panel.py`` yang bertambah +120 baris, murni aditif. Tidak ada import baru di
+tingkat modul (import Qt diletakkan di dalam test).
+
+**Batas jujur.** Ini ukuran offline dengan Qt offscreen; ia membuktikan
+komponen menggambar lapis-lapis yang diharapkan, tetapi **bukan** bukti
+tampilannya cocok dengan screenshot pemakai. Ambang warna memakai toleransi
+42 agar tahan antialiasing, yang berarti pergeseran warna kecil tidak akan
+terdeteksi. Kesesuaian visual dengan screenshot tetap keputusan pemakai yang
+belum pernah divalidasi.
+
+**Full suite: 3924 passed, 1 failed, 1 skipped** dalam 1349,87 detik (naik
+dari 3923; selisih satu = test baru di atas).
+
+## Fase 62b — Kegagalan pre-existing pada credential flow: dilaporkan, tidak diubah
+
+Kegagalan
+``tests/test_gui_p5a_facade_input_char.py::test_api_sheet_emits_once_and_clears_secret_after_emit``
+muncul untuk pertama kalinya karena fase-fase sebelumnya selalu menjalankannya
+ter-deselect. Pengukuran membuktikan ini **bukan regresi Fase 62**:
+``git diff -- tests/test_gui_p5a_facade_input_char.py`` kosong, dan file itu
+terakhir diubah pada commit ``5a58fa9`` yang bukan milik fase ini. Test juga
+gagal saat dijalankan terisolasi (0,68 detik), jadi bukan efek urutan atau
+kontaminasi state.
+
+**Akar masalah (terukur pada source).** ``ApiKeySheet._submit()``
+(``window_widgets.py:372``) memancarkan ``self.done.emit(key)`` tetapi tidak
+pernah mengosongkan ``self._key``. Metode ``clear_secret()`` memang ada
+(``window_widgets.py:369``) dan dipanggil — tetapi dari ``window_voice.py:425``,
+yaitu **setelah** key berhasil disimpan terenkripsi. Jadi pada jalur di mana
+penyimpanan gagal, atau verifikasi provider gagal, key tetap tertinggal di
+dalam widget. Test menuntut pengosongan segera setelah emit.
+
+**Mengapa tidak diperbaiki pada fase ini.** Ini menyentuh credential flow,
+yang instruksi berlaku larang secara eksplisit untuk diubah tanpa keputusan
+pemakai. Perbaikan yang benar punya dua bentuk yang berimplikasi berbeda —
+mengosongkan di ``_submit()`` segera setelah emit (teks hilang sebelum
+penyimpanan terkonfirmasi), atau membiarkan alur seperti sekarang dan
+mengoreksi test. Keduanya bukan keputusan yang boleh diambil sendirian di
+area credential.
+
+**Status:** dilaporkan dan dieskalasi ke pemakai, tidak diubah, tidak
+dilewati, dan tidak diklaim hijau. Full suite dicatat apa adanya: 1 failed.

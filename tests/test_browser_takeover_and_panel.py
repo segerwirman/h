@@ -129,6 +129,126 @@ def test_screen_share_button_renders_offscreen_in_inactive_and_active_states():
         parent.close()
 
 
+def test_screen_share_button_benar_benar_menggambar_empat_lapis_visual():
+    """Uji PERILAKU pada piksel hasil render, bukan sekadar 'tidak crash'.
+
+    Latar belakang RED: ukuran mutasi membuktikan test render lama di atas
+    lolos walaupun ``paintEvent`` berhenti menggambar tile, aksen cyan, dan
+    lampu aktif — karena satu-satunya pemeriksaannya adalah
+    ``pixmap.isNull()``. Test ini mengunci keempat lapis visual pada piksel
+    nyata supaya mutan itu mati.
+    """
+    from PyQt6.QtGui import QColor, QImage, QPainter
+    from jarvis.ui import theme
+    from jarvis.ui.actionpanel import ActionPanel
+
+    _app()
+    parent = QWidget()
+    panel = ActionPanel(parent)
+    button = panel._buttons["screen_control"]
+    try:
+        accent = QColor(theme.PAL.accent)
+        alert = QColor(theme.PAL.alert)
+        panel_bg = QColor(theme.PAL.panel)
+        accent_rgb = (accent.red(), accent.green(), accent.blue())
+        alert_rgb = (alert.red(), alert.green(), alert.blue())
+        panel_rgb = (panel_bg.red(), panel_bg.green(), panel_bg.blue())
+
+        def render(active: bool) -> QImage:
+            panel.set_indicator("screen_control", active)
+            image = QImage(button.size(), QImage.Format.Format_ARGB32)
+            image.fill(QColor(0, 0, 0, 0))
+            painter = QPainter(image)
+            try:
+                button.render(painter)
+            finally:
+                painter.end()
+            return image
+
+        def near(sample, target, tol=42) -> bool:
+            return all(abs(a - b) <= tol for a, b in zip(sample[:3], target[:3]))
+
+        def scan(image: QImage) -> list[tuple[int, int, int]]:
+            return [
+                (image.pixelColor(x, y).red(),
+                 image.pixelColor(x, y).green(),
+                 image.pixelColor(x, y).blue())
+                for y in range(image.height())
+                for x in range(image.width())
+            ]
+
+        inactive = render(False)
+
+        # 1) Tile: warna tile berada di antara panel dan panel yang
+        #    diterangkan. Menghitung "piksel buram" tidak berguna di sini —
+        #    terukur seluruh kanvas 1760 piksel buram karena widget mengecat
+        #    latarnya sendiri. Yang membedakan tile adalah terangnya.
+        tile_hits = sum(
+            1
+            for y in range(inactive.height())
+            for x in range(inactive.width())
+            if near(inactive.pixelColor(x, y).getRgb()[:3], panel_rgb, tol=30)
+            and not near(inactive.pixelColor(x, y).getRgb()[:3], (0, 0, 0), tol=6)
+        )
+        assert tile_hits > 200, (
+            f"hanya {tile_hits} piksel berwarna tile — paintEvent tampaknya "
+            f"tidak menggambar tile (harus > 200)"
+        )
+
+        # 2) Aksen cyan hadir (garis panah share).
+        cyan_hits = [
+            (x, y)
+            for y in range(inactive.height())
+            for x in range(inactive.width())
+            if near(inactive.pixelColor(x, y).getRgb()[:3], accent_rgb)
+            and not near(inactive.pixelColor(x, y).getRgb()[:3], alert_rgb)
+        ]
+        assert cyan_hits, (
+            f"tidak ada piksel mendekati accent {accent_rgb} — aksen cyan hilang"
+        )
+
+        # 3) Aksen alert/pink hadir (titik indikator).
+        alert_hits = [
+            (x, y)
+            for y in range(inactive.height())
+            for x in range(inactive.width())
+            if near(inactive.pixelColor(x, y).getRgb()[:3], alert_rgb)
+        ]
+        assert alert_hits, (
+            f"tidak ada piksel mendekati alert {alert_rgb} — aksen alert hilang"
+        )
+
+        # 4) Lampu aktif berada di bagian bawah ikon. Terukur: menghitung
+        #    selisih seluruh kanvas mendeteksi perubahan di mana pun, termasuk
+        #    perubahan terang tile yang juga terjadi saat hover/aktif — jadi
+        #    mutan "lampu dihapus" lolos. Yang dikunci di sini adalah
+        #    kemunculan warna accent DI BAGIAN BAWAH.
+        active = render(True)
+        band_top = int(active.height() * 0.80)
+        inactive_lower = [
+            inactive.pixelColor(x, y).getRgb()[:3]
+            for y in range(band_top, inactive.height())
+            for x in range(inactive.width())
+        ]
+        active_lower = [
+            active.pixelColor(x, y).getRgb()[:3]
+            for y in range(band_top, active.height())
+            for x in range(active.width())
+        ]
+        inactive_lamp = sum(
+            1 for p in inactive_lower if near(p, accent_rgb) and not near(p, alert_rgb)
+        )
+        active_lamp = sum(
+            1 for p in active_lower if near(p, accent_rgb) and not near(p, alert_rgb)
+        )
+        assert active_lamp > inactive_lamp + 5, (
+            f"pita bawah tidak bertambah accent saat aktif "
+            f"({inactive_lamp} -> {active_lamp}) — lampu aktif tidak tergambar"
+        )
+    finally:
+        parent.close()
+
+
 def test_focus_mode_indicator_bekerja_di_panel_default():
     """focus_mode tetap ikon default — cakupannya tidak boleh bergantung
     pada opt-in awareness."""
