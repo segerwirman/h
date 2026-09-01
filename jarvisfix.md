@@ -10163,3 +10163,103 @@ kelak dikenali sebagai sisa, bukan pengukuran. Mutan I (kembalikan
   pengguna yang belum pernah di-commit
   (`test_final_transcript_boundary_is_bound_to_the_matching_voice_ack`).
   Yang ada sekarang adalah REKONSTRUKSI saya, bukan versi asli pengguna.
+
+
+### Fase 50 — cacat yang lebih besar dari yang saya komit
+
+Commit `de0bb51` menambahkan penjaga turn yatim dengan asumsi report palsunya
+berbentuk `total_ms: 0.0`. Pengukuran lanjutan pada 2026-09-01 menunjukkan
+asumsi itu terlalu kecil. Bentuk aslinya bergantung pada KAPAN dispatch
+berikutnya terjadi, dan `voice_handoff()` dipanggil di `dispatch.py:1087` untuk
+**setiap** dispatch — termasuk input non-voice.
+
+Diukur: ucapan dimulai (`begin_request`), giliran tak pernah mencapai dispatch,
+lalu tiga jam kemudian sebuah task Telegram masuk dispatch.
+
+    report: {'task': 'voice:7dd00f3f', 'total_ms': 10800000.0,
+             'stages': [('dispatch_start', 10800000.0)]}
+
+Bukan 0.0, melainkan **10.800.000 ms**, dan `task` mengaku `voice:...` padahal
+dispatch-nya bukan suara. Log `latency.turn` karena itu bisa memuat satu baris
+yang mengklaim rentang gelap suara sebesar tiga jam. Tanpa `speech_end` di
+dalamnya, baris itu tidak bisa dikenali sebagai sampah oleh siapa pun yang
+membaca log belakangan.
+
+Tes yang saya commit tidak menipu — ia mengukur tepat apa yang ia klaim
+(`voice_handoff` segera sesudah `begin_request`, selang nol). Tetapi ia memberi
+kesan bahwa angka palsunya selalu kecil. Kesan itu salah, dan karenanya dicatat
+di sini.
+
+Akar penyebabnya lebih dalam dari kelihatannya, dan terukur:
+
+1. `PipelineStateMachine.finish()` (`state.py:166-172`) hanya menulis log dan
+   memanggil `to()`. Ia **tidak menyentuh `latency` sama sekali**. Diukur:
+   `aktif setelah begin_request = 1`, `aktif setelah sm.finish = 1`. State
+   machine menganggap giliran selesai; turn latensinya tetap terbuka.
+2. `latency` tidak punya primitif `cancel`. API publiknya hanya `enabled`,
+   `start`, `mark`, `finish`, `voice_handoff`, `active_count`, `reset`.
+   `voice_handoff()` memanggil `finish()`, dan itu satu-satunya penutup turn
+   `voice_ack`.
+3. `main.py:1612` memanggil `_sm.finish()` hanya bila `outcome == "success"`.
+   Jalur `unrecognized_speech` (`main.py:1598`) tidak memanggilnya sama sekali.
+   Jadi penumpukan tidak bergantung pada outcome.
+4. `MAX_TURNS = 64` (`latency.py:26`) mengevic turn tertua saat penuh. Itu
+   mencegah kebocoran tak terbatas, tetapi juga berarti 64 giliran suara yang
+   tak pernah di-dispatch bisa **mengevic turn yang sah** milik giliran
+   berjalan — pengukur mengorbankan data baik demi data sampah.
+
+Batas jujur: semua ini diukur offline dengan jam palsu dan objek state machine
+langsung. Belum ada satu pun yang diamati pada proses Jarvis nyata.
+
+Perbaikan sejatinya belum dikerjakan: `latency` perlu `cancel(key)`, dan
+`PipelineStateMachine.finish()` perlu memanggilnya pada setiap akhir giliran,
+termasuk jalur `unrecognized_speech` yang saat ini tidak memanggil `finish()`.
+Slice itu menyentuh lifecycle state machine dan butuh persetujuan terpisah.
+
+
+### Fase 51 — deklarasi tiga kunci config, dan celah yang terbuka karenanya
+
+Pengguna mengizinkan penyuntingan `config.yaml` pada 2026-09-01, yang sejak
+awal dilarang. Izin itu membuka satu kegagalan yang sebelumnya tertahan.
+
+`test_real_repository_config_has_no_drift` melaporkan tiga kunci yang dibaca
+production tetapi tidak dideklarasi:
+
+    screen_control.captcha_handoff_timeout_s
+    voice.speech_gate.max_hold_s
+    voice.speech_gate.poll_s
+
+Ketiga nilai yang dideklarasi diambil dari default yang sudah hidup di kode,
+bukan dipilih: `600.0` (`captcha_handoff.py:21`), `20.0` dan `0.05`
+(`voice_speech_gate.py:96-97`). Karena nilainya sama persis dengan default,
+perilaku runtime **tidak berubah** — deklarasi ini murni menutup drift kontrak.
+
+Diverifikasi bahwa jalur bacanya hidup, bukan kebetulan cocok: dengan kunci
+dihapus, `_timeout_s()` jatuh ke `600.0` (default kode); dengan nilai di-override
+menjadi `123.0`, ia mengembalikan `123.0`. Jadi config menang atas default, dan
+`600.0` di dalam rentang clamp `[10.0, 1800.0]` (`captcha_handoff.py:22-23`)
+sehingga tidak ada efek samping.
+
+Perubahan `voice.audio.input_device/output_device` milik pengguna dibiarkan
+utuh dan ikut terkomit.
+
+**Celah yang terbuka, terukur.** Mutan yang mengubah `max_hold_s` dari `20.0`
+menjadi `9999.0` membuat seluruh 48 tes di `test_config_contract.py` dan
+`test_voice_speech_gate.py` tetap LOLOS. Kontraknya bekerja lewat AST dan hanya
+memeriksa KEBERADAAN kunci — ia buta terhadap nilai. Config yang membuat Jarvis
+menunggu 2,7 jam sebelum melepas transkrip final tidak akan pernah tertangkap
+oleh tes yang ada.
+
+Ditambahkan `test_voice_speech_gate_bounds_are_sane` di `test_config_contract.py`.
+Tes itu langsung hijau — yang berarti tidak membuktikan apa pun sampai mutannya
+diuji. Kedua mutan di atas kini mati: `max_hold_s=9999.0` tertangkap pada
+assertion rentang, dan `poll_s=50.0` (lebih besar dari `max_hold_s`, yang
+membuat loop `_await_boundary` langsung habis pada iterasi pertama) tertangkap
+pada assertion keterbandingan.
+
+Penjaga serupa belum ada untuk `captcha_handoff_timeout_s`, karena kode
+production sudah meng-clamp nilainya sendiri ke `[10.0, 1800.0]` — di sana
+nilai ekstrem memang ditahan oleh production, bukan oleh tes.
+
+Batas jujur: semua pengukuran ini offline. Belum ada yang diamati pada proses
+Jarvis nyata, dan perubahan config ini tidak menyentuh jalur suara yang hidup.

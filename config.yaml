@@ -325,6 +325,10 @@ action_panel:                    # Mark L Change 3 + 7
 screen_control:
   enabled: false                 # per-session ActionPanel opt-in; local desktop only
   session_ttl_s: 900             # bounded process-local authority (15 minutes)
+  # Batas tunggu manusia menyelesaikan CAPTCHA sebelum authority ditarik.
+  # Dibaca jarvis/agent/captcha_handoff.py (_timeout_s); di-clamp ke 10..1800,
+  # jadi nilai di bawah ini berada dalam rentang dan tidak mengubah perilaku.
+  captcha_handoff_timeout_s: 600.0
 
 overlays:
   sys_stats_poll_s: 2.0
@@ -462,8 +466,8 @@ voice:                           # Mark L Change 4 — barge-in interrupt
   audio:
     # Selector host + nama stabil saat urutan indeks PortAudio berubah.
     # Nama MME memang dipotong oleh Windows setelah 31 karakter.
-    input_device: "MME::Microphone (USB2.0 Device)"
-    output_device: "MME::SAMSUNG (NVIDIA High Definition"
+    input_device: 1              # Microphone (USB2.0 Device) — index dari query_devices()
+    output_device: 8             # Realtek Digital Output — speaker utama untuk suara Jarvis
     # Callback ideal datang tiap 64 ms (1024/16000). Margin di bawah ini
     # konservatif dan source-derived; tuning perangkat nyata belum dilakukan.
     heartbeat_poll_s: 0.1
@@ -518,6 +522,14 @@ voice:                           # Mark L Change 4 — barge-in interrupt
     # sebelum menutup giliran + drain buffer sebelum stream ditutup.
     tail_grace_s: 0.45           # tunggu ekor audio sebelum flip ke LISTENING
     poll_s: 0.05                 # interval polling antrean audio
+  # Gerbang akhir-ucapan: tunggu lane kosong + batas giliran aman sebelum
+  # transkrip final dilepas. Dibaca jarvis/integrations/voice_speech_gate.py
+  # (_await_boundary). max_hold_s adalah BATAS ATAS, bukan target; poll_s
+  # hanya interval tidur — jangan dinaikkan tanpa mengukur, karena ia ikut
+  # menentukan seberapa kasar resolusi batas gilirannya.
+  speech_gate:
+    max_hold_s: 20.0
+    poll_s: 0.05
 
 summarizer:
   system_prompt: |

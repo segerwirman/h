@@ -1092,3 +1092,38 @@ def test_real_repository_config_has_no_drift():
     assert report.unresolved_dynamic == ()
     assert report.dead_keys == ()
     assert report.undeclared_reads == ()
+
+
+def test_voice_speech_gate_bounds_are_sane():
+    """Nilai `voice.speech_gate` harus waras, bukan sekadar ADA.
+
+    Mengapa tes ini ada: `test_real_repository_config_has_no_drift` hanya
+    memeriksa KEBERADAAN kunci lewat AST. Terukur 2026-09-01 — mengubah
+    `max_hold_s` dari 20.0 menjadi 9999.0 membuat seluruh 48 tes di berkas ini
+    dan di `test_voice_speech_gate.py` tetap lolos. Kontraknya buta terhadap
+    nilai, sehingga config yang membuat Jarvis menunggu 2,7 jam sebelum
+    melepas transkrip final tidak akan pernah tertangkap.
+
+    Angka di bawah ini bukan tebakan: 20.0 dan 0.05 adalah default yang
+    sudah hidup di `voice_speech_gate.py:96-97`, dan dipakai di sini sebagai
+    batas kewarasan agar perubahan nilai yang disengaja tetap mungkin selama
+    masih masuk akal bagi jalur suara.
+    """
+    import yaml
+
+    root = Path(__file__).resolve().parent.parent
+    data = yaml.safe_load((root / "config.yaml").read_text(encoding="utf-8"))
+    gate = data["voice"]["speech_gate"]
+
+    assert 0.5 <= gate["max_hold_s"] <= 120.0, (
+        f"max_hold_s = {gate['max_hold_s']!r} di luar rentang waras: ini "
+        f"batas atas tunggu sebelum transkrip final dilepas"
+    )
+    assert 0.001 <= gate["poll_s"] <= 1.0, (
+        f"poll_s = {gate['poll_s']!r} di luar rentang waras: ini interval "
+        f"polling yang ikut menentukan resolusi batas giliran"
+    )
+    assert gate["poll_s"] < gate["max_hold_s"], (
+        "poll_s lebih besar dari max_hold_s — loop _await_boundary akan "
+        "langsung habis pada iterasi pertama"
+    )
