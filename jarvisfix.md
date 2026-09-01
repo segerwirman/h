@@ -10660,3 +10660,88 @@ Batas jujur: ukuran ini memakai ``loop.run`` palsu; ia tidak membuktikan
 perilaku shutdown sungguhan, tidak membuktikan urutan berhentinya thread saat
 proses benar-benar keluar, dan tidak menjalankan Chrome, CDP, desktop input,
 credential, atau jaringan.
+
+## Fase 60 — Verifikasi live berotorisasi: rantai bagikan tab bekerja, yang menghalangi klik ikon adalah gate + Chrome tanpa flag debug
+
+Pertanyaan asli pemakai (``langkah apa rekomendasi selanjutnya, kenapa jarvis
+belum bisa share from tab ketika saya klik icon panel bagikan tab``) dijawab
+dengan pengukuran, bukan tebakan. Sebelum fase ini seluruh bukti hanya offline;
+rencana proyek mewajibkan pemisahan ``source-present``, ``focused-tested``,
+``runtime-wired-with-offline-fakes``, ``blocked/not-run``, dan ``unproven-live``.
+Fase 60 memindahkan satu item dari ``unproven-live`` menjadi terukur.
+
+**Otorisasi.** Pemakai menutup Chrome sendiri lalu memberi otorisasi terpisah
+(``ya saya otorisasi dan jalankan``). Chrome diluncurkan dengan profil terisolasi
+``$env:TEMP\jarvis-cdp-profile`` agar tidak menyentuh profil pemakai; ini
+bukan auto-launch dari Jarvis dan kode produksi tidak mengubah apa pun.
+
+**Temuan 1 — Chrome tanpa flag debug tidak bisa di-attach (terukur).**
+Sebelum intervensi: 46 proses Chrome berjalan, **nol** di antaranya membawa
+``--remote-debugging-port``. Berkas ``DevToolsActivePort`` terakhir ditulis
+12 hari sebelumnya (20 Agustus), jadi port 9222 tetap tertutup meski Chrome
+hidup. Setelah seluruh proses Chrome dimatikan (terverifikasi 0 tersisa) dan
+Chrome diluncurkan dengan flag, port 9222 terbuka pada poll 3 detik pertama:
+``Chrome/149.0.7827.196``,
+``webSocketDebuggerUrl: ws://127.0.0.1:9222/devtools/browser/474ae00a-...``.
+Jadi blocker pertama adalah **lingkungan**, bukan wiring kode.
+
+**Temuan 2 — rantai picker → CDP → Chrome bekerja (terukur live).**
+Dalam satu proses yang sama (state host hidup di dalam proses):
+
+| Langkah | Hasil terukur |
+|---|---|
+| ``begin_picker()`` tanpa tab HTTP/HTTPS | ``ok=True, state='zero_tabs', candidates=0`` |
+| setelah buka ``https://example.com`` | ``ok=True, state='tabs_available', candidates=1`` ("Example Domain") |
+| ``select_candidate()`` | ``ok=True, state='sharing'``, ``SelectedTarget(target_id='N5p2Yzp_...', target_generation=1, title='Example Domain', origin='https://example.com')`` |
+| ``active_snapshot()`` | ``active=True`` dengan target yang sama |
+
+Ini membuktikan inventory tab, filter eligibility, dan seleksi benar-benar
+berfungsi terhadap Chrome nyata.
+
+**Temuan 3 — observasi agen tetap tertutup tanpa binding task (terukur live).**
+Setelah ``state='sharing'``, ``observe_selected()`` dengan session/task sembarang
+mengembalikan ``ok=False, state='blocked', reason='selected_tab_not_active'``;
+dengan ``target_id`` salah mengembalikan
+``reason='selected_tab_target_mismatch'``. Penolakan ini datang dari
+``_selected_binding_error()`` (``selected_tab_browser.py:849``) yang melewati
+``COORDINATOR.selected_tab_binding_error()``. Artinya berbagi tab **tidak serta
+merta** memberi agen akses baca: authority tetap exact session + task + target +
+generation.
+
+**Temuan 4 — sanitasi URL agent-visible terukur.** Tab sengaja dibuka dengan
+``https://example.com/?a=1&token=RAHASIA#top``. Picker hanya mengekspos
+``origin='https://example.com'`` dan ``title='Example Domain'``; query dan
+fragment tidak pernah muncul di kandidat maupun ``SelectedTarget``.
+
+**Temuan 5 — jalur klik ikon panel terhalang tiga gate (terukur, hanya baca).**
+
+| Gate | Nilai terukur | Lolos |
+|---|---|---|
+| 1. ``COORDINATOR.snapshot().state != OFF`` | ``state='off'`` | tidak |
+| 2. ``config screen_control.enabled`` | ``False`` | tidak |
+| 3. ``dispatch.screen_control_scope()`` | ``None`` (tidak ada tepat satu task RUNNING) | tidak |
+
+Ketiganya diukur tanpa mengubah apa pun: ``screen_control.enabled`` tetap
+``false``, ``user_browser.enabled`` ``true``, ``user_browser.debug_port``
+``9222``, ``awareness.enabled`` ``false``.
+
+**Perubahan produksi: TIDAK ADA.** Seluruh fase ini adalah pengukuran. Tidak ada
+file produksi, config, atau test yang diubah atau ditambah; tidak ada commit
+untuk Fase 60 selain entri jurnal ini.
+
+**Pemisahan status yang diwajibkan rencana:**
+``source-present`` — seluruh wiring Tasks 1–8 ada di source.
+``focused-tested`` — coverage offline untuk picker, lifecycle, CAPTCHA, panel.
+``runtime-wired-with-offline-fakes`` — host, CDP, dan Qt diuji dengan fake.
+``blocked/not-run`` — jalur klik ikon panel dari UI Qt secara utuh: gate 1–3
+masih menolak, sehingga ``ActionPanel`` → ``_toggle_screen_control()`` →
+``TabShareSheet.present()`` belum pernah dieksekusi dalam satu alur hidup.
+``unproven-live`` — attach otomatis ke Chrome pemakai sehari-hari, aksi bounded
+(click/type) pada tab nyata, dan seluruh jalur native desktop.
+
+**Batas jujur.** Pengaktifan gate ``screen_control.enabled`` dan pemilihan
+profile Chrome tetap keputusan operator; saya tidak membalik gate default-off
+dan tidak meluncurkan Chrome atas nama Jarvis. Pengukuran memakai satu tab
+``example.com`` yang saya buka lalu tutup sendiri. Tidak ada cookie, storage,
+credential, atau aksi halaman yang disentuh. Angka dan state di atas berasal
+dari Chrome nyata di mesin ini pada 2026-09-01.
