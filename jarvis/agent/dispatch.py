@@ -1245,11 +1245,34 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
             with _active_lock:
                 _active.pop(k, None)
 
-    threading.Thread(
+    worker_thread = threading.Thread(
         target=lambda: worker_context.run(_worker),
         daemon=True,
         name=f"agent-{bg_task.id}",
-    ).start()
+    )
+    try:
+        worker_thread.start()
+    except Exception:
+        # Worker tidak pernah mengambil ownership, jadi pemanggil yang gagal
+        # memulainya wajib menutup SEMUA state yang sudah dibuka sebelum start.
+        latency.cancel(session.id)
+        REGISTRY.finish(
+            bg_task.id,
+            error="worker gagal dimulai",
+            completion_owner="caller",
+        )
+        _release_browser_session(session.id)
+        _release_computer_session(session.id)
+        _clear_desktop_safe_session(session.id)
+        _clear_captcha_handoff_session(session.id)
+        _release_screen_control_session(session.id)
+        _revoke_execution_grants(bg_task.id)
+        session.execution_grant_id = ""
+        session.communication_grant_id = ""
+        session.registry_task_id = ""
+        with _active_lock:
+            _active.pop(k, None)
+        raise
     return bg_task
 
 

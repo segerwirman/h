@@ -10369,3 +10369,46 @@ ada (`.claude/scratch/wpanels-index.py`, `communication_authorization.py`, dan
 Batas jujur: tidak ada Chrome, CDP live, tab nyata, screenshot, pointer native,
 credential, atau jaringan yang dipakai. Fase ini membuktikan lifecycle worker
 offline dan kebijakan eviction saja; ia bukan bukti perilaku situs/browser live.
+
+### Fase 54 — kegagalan `Thread.start()` tidak boleh meninggalkan tiga yatim
+
+Langkah ini dimulai dengan pengukuran perilaku, bukan perubahan production. Fake
+`threading.Thread` menerima target seperti biasa tetapi `start()` melempar
+`RuntimeError("fake OS menolak thread baru")`. Titiknya sengaja sesudah
+`latency.start(session.id)`, registry submit, binding session, ACK, dan `_active`
+dibuka, tetapi sebelum worker dapat mengambil ownership atau menjalankan satu
+baris pun.
+
+RED mengonfirmasi cacat nyata. Setelah exception merambat, keadaan terukur:
+
+    latency_active : 1
+    registry       : [('T-1502', 'queued')]
+    registry_active: ['T-1502']
+    dispatch_active: 1
+
+Artinya satu kegagalan OS memulai thread meninggalkan tiga pemilik state yatim
+sekaligus. Worker finalizer Fase 53 tidak bisa membantu karena worker tidak
+pernah hidup.
+
+GREEN minimal mempertahankan exception asli—tidak mengubah kegagalan menjadi
+klaim dispatch sukses. `Thread` kini dikonstruksi dahulu, lalu `start()` dijaga.
+Bila start gagal, pemanggil yang masih memiliki ownership membatalkan turn
+latency secara diam-diam, menandai task registry FAILED dengan alasan lokal
+`worker gagal dimulai`, membersihkan seluruh authority/session seam yang sudah
+mungkin terbuka, menghapus binding `_active`, lalu melempar ulang exception.
+Tidak ada slot yang dilepas karena slot belum pernah diperoleh.
+
+Tes mengukur outcome ketiga pemilik dalam satu snapshot: latency 0, satu task
+registry terminal FAILED dan tidak aktif, serta dispatch active 0. Tiga mutan
+manual mati secara terpisah: menghapus `latency.cancel()` menyisakan hanya turn;
+menghapus `REGISTRY.finish()` menyisakan task QUEUED aktif; menghapus `_active`
+cleanup menyisakan dispatch active 1. Focused regression sesudah restore:
+**39 passed**. Full suite offline: **3918 passed, 1 skipped, 1 deselected**
+dalam 1319,23 detik. Skip tetap symlink Windows tanpa privilege; deselect tetap
+credential-flow test lama yang sudah dieskalasi. Focused Ruff bersih,
+`git diff --check` bersih, dan FROZEN tetap `094b696`. Root Ruff tetap memiliki
+13 temuan unrelated yang sama seperti Fase 53; tidak diubah untuk memaksa hijau.
+
+Batas jujur: fake ini membuktikan rollback sinkron saat `Thread.start()`
+melempar; ia tidak membuktikan OS/thread nyata gagal dengan cara yang sama, dan
+tidak menjalankan Chrome, CDP, desktop input, credential, atau jaringan.
