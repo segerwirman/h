@@ -10509,3 +10509,53 @@ Batas jujur: ukuran ini memakai fake registry dan ``loop.run`` palsu; ia tidak
 membuktikan perilaku ``asyncio.wait_for`` nyata terhadap nilai timeout aneh di
 bawah beban sesungguhnya, dan tidak menjalankan Chrome, CDP, desktop input,
 credential, atau jaringan.
+
+### Fase 57 — jendela sebelum worker: ``BUS.publish`` terbukti bocor
+
+Fase 56 menutup satu kemungkinan (timeout non-angka) dengan hasil TIDAK bocor,
+tetapi jendela antara ``latency.start(session.id)`` dan penjaga Fase 54/55
+masih menyisakan satu panggilan terakhir yang bisa melempar::
+
+    BUS.publish("agent.task.started", task=task, session=session.id)
+
+``EventBus.publish`` (``bus.py:54``) membungkus SETIAP subscriber dalam
+``try/except``, jadi handler yang meledak tidak pernah merambat. Tetapi baris
+64, ``self._ui_queue.put(...)``, berada DI LUAR penjaga itu. RED diukur dengan
+fake antrean UI yang ``put``-nya melempar, sambil mengembalikan ``BUS.publish``
+asli yang distub helper ``_isolate_dispatch``.
+
+RED mengonfirmasi kebocoran. Setelah exception merambat:
+
+    latency_active : 1
+    registry       : [('T-708f', 'queued')]
+    registry_active: ['T-708f']
+    dispatch_active: 1
+
+Sama persis dengan Fase 54 dan 55: tiga yatim, titik kegagalan ketiga.
+
+GREEN kali ini tidak menambah salinan keempat dari daftar tutup. Kedua penjaga
+— jendela publish DAN konstruksi/start thread — kini memanggil satu helper
+``_abort_pre_worker(reason)`` yang didefinisikan di atas keduanya. Bentuk
+daftar-tutup yang diduplikasi persis seperti yang membuat Fase 54 dan 55
+masing-masing hanya memperbaiki separuh jendela; helper ini menutup celah itu
+agar daftar tutup tidak bisa menyimpang lagi.
+
+Kontrak error tidak berubah: exception asli tetap merambat ke pemanggil, seperti
+sebelum fase ini. Yang berubah hanya keadaan yang ditinggalkan di belakang.
+
+Tiga mutan manual mati: penjaga publish tanpa rollback (hanya tes baru yang
+mati — bukti tes itu tepat sasaran), rollback yang melewat ``REGISTRY.finish()``,
+dan rollback yang melewat ``_active`` cleanup (keduanya mematikan ketiga tes).
+Focused regression sesudah restore: 65 passed; regresi bus/exec tambahan:
+62 passed. Full suite offline: **3921 passed, 1 skipped, 1 deselected** dalam
+1407,83 detik (naik dari 3920, selisih satu = tes baru fase ini). Skip tetap
+symlink Windows tanpa privilege; deselect tetap credential-flow test lama yang
+sudah dieskalasi. Ruff fokus bersih,
+``scripts/verify_frozen.py`` tetap ``094b696``, dan ``git diff --check`` bersih.
+Root Ruff tetap 13 temuan unrelated yang sama; tidak diubah untuk memaksa hijau.
+
+Batas jujur: fake ini membuktikan rollback sinkron saat antrean UI menolak item;
+ia tidak membuktikan ``queue.Queue.put`` nyata pernah melempar dalam praktiknya
+(``Queue`` tanpa batas hampir tidak pernah gagal), dan tidak menjalankan Chrome,
+CDP, desktop input, credential, atau jaringan. Nilai ukur ini adalah menutup
+BENTUK cacat yang sudah terbukti nyata dua kali, bukan frekuensinya.

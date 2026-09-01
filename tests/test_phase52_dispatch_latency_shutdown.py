@@ -381,3 +381,69 @@ def test_timeout_non_numeric_tidak_meninggalkan_turn_task_atau_active(
         registry.clear()
         with dispatch._active_lock:
             dispatch._active.clear()
+
+
+def test_bus_publish_gagal_tidak_meninggalkan_turn_task_atau_active(monkeypatch):
+    """Kegagalan publish di dalam jendela terbuka tidak boleh meninggalkan yatim.
+
+    Jendela antara ``latency.start()`` (baris 1084) dan penjaga Fase 54/55
+    (baris 1251) menyisakan satu panggilan terakhir yang bisa melempar:
+    ``BUS.publish("agent.task.started", ...)``.
+
+    ``EventBus.publish`` (``bus.py:54``) membungkus SETIAP subscriber dalam
+    ``try/except``, jadi handler yang meledak tidak pernah merambat. Tetapi
+    baris 64, ``self._ui_queue.put(...)``, berada DI LUAR penjaga itu. Bila
+    antrean UI menolak item baru, exception merambat ke ``_dispatch`` — setelah
+    turn dibuka, setelah registry submit, setelah ACK, dan sebelum worker
+    memiliki kesempatan menjalankan satu baris pun.
+
+    Fake di bawah membuat ``put`` melempar, mengembalikan ``BUS.publish`` asli
+    yang distub ``_isolate_dispatch``, lalu mengukur tiga pemilik state yang
+    sama agar hasilnya sebanding dengan Fase 54/55/56.
+    """
+    from jarvis.agent.tasks import TaskRegistry, TaskStatus
+    from jarvis.core import bus as bus_module
+
+    class SilentBus:
+        def publish(self, *_args, **_kwargs):
+            return None
+
+    class ExplodingQueue:
+        def put(self, *_args, **_kwargs):
+            raise RuntimeError("fake antrean UI menolak item baru")
+
+    registry = TaskRegistry(bus=SilentBus(), max_concurrent=1, queue_max=2)
+    _isolate_dispatch(monkeypatch, registry)
+    # _isolate_dispatch menstub BUS.publish; kembalikan yang asli agar jalur
+    # nyata yang diukur, lalu ganti hanya antrean UI-nya.
+    monkeypatch.setattr(dispatch.BUS, "publish", bus_module.EventBus.publish.__get__(
+        dispatch.BUS, bus_module.EventBus))
+    monkeypatch.setattr(dispatch.BUS, "_ui_queue", ExplodingQueue())
+    monkeypatch.setattr(dispatch.BUS, "_ui_subs", {"agent.task.started": (lambda _d: None,)})
+
+    try:
+        with pytest.raises(RuntimeError,
+                           match="fake antrean UI menolak item baru"):
+            dispatch.dispatch_task("offline bus publish failure")
+
+        views = registry.snapshot()
+        measured = {
+            "latency_active": latency.active_count(),
+            "registry": [(view.id, view.status.value) for view in views],
+            "registry_active": [view.id for view in registry.active()],
+            "dispatch_active": dispatch.active_count(),
+        }
+        assert measured == {
+            "latency_active": 0,
+            "registry": [(views[0].id, TaskStatus.FAILED.value)],
+            "registry_active": [],
+            "dispatch_active": 0,
+        }, (
+            "BUS.publish gagal setelah seluruh state dibuka, tetapi cleanup "
+            f"tidak atomik: {measured}"
+        )
+    finally:
+        latency.reset()
+        registry.clear()
+        with dispatch._active_lock:
+            dispatch._active.clear()

@@ -1088,9 +1088,44 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
         task_id=bg_task.id,
         kind="ack",
     )
-    BUS.publish("agent.task.started", task=task, session=session.id)
+    def _abort_pre_worker(reason: str) -> None:
+        """Tutup SEMUA state yang dibuka sebelum worker mengambil ownership.
 
-    hard_timeout = timeout_s or float(config.get("agent.task_timeout_s", 900))
+        Worker belum pernah hidup, jadi pemanggil yang menemui kegagalan di
+        jendela ini wajib menutup semuanya sendiri. Satu helper untuk kedua
+        penjaga di bawah agar daftar tutupnya tidak pernah menyimpang — Fase 54
+        dan 55 menunjukkan daftar yang diduplikasi adalah daftar yang kelak
+        hanya separuh diperbaiki.
+        """
+        latency.cancel(session.id)
+        REGISTRY.finish(
+            bg_task.id,
+            error=reason,
+            completion_owner="caller",
+        )
+        _release_browser_session(session.id)
+        _release_computer_session(session.id)
+        _clear_desktop_safe_session(session.id)
+        _clear_captcha_handoff_session(session.id)
+        _release_screen_control_session(session.id)
+        _revoke_execution_grants(bg_task.id)
+        session.execution_grant_id = ""
+        session.communication_grant_id = ""
+        session.registry_task_id = ""
+        with _active_lock:
+            _active.pop(k, None)
+
+    # Sisa jendela sebelum worker juga bisa gagal, bukan hanya thread-nya.
+    # ``EventBus.publish`` hanya menaungi kegagalan SUBSCRIBER (``bus.py:58``);
+    # ``self._ui_queue.put(...)`` di baris 64 berada DI LUAR penjaga itu, jadi
+    # antrean UI yang menolak item membuat exception merambat ke sini — setelah
+    # turn dibuka, setelah registry submit, dan setelah ACK dikirim.
+    try:
+        BUS.publish("agent.task.started", task=task, session=session.id)
+        hard_timeout = timeout_s or float(config.get("agent.task_timeout_s", 900))
+    except Exception:
+        _abort_pre_worker("dispatch gagal sebelum worker dimulai")
+        raise
 
     def _worker():
         t0 = time.monotonic()
@@ -1257,25 +1292,7 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
         )
         worker_thread.start()
     except Exception:
-        # Worker tidak pernah mengambil ownership, jadi pemanggil yang gagal
-        # memulainya wajib menutup SEMUA state yang sudah dibuka sebelumnya.
-        latency.cancel(session.id)
-        REGISTRY.finish(
-            bg_task.id,
-            error="worker gagal dibuat atau dimulai",
-            completion_owner="caller",
-        )
-        _release_browser_session(session.id)
-        _release_computer_session(session.id)
-        _clear_desktop_safe_session(session.id)
-        _clear_captcha_handoff_session(session.id)
-        _release_screen_control_session(session.id)
-        _revoke_execution_grants(bg_task.id)
-        session.execution_grant_id = ""
-        session.communication_grant_id = ""
-        session.registry_task_id = ""
-        with _active_lock:
-            _active.pop(k, None)
+        _abort_pre_worker("worker gagal dibuat atau dimulai")
         raise
     return bg_task
 
