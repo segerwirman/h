@@ -143,3 +143,35 @@ def test_begin_request_membuka_turn_voice_ack():
         f"begin_request tidak membuka turn voice_ack — speech_end = "
         f"{stages.get('speech_end')!r}; cacat Fase 42 belum tertutup"
     )
+
+
+def test_begin_request_tanpa_dispatch_tidak_menghasilkan_report_palsu():
+    """Turn yang tak pernah di-dispatch tidak boleh jadi report palsu.
+
+    `begin_request()` kini membuka turn `voice_ack` sebagai efek samping. Bila
+    giliran itu tidak pernah mencapai dispatch, turn-nya tetap terbuka, dan
+    `voice_handoff()` berikutnya akan menutup turn SISA itu — menghasilkan
+    `total_ms: 0.0` tanpa `speech_end` (terukur 2026-09-01). Angka palsu yang
+    tercatat seolah pengukuran sah.
+
+    Tes ini menegaskan bentuk reportnya, supaya siapa pun yang kelak melihat
+    `total_ms = 0.0` di log tahu itu turn yatim, bukan pengukuran.
+
+    Catatan: `tests/test_state.py` memanggil `begin_request()` dan TIDAK
+    memanggil `latency.reset()`. Saat ini tidak ada tes yang tercemar hanya
+    karena tes-tes `latency` kebetulan memakai fixture reset. Itu
+    perlindungan insidental, bukan rancangan — karenanya dicatat di sini.
+    """
+    from jarvis.core.state import PipelineStateMachine
+
+    latency.reset()
+    try:
+        PipelineStateMachine().begin_request()   # tidak pernah di-dispatch
+        report = latency.voice_handoff()
+    finally:
+        latency.reset()
+
+    assert report["total_ms"] == 0.0, report
+    assert "speech_end" not in dict(report["stages"]), (
+        "turn yatim memuat speech_end — ia bukan lagi sisa, periksa wiring"
+    )

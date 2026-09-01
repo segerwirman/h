@@ -10141,6 +10141,24 @@ tracked dan disetujui pengguna lebih dulu.
 - `begin_request()` juga dipanggil dari jalur selain transkrip suara bila ada
   pemanggil baru kelak; setiap pemanggil akan membuka turn `voice_ack`.
   Saat ini `main.py:1509` satu-satunya pemanggil `PipelineStateMachine`.
+### Efek samping yang saya perkenalkan, dan penjaganya
+
+`begin_request()` kini membuka turn `voice_ack`. Bila giliran itu tidak
+pernah mencapai dispatch, turn-nya tetap terbuka dan `voice_handoff()`
+berikutnya menutup turn SISA itu — terukur: `total_ms: 0.0` tanpa
+`speech_end`. Angka palsu yang tercatat seolah pengukuran sah.
+
+`tests/test_state.py` memanggil `begin_request()` dan **tidak** memanggil
+`latency.reset()`. Saat ini tidak ada tes yang tercemar, tetapi itu
+perlindungan insidental — tes-tes `latency` kebetulan memakai fixture reset,
+bukan karena ada yang merancangnya begitu.
+
+Ditambahkan `test_begin_request_tanpa_dispatch_tidak_menghasilkan_report_palsu`
+yang menegaskan bentuk report turn yatim, supaya `total_ms = 0.0` di log
+kelak dikenali sebagai sisa, bukan pengukuran. Mutan I (kembalikan
+`begin_request` tanpa `start`) membunuh 3 tes — total **4/4 mutan mati**
+(F, G, H, I).
+
 - UTANG BELUM LUNAS: `git checkout` pada sesi ini menghapus satu tes milik
   pengguna yang belum pernah di-commit
   (`test_final_transcript_boundary_is_bound_to_the_matching_voice_ack`).
