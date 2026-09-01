@@ -252,3 +252,57 @@ def test_thread_start_gagal_tidak_meninggalkan_turn_task_atau_active(monkeypatch
         registry.clear()
         with dispatch._active_lock:
             dispatch._active.clear()
+
+
+def test_thread_konstruksi_gagal_tidak_meninggalkan_turn_task_atau_active(
+    monkeypatch,
+):
+    """Kegagalan KONSTRUKSI worker harus terminal sebelum exception merambat.
+
+    Fase 54 hanya menjaga ``Thread.start()``. Konstruksi objek thread itu
+    sendiri masih berada di luar penjaga itu, padahal ia terjadi SETELAH
+    ``latency.start(session.id)``, registry submit, binding session, ACK, dan
+    ``_active`` dibuka. Fake ini melempar dari ``__init__`` sehingga objek
+    thread tidak pernah ada sama sekali, lalu mengukur tiga pemilik state yang
+    sama dengan ukuran Fase 54 agar hasilnya dapat dibandingkan langsung.
+    """
+    from jarvis.agent.tasks import TaskRegistry, TaskStatus
+
+    class SilentBus:
+        def publish(self, *_args, **_kwargs):
+            return None
+
+    class ConstructorFailureThread:
+        def __init__(self, *, target, daemon, name):
+            raise RuntimeError("fake OS menolak konstruksi thread")
+
+    registry = TaskRegistry(bus=SilentBus(), max_concurrent=1, queue_max=2)
+    _isolate_dispatch(monkeypatch, registry)
+    monkeypatch.setattr(dispatch.threading, "Thread", ConstructorFailureThread)
+
+    try:
+        with pytest.raises(RuntimeError,
+                           match="fake OS menolak konstruksi thread"):
+            dispatch.dispatch_task("offline worker construction failure")
+
+        views = registry.snapshot()
+        measured = {
+            "latency_active": latency.active_count(),
+            "registry": [(view.id, view.status.value) for view in views],
+            "registry_active": [view.id for view in registry.active()],
+            "dispatch_active": dispatch.active_count(),
+        }
+        assert measured == {
+            "latency_active": 0,
+            "registry": [(views[0].id, TaskStatus.FAILED.value)],
+            "registry_active": [],
+            "dispatch_active": 0,
+        }, (
+            "Konstruksi Thread gagal setelah seluruh state dibuka, tetapi "
+            f"cleanup tidak atomik: {measured}"
+        )
+    finally:
+        latency.reset()
+        registry.clear()
+        with dispatch._active_lock:
+            dispatch._active.clear()

@@ -1245,20 +1245,24 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
             with _active_lock:
                 _active.pop(k, None)
 
-    worker_thread = threading.Thread(
-        target=lambda: worker_context.run(_worker),
-        daemon=True,
-        name=f"agent-{bg_task.id}",
-    )
     try:
+        # Konstruksi DAN start berada di dalam penjaga yang sama. Keduanya
+        # terjadi setelah seluruh state dibuka, dan keduanya bisa gagal karena
+        # alasan OS (batas thread, memori). Fase 54 hanya menjaga start();
+        # konstruksi yang gagal terbukti meninggalkan tiga yatim yang sama.
+        worker_thread = threading.Thread(
+            target=lambda: worker_context.run(_worker),
+            daemon=True,
+            name=f"agent-{bg_task.id}",
+        )
         worker_thread.start()
     except Exception:
         # Worker tidak pernah mengambil ownership, jadi pemanggil yang gagal
-        # memulainya wajib menutup SEMUA state yang sudah dibuka sebelum start.
+        # memulainya wajib menutup SEMUA state yang sudah dibuka sebelumnya.
         latency.cancel(session.id)
         REGISTRY.finish(
             bg_task.id,
-            error="worker gagal dimulai",
+            error="worker gagal dibuat atau dimulai",
             completion_owner="caller",
         )
         _release_browser_session(session.id)

@@ -10412,3 +10412,45 @@ credential-flow test lama yang sudah dieskalasi. Focused Ruff bersih,
 Batas jujur: fake ini membuktikan rollback sinkron saat `Thread.start()`
 melempar; ia tidak membuktikan OS/thread nyata gagal dengan cara yang sama, dan
 tidak menjalankan Chrome, CDP, desktop input, credential, atau jaringan.
+
+### Fase 55 — kegagalan KONSTRUKSI threading.Thread(...) tidak boleh meninggalkan tiga yatim
+
+Fase 54 hanya memindahkan ``start()`` ke dalam penjaga. Konstruksi objek thread
+masih berada di luarnya, padahal ia terjadi setelah ``latency.start(session.id)``,
+registry submit, binding session, ACK, dan ``_active`` dibuka. Fake
+``ConstructorFailureThread`` melempar dari ``__init__``, sehingga objek thread
+tidak pernah ada sama sekali dan ``start()`` tidak pernah dipanggil.
+
+RED mengonfirmasi kebocoran yang identik dengan Fase 54. Setelah exception
+merambat, keadaan terukur:
+
+    latency_active : 1
+    registry       : [('T-4cdb', 'queued')]
+    registry_active: ['T-4cdb']
+    dispatch_active: 1
+
+Jadi jalur ini bukan kasus teoretis: tiga yatim yang sama muncul dari titik
+kegagalan yang berbeda, dan penjaga Fase 54 tidak menyentuhnya sama sekali.
+
+GREEN minimal: konstruksi dipindahkan ke DALAM ``try`` yang sudah ada, bersama
+``start()``. Tidak ada blok baru, tidak ada helper baru, dan isi rollback tidak
+diubah. Kontrak error juga tidak berubah — exception asli OS tetap merambat ke
+pemanggil seperti sebelumnya. Hanya pesan registry yang diperjelas menjadi
+"worker gagal dibuat atau dimulai", karena satu penjaga kini menaungi dua titik
+kegagalan yang berbeda.
+
+Tiga mutan manual mati secara terpisah, dan KEDUA tes — kegagalan start (Fase
+54) dan kegagalan konstruksi (Fase 55) — mendeteksi masing-masing: menghapus
+``latency.cancel()``, melewat ``REGISTRY.finish()``, dan menghapus ``_active``
+cleanup. Focused regression sesudah restore: 63 passed. Full suite offline:
+**3919 passed, 1 skipped, 1 deselected** dalam
+1585,09 detik (naik dari 3918, selisih satu = tes baru fase ini). Skip tetap
+symlink Windows tanpa privilege; deselect tetap credential-flow test lama yang
+sudah dieskalasi. Focused Ruff bersih, ``scripts/verify_frozen.py`` tetap
+``094b696``, dan ``git diff --check`` bersih. Root Ruff tetap memiliki 13 temuan
+unrelated yang sama seperti Fase 53 dan 54; tidak diubah untuk memaksa hijau.
+
+Batas jujur: fake ini membuktikan rollback sinkron saat konstruksi thread
+melempar; ia tidak membuktikan OS nyata kehabisan thread atau memori dengan cara
+yang sama, dan tidak menjalankan Chrome, CDP, desktop input, credential, atau
+jaringan.
