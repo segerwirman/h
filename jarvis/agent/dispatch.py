@@ -1094,29 +1094,28 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
 
     def _worker():
         t0 = time.monotonic()
-        # Menunggu slot + resource eksklusif DI SINI, bukan di pemanggil:
-        # dispatch harus tetap kembali seketika (§8.3 "kembali SEKARANG").
-        if not REGISTRY.acquire_slot(bg_task):
-            _logger.info("agent.dispatch.cancelled_while_queued",
-                         task=task[:80], id=bg_task.id)
-            # acquire_slot already publishes cancellation. The matching callback
-            # is UI/telemetry only; cancelled tasks are intentionally voice-silent.
-            _safe_callback(
-                on_error,
-                "Tugas dibatalkan sebelum mulai.",
-                task_id=bg_task.id,
-                kind="final",
-                speech_enabled=False,
-            )
-            _revoke_execution_grants(bg_task.id)
-            session.execution_grant_id = ""
-            session.communication_grant_id = ""
-            session.registry_task_id = ""
-            with _active_lock:
-                _active.pop(k, None)
-            return
-        REGISTRY.mark_running(bg_task.id)
+        acquired = False
         try:
+            # Menunggu slot + resource eksklusif DI SINI, bukan di pemanggil:
+            # dispatch harus tetap kembali seketika (§8.3 "kembali SEKARANG").
+            acquired = REGISTRY.acquire_slot(bg_task)
+            if not acquired:
+                _logger.info(
+                    "agent.dispatch.cancelled_while_queued",
+                    task=task[:80],
+                    id=bg_task.id,
+                )
+                # acquire_slot already publishes cancellation. The matching
+                # callback is UI/telemetry only; cancelled tasks stay voice-silent.
+                _safe_callback(
+                    on_error,
+                    "Tugas dibatalkan sebelum mulai.",
+                    task_id=bg_task.id,
+                    kind="final",
+                    speech_enabled=False,
+                )
+                return
+            REGISTRY.mark_running(bg_task.id)
             replayed = False
 
             async def _execute():
@@ -1229,8 +1228,10 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
         finally:
             latency.finish(session.id)
             # Selalu lepas slot + resource, apa pun yang terjadi — kalau tidak,
-            # satu crash membekukan seluruh antrean.
-            REGISTRY.release_slot(bg_task)
+            # satu crash membekukan seluruh antrean. Jalur batal-saat-mengantre
+            # belum memiliki slot, jadi jangan mengarang release yang tak dimiliki.
+            if acquired:
+                REGISTRY.release_slot(bg_task)
             REGISTRY.finish(bg_task.id, error="selesai tanpa status")
             _release_browser_session(session.id)
             _release_computer_session(session.id)

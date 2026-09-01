@@ -10320,3 +10320,52 @@ fase ini.
 Rekap mutan: **5/5 mati** — A (cancel dihapus dari finish), B (cancel tidak
 membuang turn), C (cancel memanggil finish), D (membatalkan kunci yang salah),
 E (cancel dipanggil di begin_request, bukan finish).
+
+### Fase 53 — satu finalizer worker, dan eviction yang sadar progres
+
+Audit titik penutup Fase 52 menemukan cacat berbeda pada turn `session.id`.
+`dispatch.py` membuka turn sebelum worker, tetapi task yang dibatalkan selagi
+menunggu slot melakukan `return` sebelum blok `try/finally` yang memuat
+`latency.finish(session.id)`. Pengukuran offline menunjukkan worker sudah
+terminal dan `_active` sudah kosong, tetapi `latency.active_count()` tetap 1.
+Kunci ini bukan `voice_ack`, sehingga dispatch berikutnya tidak dapat menutupnya.
+
+RED awal membaca susunan sumber. Itu memang menangkap `return` sebelum `try`,
+tetapi hanya memakukan bentuk implementasi. Sebelum GREEN, tes diganti dengan
+fake registry offline yang benar-benar menjalankan worker: `acquire_slot()`
+mengembalikan `False`, callback cancellation terbit, registry mencapai terminal,
+task tidak pernah dipromosikan ke RUNNING, dan keadaan akhir harus nol turn.
+Tes exception terpisah menjaga penutup tetap berlaku pada crash worker.
+
+GREEN memindahkan akuisisi slot ke dalam satu `try/finally`. Flag `acquired`
+memastikan finalizer selalu menutup latency dan seluruh authority/session seam,
+namun hanya melepas slot bila worker benar-benar memilikinya. Tidak dibuat
+pemilik lifecycle kedua: `TaskRegistry` tetap yang menetapkan terminal state.
+
+Cacat kedua adalah eviction. Dengan `MAX_TURNS = 64`, kebijakan lama selalu
+membuang turn tertua. Turn sah dengan marker `first_llm` terukur dibuang oleh
+64 turn tanpa progres, lalu `finish("korban")` mengembalikan `{}` tanpa error
+atau log. Batas keras tetap 64; yang diubah hanya urutan kandidat: turn tanpa
+marker dibuang lebih dahulu, lalu yang tertua dalam kelas yang sama. Hasil
+terukur: `active_count == 64`, turn `korban` tetap menghasilkan report, dan
+`first_llm == 500.0 ms`.
+
+Mutasi manual yang diuji pada file tes nyata:
+
+1. penutup memakai kunci session salah — dua tes shutdown gagal dan turn tetap 1;
+2. eviction kembali buta progres — tes korban gagal dengan report `{}`;
+3. jalur cancellation tidak kembali — tes mendeteksi promosi RUNNING ilegal dan
+   worker mencoba berjalan tanpa slot.
+
+Focused regression: **39 passed** (`dispatch`, state, latency, dan quiet).
+Focused Ruff bersih, `git diff --check` bersih, dan FROZEN tetap `094b696`.
+Full suite offline: **3917 passed, 1 skipped, 1 deselected** dalam 1250,83 detik.
+Skip adalah symlink Windows tanpa privilege; deselect adalah credential-flow
+test lama yang memang sudah dieskalasi, bukan dibuat hijau oleh fase ini.
+Root Ruff tidak hijau: ia menemukan 13 temuan pada berkas unrelated yang sudah
+ada (`.claude/scratch/wpanels-index.py`, `communication_authorization.py`, dan
+`whatsapp_web.py`). Ketiga path itu tidak diubah untuk memaksa hasil hijau.
+
+Batas jujur: tidak ada Chrome, CDP live, tab nyata, screenshot, pointer native,
+credential, atau jaringan yang dipakai. Fase ini membuktikan lifecycle worker
+offline dan kebijakan eviction saja; ia bukan bukti perilaku situs/browser live.

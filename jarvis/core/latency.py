@@ -63,10 +63,14 @@ def start(key, *, task: str = "", now: float | None = None) -> None:
             return
         moment = time.monotonic() if now is None else float(now)
         with _lock:
-            # Batas keras: pengukur tidak boleh tumbuh tanpa henti. Giliran
-            # tertua dibuang lebih dulu.
+            # Batas keras: pengukur tidak boleh tumbuh tanpa henti. Turn tanpa
+            # marker dibuang sebelum turn yang sudah menghasilkan pengukuran;
+            # dalam kelas yang sama, yang tertua tetap dibuang lebih dulu.
             while len(_turns) >= MAX_TURNS:
-                oldest = min(_turns, key=lambda k: _turns[k].started_at)
+                oldest = min(
+                    _turns,
+                    key=lambda k: (bool(_turns[k].seen), _turns[k].started_at),
+                )
                 _turns.pop(oldest, None)
             _turns[name] = _Turn(started_at=moment, last_at=moment,
                                  task=str(task or "")[:160])
