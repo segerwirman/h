@@ -384,6 +384,93 @@ def test_timeout_non_numeric_tidak_meninggalkan_turn_task_atau_active(
             dispatch._active.clear()
 
 
+def test_system_exit_tidak_ditangkap_dan_state_tetap_bersih(monkeypatch):
+    """``SystemExit`` HARUS dibiarkan merambat; state tetap harus bersih.
+
+    Berbeda dari ``CancelledError`` (Fase 58) yang merupakan SEMANTIK pembatalan
+    dan bagian normal asyncio, ``SystemExit``/``KeyboardInterrupt`` adalah sinyal
+    KONTROL ALIR proses. Menangkapnya berarti menggagalkan shutdown: proses
+    menolak mati karena tugasnya sibuk. Karena itu satu-satunya perilaku benar
+    ialah membiarkannya lewat.
+
+    Yang wajib tetap terjaga adalah keadaan: ``finally`` harus menutup turn,
+    melepas slot, dan membersihkan ``_active`` meski ``SystemExit`` melewati
+    semua penjaga ``except``. ``on_error`` memang tidak dipanggil — itu BENAR,
+    karena shutdown bukan kegagalan tugas yang perlu dijelaskan ke pemakai.
+
+    Tes ini mengukur keduanya: exception terbukti merambat (dibuktikan lewat
+    ``threading.excepthook``, bukan sekadar tidak adanya error), dan tidak ada
+    satu pun yatim tertinggal. Berkas production tidak diubah.
+    """
+    from jarvis.agent.tasks import TaskRegistry, TaskStatus
+
+    class SilentBus:
+        def publish(self, *_args, **_kwargs):
+            return None
+
+    async def exiting(*_args, **_kwargs):
+        raise SystemExit("shutdown diminta")
+
+    registry = TaskRegistry(bus=SilentBus(), max_concurrent=1, queue_max=2)
+    _isolate_dispatch(monkeypatch, registry)
+    monkeypatch.setattr("jarvis.agent.loop.run", exiting)
+
+    propagated: list[tuple[str, str]] = []
+    real_hook = threading.excepthook
+
+    def spy_hook(args):
+        propagated.append((args.exc_type.__name__, str(args.exc_value)[:80]))
+
+    monkeypatch.setattr(threading, "excepthook", spy_hook)
+    delivered: list[str] = []
+
+    try:
+        dispatch.dispatch_task(
+            "offline system exit",
+            on_error=lambda text, **_kwargs: delivered.append(str(text)),
+        )
+
+        assert _wait_until(lambda: dispatch.active_count() == 0, timeout=3.0), (
+            "SystemExit membuat worker menggantung tanpa pernah terminal"
+        )
+        # Beri kesempatan excepthook berjalan, lalu ukur.
+        time.sleep(0.3)
+
+        # 1. Exception HARUS merambat — bukan ditelan penjaga yang baru.
+        assert any(name == "SystemExit" for name, _ in propagated), (
+            "SystemExit ditangkap oleh penjaga worker — shutdown proses akan "
+            f"digagalkan. excepthook mencatat: {propagated}"
+        )
+
+        # 2. Keadaan HARUS bersih walau semua penjaga except dilewati.
+        assert latency.active_count() == 0, (
+            "SystemExit melewati penutup latency session.id"
+        )
+        views = registry.snapshot()
+        measured = {
+            "registry": [(view.id, view.status.value) for view in views],
+            "registry_active": [view.id for view in registry.active()],
+            "dispatch_active": dispatch.active_count(),
+        }
+        assert measured == {
+            "registry": [(views[0].id, TaskStatus.FAILED.value)],
+            "registry_active": [],
+            "dispatch_active": 0,
+        }, f"SystemExit meninggalkan yatim: {measured}"
+
+        # 3. Shutdown bukan kegagalan tugas: wajar bila tidak ada penjelasan.
+        assert delivered == [], (
+            "SystemExit diperlakukan sebagai kegagalan tugas yang perlu "
+            f"dijelaskan ke pemakai: {delivered}"
+        )
+    finally:
+        monkeypatch.setattr(threading, "excepthook", real_hook)
+        latency.reset()
+        registry.clear()
+        with dispatch._active_lock:
+            dispatch._active.clear()
+
+
 def test_base_exception_worker_tetap_menutup_turn_task_dan_aktif(monkeypatch):
     """``BaseException`` tidak boleh lolos dari penanganan terminal worker.
 

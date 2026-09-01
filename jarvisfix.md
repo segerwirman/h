@@ -10610,3 +10610,53 @@ Batas jujur: ukuran ini memakai ``loop.run`` palsu yang melempar
 menjalankan Chrome, CDP, desktop input, credential, atau jaringan. Ia juga
 TIDAK membuktikan apa pun tentang ``os._exit`` atau crash native — skenario itu
 tetap tidak terukur di dalam proses dan tidak diklaim selesai.
+
+### Fase 59 — ``SystemExit``/``KeyboardInterrupt``: DIUKUR, bukan cacat
+
+Usulan fase lalu menduga dua ``BaseException`` yang tersisa — ``SystemExit`` dan
+``KeyboardInterrupt`` — menghasilkan cacat yang sama seperti ``CancelledError``
+(Fase 58): "selesai tanpa status" yang sunyi. Ukuran membantahnya, dan
+alasannya bukan detail implementasi melainkan SEMANTIK jenis exception itu.
+
+``CancelledError`` adalah semantik PEMBATALAN — bagian normal asyncio, dan wajar
+diberitahukan ke pemakai. ``SystemExit``/``KeyboardInterrupt``/``GeneratorExit``
+adalah sinyal KONTROL ALIR proses. Menangkapnya berarti **menggagalkan
+shutdown**: proses menolak mati karena tugasnya sedang sibuk.
+
+Terukur untuk keempatnya (``SystemExit(0)``, ``SystemExit(msg)``,
+``KeyboardInterrupt``, ``GeneratorExit``) — hasil identik:
+
+    drained  : True
+    latency  : 0
+    registry : failed, error='selesai tanpa status'
+    on_error : []
+
+``SystemExit`` terbukti MERAMBAT, bukan ditelan: ``threading.excepthook``
+mencatat ``('SystemExit', 'shutdown diminta')``. Jadi jalur ini sudah benar —
+yang perlu dijaga justru agar ia TETAP merambat.
+
+Karena hasilnya tidak membuktikan cacat, berkas production tidak diubah, sesuai
+instruksi "jangan mengubah production jika hasilnya tidak membuktikan
+kebocoran". Yang ditambahkan hanya tes karakterisasi yang mengunci tiga hal:
+exception harus merambat (diukur lewat ``threading.excepthook``, bukan sekadar
+tidak adanya error), state harus bersih meski semua penjaga ``except`` dilewati,
+dan ``on_error`` memang tidak boleh dipanggil karena shutdown bukan kegagalan
+tugas.
+
+Gigi tesnya diuji dengan mutan yang justru mengarah ke PERBAIKAN SALAH:
+menambahkan penjaga ``except SystemExit`` (mati — tes menolaknya, membuktikan
+tes melindungi keputusan ini, bukan sekadar kebetulan hijau), dan ``finally``
+yang melewati ``latency.finish()`` saat ``SystemExit`` (mati juga).
+
+Focused regression: 69 passed. Full suite offline: **3923 passed, 1 skipped, 1 deselected** dalam
+1420,32 detik (naik dari 3922, selisih satu = tes karakterisasi baru). Skip tetap
+symlink Windows tanpa privilege; deselect tetap credential-flow test lama yang
+sudah dieskalasi. Ruff fokus
+bersih, ``scripts/verify_frozen.py`` tetap ``094b696``, dan ``git diff --check``
+bersih. Root Ruff tetap 13 temuan unrelated yang sama; tidak diubah untuk
+memaksa hijau.
+
+Batas jujur: ukuran ini memakai ``loop.run`` palsu; ia tidak membuktikan
+perilaku shutdown sungguhan, tidak membuktikan urutan berhentinya thread saat
+proses benar-benar keluar, dan tidak menjalankan Chrome, CDP, desktop input,
+credential, atau jaringan.
