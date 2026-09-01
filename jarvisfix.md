@@ -10559,3 +10559,54 @@ ia tidak membuktikan ``queue.Queue.put`` nyata pernah melempar dalam praktiknya
 (``Queue`` tanpa batas hampir tidak pernah gagal), dan tidak menjalankan Chrome,
 CDP, desktop input, credential, atau jaringan. Nilai ukur ini adalah menutup
 BENTUK cacat yang sudah terbukti nyata dua kali, bukan frekuensinya.
+
+### Fase 58 — ``CancelledError`` melewati penjaga worker dan membisukan kegagalan
+
+Rekomendasi fase lalu menyebut "worker mati mendadak (``os._exit``)". Skenario
+itu tidak dapat diukur di dalam proses: ``os._exit`` menghentikan proses pytest
+itu sendiri. Yang DAPAT diukur, dan ternyata nyata, adalah pembatalan: sejak
+Python 3.8 ``asyncio.CancelledError`` adalah turunan ``BaseException``, bukan
+``Exception``.
+
+Penjaga worker berurutan menangkap ``asyncio.TimeoutError`` lalu
+``except Exception``. ``CancelledError`` melewati KEDUANYA dan hanya ditangani
+``finally``. Terukur sebelum perbaikan:
+
+    latency_active : 0        (state tertutup — Fase 53 tetap bekerja)
+    registry       : [('T-1c3b', 'failed', 'selesai tanpa status')]
+    on_error       : []       ← tidak pernah dipanggil
+
+Jadi cacatnya bukan yatim state, melainkan **keheningan**: task gagal, registry
+mencatat "selesai tanpa status" yang tidak menjelaskan apa pun, dan pemakai
+tidak pernah diberi tahu. Ini berbeda dari Fase 53–57 yang semuanya tentang
+state yang tertinggal.
+
+GREEN: satu penjaga ``except asyncio.CancelledError`` disisipkan SEBELUM
+``except Exception``, memanggil ``session.cancel()`` lalu meneruskan ke
+``_finish_with_delivery`` seperti jalur timeout. Pesan berbahasa pemakai
+("tugas dibatalkan"), bukan nama kelas exception. Sesudahnya terukur:
+``error: 'tugas dibatalkan'`` dan ``on_error: ['tugas dibatalkan']``.
+
+Satu hal yang harus dicatat jujur: mutan KETIGA — menghapus
+``session.cancel()`` dari penjaga — **lolos** pada percobaan pertama. Tes RED
+awal hanya mengukur state dan callback, sehingga pembatalan sesi tidak
+tercakup. Itu celah cakupan yang nyata, bukan kemenangan. Tes lalu diperkuat
+dengan spy sesi yang memastikan ``session.cancelled`` benar-benar menjadi True,
+dan mutan itu mati pada percobaan kedua. Dua mutan lain mati sejak awal:
+memutus penjaga ``CancelledError`` (hanya tes baru yang mati — tepat sasaran)
+dan mengganti callback dengan ``None``.
+
+Focused regression: 68 passed. Full suite offline: **3922 passed, 1 skipped, 1 deselected** dalam
+1417,87 detik (naik dari 3921, selisih satu = tes baru fase ini). Skip tetap
+symlink Windows tanpa privilege; deselect tetap credential-flow test lama yang
+sudah dieskalasi. Ruff fokus
+bersih, ``scripts/verify_frozen.py`` tetap ``094b696``, dan ``git diff --check``
+bersih. Root Ruff tetap 13 temuan unrelated yang sama; tidak diubah untuk
+memaksa hijau.
+
+Batas jujur: ukuran ini memakai ``loop.run`` palsu yang melempar
+``CancelledError``; ia tidak membuktikan pembatalan sungguhan dari
+``asyncio.wait_for`` atau dari pemakai yang menekan batal, dan tidak
+menjalankan Chrome, CDP, desktop input, credential, atau jaringan. Ia juga
+TIDAK membuktikan apa pun tentang ``os._exit`` atau crash native — skenario itu
+tetap tidak terukur di dalam proses dan tidak diklaim selesai.

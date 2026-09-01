@@ -22,6 +22,7 @@ import time
 import pytest
 
 from jarvis.agent import dispatch
+from jarvis.agent import session as session_module
 from jarvis.core import latency
 
 
@@ -375,6 +376,95 @@ def test_timeout_non_numeric_tidak_meninggalkan_turn_task_atau_active(
         # pemanggil, tetapi juga tidak boleh ditelan diam-diam.
         assert "TypeError" in delivered.get("text", ""), (
             f"kegagalan timeout tidak pernah mencapai on_error: {delivered}"
+        )
+    finally:
+        latency.reset()
+        registry.clear()
+        with dispatch._active_lock:
+            dispatch._active.clear()
+
+
+def test_base_exception_worker_tetap_menutup_turn_task_dan_aktif(monkeypatch):
+    """``BaseException`` tidak boleh lolos dari penanganan terminal worker.
+
+    Penjaga worker menangkap ``asyncio.TimeoutError`` lalu ``except Exception``.
+    Tetapi ``asyncio.CancelledError`` sejak Python 3.8 adalah turunan
+    ``BaseException``, BUKAN ``Exception`` — jadi ia melewati kedua penjaga itu
+    dan hanya ditangani ``finally``.
+
+    Akibatnya terukur: ``finally`` memang masih menutup state (jadi tidak ada
+    yatim), tetapi terminal state yang tercatat hanyalah "selesai tanpa status"
+    dan ``on_error`` TIDAK PERNAH dipanggil. Pemakai mendapat keheningan, bukan
+    penjelasan — padahal task-nya gagal.
+
+    RED ini mengukur dua hal sekaligus: keadaan akhir tetap bersih (agar
+    perbaikan tidak mengorbankan Fase 53), dan kegagalan harus sungguh sampai
+    ke callback terminal.
+    """
+    import asyncio
+
+    from jarvis.agent.tasks import TaskRegistry, TaskStatus
+
+    class SilentBus:
+        def publish(self, *_args, **_kwargs):
+            return None
+
+    async def cancelled(*_args, **_kwargs):
+        raise asyncio.CancelledError()
+
+    registry = TaskRegistry(bus=SilentBus(), max_concurrent=1, queue_max=2)
+    _isolate_dispatch(monkeypatch, registry)
+    monkeypatch.setattr("jarvis.agent.loop.run", cancelled)
+    delivered: list[str] = []
+
+    # Pantau sesi agar pembatalan benar-benar terukur, bukan hanya diyakini.
+    # Tanpa ini, mutan yang menghapus ``session.cancel()`` dari penjaga lolos.
+    made: list = []
+    real_session = session_module.Session
+
+    class SpySession(real_session):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            made.append(self)
+
+    monkeypatch.setattr("jarvis.agent.session.Session", SpySession)
+
+    try:
+        dispatch.dispatch_task(
+            "offline base exception worker",
+            on_error=lambda text, **_kwargs: delivered.append(str(text)),
+        )
+
+        assert _wait_until(lambda: dispatch.active_count() == 0, timeout=3.0), (
+            "BaseException membuat worker menggantung tanpa pernah terminal"
+        )
+        assert latency.active_count() == 0, (
+            "BaseException melewati penutup latency session.id"
+        )
+
+        views = registry.snapshot()
+        assert [(view.id, view.status.value) for view in views] == [
+            (views[0].id, TaskStatus.FAILED.value)
+        ], f"task tidak mencapai terminal FAILED: {[(v.id, v.status.value) for v in views]}"
+        assert registry.active() == [], "task BaseException masih aktif di registry"
+
+        # Inti cacatnya: kegagalan harus sampai ke pemanggil, bukan sunyi.
+        assert delivered, (
+            "BaseException melewati penanganan terminal — on_error tidak pernah "
+            "dipanggil dan pemakai hanya mendapat keheningan"
+        )
+        # CancelledError memang pembatalan, jadi pesannya wajar berbahasa
+        # pemakai. Yang diuji adalah KETERANGAN itu sampai, dan tidak lagi
+        # jatuh ke "selesai tanpa status" yang tidak menjelaskan apa pun.
+        assert "dibatalkan" in delivered[0], (
+            f"callback terminal tidak menjelaskan pembatalan: {delivered}"
+        )
+        # Pembatalan harus juga mencapai sesi agar loop lama berhenti bekerja,
+        # bukan sekadar dicatat di registry.
+        assert made, "spy sesi tidak menangkap apa pun — ukuran ini sia-sia"
+        assert made[-1].cancelled, (
+            "penjaga CancelledError tidak membatalkan sesi: loop lama bisa "
+            "terus bekerja di balik task yang sudah terminal"
         )
     finally:
         latency.reset()

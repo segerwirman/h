@@ -1248,6 +1248,24 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
                 completion_owner=forced_completion_owner,
             )
             BUS.publish("agent.task.failed", task=task, error=err)
+        except asyncio.CancelledError:
+            # ``CancelledError`` adalah ``BaseException`` sejak 3.8, jadi ia
+            # melewati ``except Exception`` di bawah dan hanya ditangani
+            # ``finally``. Terukur: task tercatat "selesai tanpa status" dan
+            # ``on_error`` tidak pernah dipanggil — pemakai mendapat keheningan
+            # padahal task-nya gagal. Pembatalan tetap layak diberitahu.
+            session.cancel()
+            err = "tugas dibatalkan"
+            _logger.info("agent.dispatch.cancelled", task=task[:80])
+            _finish_with_delivery(
+                REGISTRY,
+                bg_task.id,
+                callback=on_error,
+                value=err,
+                error=err,
+                completion_owner=forced_completion_owner,
+            )
+            BUS.publish("agent.task.failed", task=task, error=err)
         except Exception as e:                               # noqa: BLE001
             err = f"{type(e).__name__}: {str(e)[:200]}"
             _logger.error("agent.dispatch.crashed", error=err)
