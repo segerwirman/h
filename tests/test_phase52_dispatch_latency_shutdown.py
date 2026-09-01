@@ -306,3 +306,78 @@ def test_thread_konstruksi_gagal_tidak_meninggalkan_turn_task_atau_active(
         registry.clear()
         with dispatch._active_lock:
             dispatch._active.clear()
+
+
+def test_timeout_non_numeric_tidak_meninggalkan_turn_task_atau_active(
+    monkeypatch,
+):
+    """Kegagalan DI DALAM jendela terbuka tidak boleh meninggalkan yatim.
+
+    Fase 54/55 menutup konstruksi dan start thread, tetapi keduanya berada di
+    UJUNG jendela yang lebih panjang: ``latency.start(session.id)`` dibuka di
+    baris 1084, sedangkan penjaga baru mulai di baris 1251. Pernyataan di
+    antaranya yang paling mungkin melempar ialah
+
+        hard_timeout = timeout_s or float(config.get("agent.task_timeout_s", 900))
+
+    Ukuran langsung menjawabnya: ``timeout_s`` diteruskan pemanggil apa adanya,
+    dan operator ``or`` berarti nilai truthy non-angka TIDAK pernah mencapai
+    ``float()``. Jadi tidak ada raise sinkron — string itu lolos ke
+    ``asyncio.wait_for`` dan baru meledak di DALAM worker sebagai
+    ``TypeError: '<=' not supported between instances of 'str' and 'int'``,
+    yaitu wilayah yang sudah dinaungi ``try/finally`` Fase 53.
+
+    Karena itu berkas production tidak diubah: jalur ini terbukti TIDAK bocor.
+    Tes ini dikembalikan ke bentuk karakterisasi yang mengunci invarian
+    terukur itu, agar regresi kelak tertangkap.
+    """
+    from jarvis.agent.tasks import TaskRegistry, TaskStatus
+
+    class SilentBus:
+        def publish(self, *_args, **_kwargs):
+            return None
+
+    registry = TaskRegistry(bus=SilentBus(), max_concurrent=1, queue_max=2)
+    _isolate_dispatch(monkeypatch, registry)
+    delivered: dict = {}
+
+    def on_error(text, **_kwargs):
+        delivered["text"] = str(text)
+
+    try:
+        assert dispatch.dispatch_task(
+            "offline timeout non-numeric",
+            timeout_s="bukan angka",
+            on_error=on_error,
+        ) is not None, "dispatch seharusnya tetap mengembalikan task"
+
+        assert _wait_until(lambda: dispatch.active_count() == 0, timeout=3.0), (
+            "timeout non-numeric menggantung dan tidak pernah mencapai terminal"
+        )
+
+        views = registry.snapshot()
+        measured = {
+            "latency_active": latency.active_count(),
+            "registry": [(view.id, view.status.value) for view in views],
+            "registry_active": [view.id for view in registry.active()],
+            "dispatch_active": dispatch.active_count(),
+        }
+        assert measured == {
+            "latency_active": 0,
+            "registry": [(views[0].id, TaskStatus.FAILED.value)],
+            "registry_active": [],
+            "dispatch_active": 0,
+        }, (
+            "Timeout non-numeric gagal di dalam worker setelah seluruh state "
+            f"dibuka, dan cleanup tidak atomik: {measured}"
+        )
+        # Kegagalan memang harus sampai ke callback — bukan dilempar ke
+        # pemanggil, tetapi juga tidak boleh ditelan diam-diam.
+        assert "TypeError" in delivered.get("text", ""), (
+            f"kegagalan timeout tidak pernah mencapai on_error: {delivered}"
+        )
+    finally:
+        latency.reset()
+        registry.clear()
+        with dispatch._active_lock:
+            dispatch._active.clear()

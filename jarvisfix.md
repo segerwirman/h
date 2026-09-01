@@ -10454,3 +10454,58 @@ Batas jujur: fake ini membuktikan rollback sinkron saat konstruksi thread
 melempar; ia tidak membuktikan OS nyata kehabisan thread atau memori dengan cara
 yang sama, dan tidak menjalankan Chrome, CDP, desktop input, credential, atau
 jaringan.
+
+### Fase 56 — jendela terbuka sebelum worker: DIUKUR, ternyata TIDAK bocor
+
+Langkah ini berawal dari rekomendasi saya sendiri yang SALAH. Setelah Fase 55
+saya menyarankan mengukur ``run_sync()``, dengan anggapan ia memanggil
+``_dispatch()`` dan bisa menggandakan rollback. Pemeriksaan kode membuktikan
+anggapan itu keliru: ``run_sync()`` (``dispatch.py:1314``) menjalankan loop
+secara inline lewat ``asyncio.run`` dan tidak pernah menyentuh ``_dispatch()``.
+Jadi tidak ada rollback yang bisa mengganda di sana. Rekomendasi itu ditarik.
+
+Yang benar-benar ada ialah jendela terbuka di ``_dispatch()``:
+``latency.start(session.id)`` dibuka di baris 1084, sedangkan penjaga Fase
+54/55 baru mulai di baris 1251. Pernyataan di antaranya yang paling mungkin
+melempar ialah::
+
+    hard_timeout = timeout_s or float(config.get("agent.task_timeout_s", 900))
+
+RED diukur dengan ``timeout_s="bukan angka"``. Hasilnya menampik dugaan
+kebocoran, dan alasannya terbaca jelas pada operator ``or``: nilai truthy
+non-angka TIDAK PERNAH mencapai ``float()``. Tidak ada raise sinkron sama
+sekali. String itu lolos ke ``asyncio.wait_for`` dan baru meledak di DALAM
+worker:
+
+    TypeError: '<=' not supported between instances of 'str' and 'int'
+
+yaitu wilayah yang sudah dinaungi ``try/finally`` Fase 53. Keadaan terukur
+setelah kegagalan:
+
+    latency_active : 0
+    registry       : [('T-ef83', 'failed', "TypeError: '<=' not supported...")]
+    registry_active: []
+    dispatch_active: 0
+
+dan kegagalan itu memang sampai ke ``on_error``, bukan ditelan diam-diam.
+
+Karena hasilnya TIDAK membuktikan kebocoran, berkas production tidak diubah —
+sesuai instruksi "jangan mengubah production jika hasilnya tidak membuktikan
+kebocoran". Satu-satunya perubahan adalah tes karakterisasi baru yang mengunci
+invarian terukur itu agar regresi kelak tertangkap. Tes itu diuji giginya:
+mutan ``latency.cancel()`` no-op mematikan dua tes thread Fase 54/55, dan
+mutan ``latency.finish()`` yang tidak lagi membuang turn mematikan tes baru ini
+bersama dua tes lama. Jadi tes baru bukan tes yang kebetulan hijau.
+
+Focused regression: 64 passed. Full suite offline: **3920 passed, 1 skipped, 1 deselected** dalam
+1462,04 detik (naik dari 3919, selisih satu = tes karakterisasi baru). Skip tetap
+symlink Windows tanpa privilege; deselect tetap credential-flow test lama yang
+sudah dieskalasi. Ruff fokus
+bersih, ``scripts/verify_frozen.py`` tetap ``094b696``, ``git diff --check``
+bersih, dan ``latency.py`` kembali ke HEAD setelah pengujian mutan. Root Ruff
+tetap 13 temuan unrelated yang sama; tidak diubah untuk memaksa hijau.
+
+Batas jujur: ukuran ini memakai fake registry dan ``loop.run`` palsu; ia tidak
+membuktikan perilaku ``asyncio.wait_for`` nyata terhadap nilai timeout aneh di
+bawah beban sesungguhnya, dan tidak menjalankan Chrome, CDP, desktop input,
+credential, atau jaringan.
