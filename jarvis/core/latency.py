@@ -120,6 +120,35 @@ def finish(key, *, now: float | None = None) -> dict:
         return {}
 
 
+def cancel(key) -> bool:
+    """Buang pengukuran tanpa pernah menerbitkan baris log.
+
+    Fase 52 — pengiring yang absen dari modul ini sejak awal, dan celahnya
+    terukur pada 2026-09-01: giliran suara yang tidak pernah mencapai dispatch
+    meninggalkan turn terbuka, lalu ``voice_handoff()`` berikutnya menutupnya
+    **berapa pun jaraknya**. Terukur: ``total_ms: 10800000.0`` berlabel
+    ``voice:...`` untuk sebuah dispatch Telegram.
+
+    ``finish()`` tidak bisa dipakai di sini karena ia selalu menerbitkan
+    ``latency.turn``. Yang dibutuhkan adalah membuang turn secara diam-diam,
+    agar log hanya memuat giliran yang benar-benar diukur.
+
+    Mengembalikan True bila ada turn yang dibuang. No-op, bukan error, bila
+    turn-nya sudah tiada atau tidak pernah ada: aturan modul
+    (``latency.py:16``) adalah tidak pernah melempar dan tidak pernah menahan
+    pekerjaan.
+    """
+    try:
+        name = _key(key)
+        if name is None:
+            return False
+        with _lock:
+            return _turns.pop(name, None) is not None
+    except Exception as exc:                                 # noqa: BLE001
+        quiet.swallowed("core.latency.cancel_failed", exc)
+        return False
+
+
 def voice_handoff(*, now: float | None = None) -> dict:
     """Fase 42 — tutup turn ``voice_ack`` saat task masuk dispatch.
 
@@ -145,5 +174,5 @@ def reset() -> None:
         _turns.clear()
 
 
-__all__ = ["MAX_TURNS", "active_count", "enabled", "finish", "mark", "reset",
-           "start", "voice_handoff"]
+__all__ = ["MAX_TURNS", "active_count", "cancel", "enabled", "finish", "mark",
+           "reset", "start", "voice_handoff"]

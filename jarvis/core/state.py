@@ -144,6 +144,29 @@ class PipelineStateMachine:
             quiet.swallowed("latency.voice_ack_open_failed", exc)
         return rid
 
+    def _cancel_voice_ack_turn(self) -> None:
+        """Buang turn ``voice_ack`` yang tidak pernah mencapai dispatch.
+
+        Mengapa dibuang, bukan di-``finish``: ``finish`` selalu menerbitkan
+        satu baris ``latency.turn``. Turn yang tidak pernah di-dispatch bukan
+        pengukuran, jadi ia tidak boleh menghasilkan baris log sama sekali.
+
+        Mengapa tidak digabung ke ``begin_request``: pembatalan harus terjadi
+        pada AKHIR giliran, bukan awal. Di awal tidak ada yang tahu apakah
+        giliran ini kelak mencapai dispatch.
+
+        Seperti ``begin_request``, pengukur tidak pernah boleh menjatuhkan
+        giliran — kegagalan di sini ditelan dan dicatat.
+        """
+        try:
+            from jarvis.core import latency, quiet
+        except Exception:                                        # noqa: BLE001
+            return              # pengukur tidak pernah menjatuhkan giliran
+        try:
+            latency.cancel("voice_ack")
+        except Exception as exc:                                 # noqa: BLE001
+            quiet.swallowed("latency.voice_ack_cancel_failed", exc)
+
     def to(self, state: PipelineState, outcome: Outcome | None = None,
            detail: str = "") -> None:
         with self._lock:
@@ -164,7 +187,24 @@ class PipelineStateMachine:
                     outcome=outcome.value if outcome else None)
 
     def finish(self, outcome: Outcome, detail: str = "") -> None:
-        """End the active command with an explicit outcome, back to LISTENING."""
+        """End the active command with an explicit outcome, back to LISTENING.
+
+        Fase 52 — akhir giliran juga MEMBATALKAN turn ``voice_ack`` bila ia
+        tidak pernah mencapai dispatch. Sebelumnya turn itu dibiarkan terbuka
+        dan ditutup oleh ``voice_handoff()`` berikutnya — terukur 2026-09-01
+        menghasilkan ``total_ms: 10800000.0`` berlabel ``voice:...`` untuk
+        sebuah dispatch Telegram tiga jam kemudian.
+
+        Bila dispatch sudah menutup turn lebih dulu (jalur normal), ``cancel``
+        menjadi no-op. Jadi pemanggilan ini aman di kedua urutan.
+
+        Alasan ia ada di sini, bukan di pemanggil: ``main.py:1612`` hanya
+        memanggil ``finish()`` bila ``outcome == "success"``, sedangkan
+        ``unrecognized_speech`` tidak memanggilnya sama sekali. Menaruh
+        pembatalan di dalam ``finish()`` membuatnya berlaku untuk SETIAP
+        outcome, bukan hanya yang kebetulan dipanggil pemanggilnya.
+        """
+        self._cancel_voice_ack_turn()
         _logger.info("pipeline.outcome", request_id=self.request_id,
                      outcome=outcome.value, detail=detail[:160])
         BUS.publish("pipeline.outcome", request_id=self.request_id,

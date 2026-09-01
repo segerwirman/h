@@ -10263,3 +10263,60 @@ nilai ekstrem memang ditahan oleh production, bukan oleh tes.
 
 Batas jujur: semua pengukuran ini offline. Belum ada yang diamati pada proses
 Jarvis nyata, dan perubahan config ini tidak menyentuh jalur suara yang hidup.
+
+
+### Fase 52 — `latency.cancel()`, dan mutan yang sempat lolos dari saya
+
+Perbaikan akar penyebab turn yatim dari Fase 50. Dua potongan:
+
+1. `latency.cancel(key)` (`latency.py`) — membuang turn **tanpa menerbitkan
+   baris log**. Sebelumnya API publik modul ini tidak punya primitif apa pun
+   untuk itu; `voice_handoff()` memanggil `finish()`, dan itu satu-satunya
+   penutup turn `voice_ack`.
+2. `PipelineStateMachine.finish()` (`state.py`) memanggilnya lewat helper
+   `_cancel_voice_ack_turn()`.
+
+Dipilih `finish()`, bukan pemanggilnya, karena `main.py:1612` memanggil
+`_sm.finish()` hanya bila `outcome == "success"` — jalur `unrecognized_speech`
+tidak memanggilnya sama sekali. Menaruh pembatalan di dalam `finish()`
+membuatnya berlaku untuk SETIAP outcome.
+
+Terukur sesudah perbaikan, dibandingkan baseline Fase 51:
+
+    SEBELUM : {'task': 'voice:f29dd7da', 'total_ms': 10800000.0,
+               'stages': [('dispatch_start', 10800000.0)]}
+    SESUDAH : {}
+
+Jalur sukses tidak tersentuh: `total_ms: 1050.0`, `speech_end: 800.0`.
+Kebocoran juga hilang — 200 giliran gagal berturut-turut kini menyisakan
+`active_count = 0`; sebelumnya menumpuk sampai `MAX_TURNS = 64` dan bisa
+menevict turn SAH milik giliran yang sedang berjalan.
+
+**Mutan yang sempat lolos, dan yang saya pelajari darinya.**
+
+Mutan C membuat `cancel()` memanggil `finish()`. Ia **lolos dari seluruh tujuh
+tes RED yang saya tulis**. Semuanya mengukur KEBERADAAN turn lewat
+`active_count()`, bukan keluaran lognya — padahal `finish()` selalu
+menerbitkan satu baris `latency.turn`. Jadi `cancel()` yang memanggilnya tetap
+menuliskan `total_ms: 0.0` yang hendak dihapus oleh fase ini. Sifat yang
+menjadi ALASAN primitif ini dibuat tidak dijaga oleh apa pun.
+
+Penjaga yang saya tulis untuk menutupnya (`test_cancel_tidak_menerbitkan_baris_log`)
+malah **juga lolos** pada percobaan pertama — ia cacat dengan cara yang sama.
+Diagnosisnya: `jarvis.core.log.get()` mengembalikan `structlog.BoundLogger`,
+yang merender seluruh fields menjadi SATU string JSON di `record.msg`. Atribut
+`event` tidak pernah ada pada record-nya; `getattr(r, "event", None)` selalu
+`None`. Filter saya karena itu selalu kosong, dan assertion-nya tak pernah
+menguji sesuatu.
+
+Dua kesalahan berturut-turut dengan akar yang sama: saya menguji PROKSI
+(keberadaan turn, atribut record) alih-alih hal yang sebenarnya dipertaruhkan
+(keluaran log). Tes yang lolos tanpa pernah menguji sesuatu lebih berbahaya
+daripada tidak ada tes, karena ia memberi keyakinan palsu. Setelah filter
+diperbaiki ke `"latency.turn" in str(r.msg)`, mutan C mati dan buktinya
+terbaca langsung di log: `total_ms: 0.0` terbit persis seperti yang dicegah
+fase ini.
+
+Rekap mutan: **5/5 mati** — A (cancel dihapus dari finish), B (cancel tidak
+membuang turn), C (cancel memanggil finish), D (membatalkan kunci yang salah),
+E (cancel dipanggil di begin_request, bukan finish).
