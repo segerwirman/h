@@ -177,6 +177,78 @@ def test_exception_worker_tetap_menutup_turn_session(monkeypatch):
     )
 
 
+def test_worker_melepas_seluruh_resource_setelah_mengambil_ownership(monkeypatch):
+    """Jalur PASCA-ownership wajib melepas kelima resource, bukan cuma latency.
+
+    RED untuk Fase 64. Jendela pra-worker sudah dijaga ``_abort_pre_worker``
+    (Fase 54-58), tetapi blok ``finally`` worker — jalur SETELAH worker
+    mengambil ownership — terbukti tidak dikunci satu test pun: uji mutasi
+    membuktikan menghapus SELURUH blok release di ``finally`` membuat nol test
+    gagal.
+
+    Penyebabnya ada di helper file ini sendiri: ``_isolate_dispatch``
+    men-stub kelima fungsi release menjadi no-op, sehingga tidak ada satu pun
+    test yang mengamati apakah mereka benar-benar dipanggil. Karena itu test
+    ini memasang pencatatnya sendiri.
+    """
+    registry = _Registry(acquire=True)
+    _isolate_dispatch(monkeypatch, registry)
+    failed = threading.Event()
+
+    async def no_replay(*_args, **_kwargs):
+        return None
+
+    async def explode(*_args, **_kwargs):
+        raise RuntimeError("worker offline meledak")
+
+    monkeypatch.setattr(dispatch, "_replay_plan", no_replay)
+    monkeypatch.setattr("jarvis.agent.loop.run", explode)
+
+    calls: list[tuple[str, str]] = []
+    for name in (
+        "_release_browser_session",
+        "_release_computer_session",
+        "_clear_desktop_safe_session",
+        "_clear_captcha_handoff_session",
+        "_release_screen_control_session",
+    ):
+        monkeypatch.setattr(
+            dispatch, name,
+            lambda sid, _n=name: calls.append((_n, str(sid))),
+        )
+    monkeypatch.setattr(
+        dispatch, "_revoke_execution_grants",
+        lambda tid: calls.append(("_revoke_execution_grants", str(tid))),
+    )
+
+    dispatch.dispatch_task(
+        "offline worker release audit",
+        on_error=lambda _text: failed.set(),
+    )
+
+    assert failed.wait(2), "exception worker tidak mencapai callback terminal"
+    assert _wait_until(lambda: dispatch.active_count() == 0)
+
+    released = {name for name, _sid in calls}
+    assert released == {
+        "_release_browser_session",
+        "_release_computer_session",
+        "_clear_desktop_safe_session",
+        "_clear_captcha_handoff_session",
+        "_release_screen_control_session",
+        "_revoke_execution_grants",
+    }, f"resource yang dilepas tidak lengkap: {sorted(released)}"
+
+    # Masing-masing dipanggil dengan session id yang sama, bukan string kosong.
+    by_session = [sid for name, sid in calls
+                  if name != "_revoke_execution_grants"]
+    assert by_session, "tidak ada release yang menerima session id"
+    assert all(sid and sid == registry.session_id for sid in by_session), (
+        f"release dipanggil dengan session id yang salah: {by_session!r} "
+        f"(registry.session_id={registry.session_id!r})"
+    )
+
+
 def test_turn_berprogres_tidak_dievict_oleh_turn_tanpa_progres():
     """Turn dengan tahap terukur harus menang atas kandidat tanpa progres.
 

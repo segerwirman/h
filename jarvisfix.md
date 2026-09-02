@@ -10970,3 +10970,63 @@ sesungguhnya di memori (zeroisasi string Python) tidak dilakukan: ``str`` di
 Python bersifat immutable, sehingga tidak ada cara yang dapat diandalkan untuk
 menghapus nilai yang sudah pernah dibuat tanpa mengubah kontrak tipe. Ini
 batas yang melekat pada Python, bukan pada slice ini.
+
+## Fase 64 — Blok pembersihan worker tidak dikunci satu test pun
+
+Fase 54-58 menutup jendela PRA-worker (``_abort_pre_worker``). Langkah
+berikutnya yang sempit adalah jalur PASCA-ownership: blok ``finally`` di
+dalam ``_worker()`` (``dispatch.py:1284-1302``), yang melepas browser,
+computer, desktop-safe, CAPTCHA handoff, screen-control, dan execution grant.
+Membaca source menunjukkan blok itu tampak lengkap. **Pengukuran menunjukkan
+"tampak lengkap" bukanlah bukti.**
+
+**Uji mutasi: tiga mutan HIDUP.**
+
+| Mutan | Perubahan | Hasil |
+|---|---|---|
+| A | seluruh blok release di ``finally`` dihapus | HIDUP |
+| B | ``_clear_captcha_handoff_session`` dihapus | HIDUP |
+| C | ``_release_browser_session`` dihapus | HIDUP |
+
+Artinya: seluruh blok pembersihan pasca-ownership bisa dihapus hari ini dan
+**nol** dari 3927 test yang lulus akan berkedip. Ini celah struktural, bukan
+kebetulan.
+
+**Penyebabnya ada di helper test-nya sendiri.** ``_isolate_dispatch``
+(``test_phase52_dispatch_latency_shutdown.py:93-98``) men-stub kelima fungsi
+release menjadi ``lambda _sid: None``. Stub itu membuat test kebal terhadap
+kebocoran: tidak ada satu pun test yang mengamati apakah fungsi-fungsi itu
+benar-benar dipanggil. Polanya identik dengan Fase 62 — test yang menggantikan
+perilaku dengan no-op lalu mengklaim jalurnya teruji.
+
+**Perbaikan: satu test yang memasang pencatatnya sendiri.**
+``test_worker_melepas_seluruh_resource_setelah_mengambil_ownership``
+menimpa kelima stub dengan pencatat, lalu menuntut tiga hal:
+(1) keenam release dipanggil — lengkap, bukan separuh;
+(2) masing-masing menerima ``session_id`` yang sama dengan yang terikat di
+registry, bukan string kosong;
+(3) ``_revoke_execution_grants`` dipanggil dengan task id.
+
+**Hasil: ketiga mutan MATI.** Baseline hijau; A, B, dan C masing-masing
+menghasilkan exit=1 pada test baru ini. Produksi terverifikasi pulih identik.
+
+**Perubahan produksi: TIDAK ADA.** Fase ini murni menambal celah pengujian;
+kode produksinya memang sudah benar. Hanya
+``tests/test_phase52_dispatch_latency_shutdown.py`` yang bertambah.
+
+**Catatan verifikasi.** Setelah mutasi, ``git diff -- jarvis/agent/dispatch.py``
+masih menunjukkan 5 insertion / 2 deletion. Itu **bukan** sisa mutasi:
+perubahan berada di ``bind_communication_grant`` (baris 313, migrasi
+``except-pass`` ke ``quiet.swallowed``) dan merupakan perubahan dirty pemakai
+yang sudah ada sebelum fase ini. Diverifikasi dengan membaca diff-nya, bukan
+dengan mengasumsikan kosong berarti pulih.
+
+**Full suite: 3928 passed, 1 skipped, 0 failed** dalam 1324,10 detik (naik
+dari 3927; selisih satu = test baru di atas). Ruff fokus bersih,
+``scripts/verify_frozen.py`` tetap ``094b696``.
+
+**Batas jujur.** Test ini mengunci bahwa keenam fungsi release dipanggil
+dengan argumen yang benar pada jalur exception — SATU jalur pasca-ownership.
+Ia tidak membuktikan semua jalur keluar worker (timeout, batal, kontrak gagal,
+sukses) melepas resource dengan benar, dan tidak membuktikan urutan
+pelepasannya tepat. Itu pekerjaan terpisah bila ingin dilanjutkan.
