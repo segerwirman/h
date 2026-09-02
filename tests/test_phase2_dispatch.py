@@ -29,6 +29,28 @@ def _isolate(monkeypatch) -> None:
         dispatch._active.clear()
 
 
+@pytest.fixture(autouse=True)
+def _alihkan_db_sesi(tmp_path, monkeypatch):
+    """Fase 67 — alihkan DB sesi ke tmp_path, BUKAN men-stub Session.finish.
+
+    Dulu ``Session.finish`` di-stub menjadi no-op pada dua test di berkas ini.
+    Stub itu membuat jalur sukses kebal terhadap mutasi: terukur
+    ``session.finish(text, ok=True)`` di ``dispatch.py:1209`` bisa dihapus atau
+    nilainya diubah tanpa satu test pun berkedip.
+
+    Alasan stub itu ada masuk akal — isolasi. Tanpa stub, ``Session.finish``
+    menulis ke ``data/agent.sqlite`` milik pemakai; terukur ``db_path()`` tetap
+    menunjuk ke sana bahkan di dalam pytest. Maka stub diganti, bukan dihapus:
+    DB-nya yang dialihkan, sehingga penulisan NYATA tetap terjadi dan teramati,
+    tetapi tidak menyentuh data pemakai (terukur: jumlah baris
+    ``agent_sessions`` pemakai tidak berubah sebelum dan sesudah).
+    """
+    from jarvis.agent import session as session_module
+
+    monkeypatch.setattr(session_module, "db_path",
+                        lambda: tmp_path / "session.sqlite")
+
+
 def _wait_dispatch_idle(timeout: float = 2.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -242,10 +264,14 @@ def test_youtube_sukses_menutup_sesi_dengan_hasil_terverifikasi(monkeypatch):
     pun berkedip — padahal ``Session.finish`` menulis ``ended_at``, ``result``,
     dan ``ok`` ke ``agent_sessions``, yang menjadi sumber ``session_search``.
 
-    Mengapa ia tidak pernah ketahuan: ``_isolate`` di file ini (baris 243) dan
-    fixture ``wired`` di test_command_plan men-stub ``Session.finish`` menjadi
-    no-op. Stub itu membuat jalur sukses kebal terhadap kebocoran — pola yang
-    sama dengan ``_isolate_dispatch`` pada Fase 64.
+    Mengapa ia tidak pernah ketahuan ( DIKOREKSI pada Fase 67 ): dulu
+    ``_isolate`` di file ini dan fixture ``wired`` di test_command_plan
+    men-stub ``Session.finish`` menjadi no-op. Ternyata stub itu BUKAN akar
+    utamanya — terukur pada Fase 67, setelah stub dilepas dan DB sesi
+    dialihkan, mutan-mutan ini tetap HIDUP selama tidak ada test yang
+    mengamati efek penulisan sesi. Akar yang sebenarnya: tidak ada satu pun
+    pemerhati atas efeknya. Lihat
+    ``test_sukses_berkontrak_tampil_selesai_di_permukaan_kelola``.
 
     Catatan batas: ``dispatch.py`` hanya memanggil ``session.finish`` untuk
     task BERKONTRAK. Task tanpa kontrak ditutup oleh ``loop.py:323``. Karena
@@ -307,13 +333,88 @@ def test_youtube_sukses_menutup_sesi_dengan_hasil_terverifikasi(monkeypatch):
     )
 
 
+def test_sukses_berkontrak_tampil_selesai_di_permukaan_kelola(monkeypatch):
+    """Sesi sukses HARUS terbaca "completed" oleh permukaan kelola.
+
+    Koreksi atas Fase 66. Fase 66 menyimpulkan akar kekebalan jalur sukses
+    adalah stub no-op ``Session.finish`` di fixture. Pengukuran Fase 67
+    MEMBATALKAN sebagian kesimpulan itu: dengan stub sudah dilepas dan DB sesi
+    dialihkan ke tmp_path, keempat mutan (``finish`` dihapus, ``ok=False``,
+    klaim model, ``_learn_command`` dihapus) tetap HIDUP selama test Fase 66
+    dinonaktifkan. Jadi stub bukan akar utamanya — yang membuat jalur ini
+    kebal adalah TIDAK ADA SATU PUN pemerhati atas efek penulisan sesi.
+    Melepas stub tanpa menambah pemerhati tidak menambah jaminan apa pun.
+
+    Maka test ini mengamati efek yang terlihat operator, bukan perekam
+    pemanggilan internal: ``management_surface.snapshot()`` menurunkan status
+    sesi dari ``ended_at`` dan ``ok`` (management_surface.py:53), dan status
+    itu yang ditampilkan. Permukaan PUBLIK dipakai, bukan ``_session_item``
+    yang privat, agar test mengunci perilaku operator dan tidak patah bila
+    penyusunan internalnya diubah. Terukur pada Fase 67:
+      - tanpa mutasi    -> status 'completed'
+      - finish dihapus  -> sesi HILANG sama sekali dari snapshot (barisnya
+                           tidak pernah dipersist, karena ``_ensure_row``
+                           hanya dipanggil dari ``finish``)
+      - ok=False        -> status 'failed'
+      - klaim model     -> arsip berisi "Selesai.", bukan hasil terverifikasi
+    """
+    _isolate(monkeypatch)
+    from jarvis.agent import loop as agent_loop
+    from jarvis.agent import management_surface
+    from jarvis.agent import session as session_module
+
+    events: list[str] = []
+    ids: list[str] = []
+    done = threading.Event()
+
+    async def fake_run(task, *, adapter, session, allowed_tools, **_kwargs):
+        ids.append(session.id)
+        _record_valid_youtube_trace(session, events)
+        await adapter.send("Selesai.")
+        return RunResult(ok=True, text="Selesai.", session_id=session.id)
+
+    monkeypatch.setattr(agent_loop, "run", fake_run)
+
+    assert dispatch.dispatch_async(
+        TASK, on_done=lambda _r: done.set(), on_error=lambda _e: done.set(),
+    ) is True
+    _wait(done)
+
+    # 1. Status yang TERLIHAT operator: sesi sukses wajib terbaca completed.
+    #    Diamati lewat permukaan PUBLIK (snapshot), bukan _session_item yang
+    #    privat, agar test mengunci perilaku yang terlihat operator dan tidak
+    #    patah bila penyusunan internalnya diubah.
+    assert ids, "dispatch tidak pernah membuat sesi"
+    snap = management_surface.snapshot(session_limit=12)
+    statuses = {str(s["id"]): s["status"] for s in snap["sessions"]}
+    assert ids[0] in statuses, (
+        "sesi sukses tidak pernah dipersist — ia hilang dari permukaan kelola, "
+        "seolah tugas itu tidak pernah dijalankan"
+    )
+    status = statuses[ids[0]]
+    assert status == "completed", (
+        f"sesi sukses terbaca '{status}' di permukaan kelola — operator "
+        "melihat kegagalan atau tugas menggantung padahal tugasnya berhasil"
+    )
+
+    # 2. Arsipnya memuat hasil TERVERIFIKASI kontrak, bukan klaim model.
+    #    Klaim modelnya "Selesai."; hasil terverifikasi menyebut "diputar".
+    rows = {str(r["id"]): r for r in session_module.recent_sessions(10)}
+    archived = str(rows[ids[0]].get("result") or "")
+    assert archived != "Selesai.", (
+        f"arsip sesi memuat klaim model mentah, bukan hasil terverifikasi: "
+        f"{archived!r}"
+    )
+    assert "diputar" in archived.casefold(), (
+        f"arsip sesi tidak menyebut pemutaran yang terverifikasi: {archived!r}"
+    )
+
+
 def test_youtube_dispatch_restricts_schema_and_reports_only_after_evidence(
         monkeypatch):
     _isolate(monkeypatch)
     from jarvis.agent import loop as agent_loop
-    from jarvis.agent.session import Session
 
-    monkeypatch.setattr(Session, "finish", lambda *a, **k: None)
     events: list[str] = []
     observed: dict[str, object] = {}
     done = threading.Event()
@@ -359,9 +460,7 @@ def test_youtube_model_success_is_rejected_without_playback_evidence(
         monkeypatch):
     _isolate(monkeypatch)
     from jarvis.agent import loop as agent_loop
-    from jarvis.agent.session import Session
 
-    monkeypatch.setattr(Session, "finish", lambda *a, **k: None)
     terminal: dict[str, str] = {}
     done = threading.Event()
 

@@ -10035,7 +10035,8 @@ bukan misteri runtime. Tiga pengukuran, semuanya offline:
    Satu-satunya pemanggilnya adalah `write_log` (`window_voice.py:112`), dan
    `main.py` tidak pernah menyentuh `ACTIVITY_LOG`. Penanda `voice_ack` ada
    di cabang yang tak terhubung ke transkrip live.
-Titik `start` yang benar: `main.py:1506` (`if not in_buf:` = chunk pertama),
+
+Titik `start` yang benar: `main.py:1506` (`if not in_buf:` = chunk pertama),
 lengkap dengan correlation id dan `_trace("turn.input_started")`. Jadi
 perbaikan Fase 42 **bukan** menambah hook baru, melainkan menyambungkan
 `latency.start` ke hook yang sudah ada.
@@ -11252,3 +11253,101 @@ Hanya tiga berkas yang berpindah: ``tests/test_command_plan.py``,
 ``tests/test_phase2_dispatch.py``, dan ``jarvisfix.md``. Seluruh perubahan
 dirty milik pemakai (termasuk ``jarvis/agent/dispatch.py``) dibiarkan utuh di
 working tree.
+
+## Fase 67 — Pembersihan stub tidak menambah jaminan; akarnya adalah ketiadaan pemerhati
+
+**Inti fase ini.** Fase 66 menyimpulkan akar kekebalan jalur sukses worker
+adalah stub no-op ``Session.finish`` pada dua fixture. Fase ini menguji
+kesimpulan itu dengan menjalankan langkah yang direkomendasikan — melepas
+kedua stub — lalu mengukur ulang. **Kesimpulan Fase 66 terbukti sebagian
+salah**, dan fase ini melaporkan koreksinya.
+
+**Langkah 0 — ukur dulu, sebelum menyentuh apa pun.** Kekhawatiran yang wajar:
+stub itu ada bukan untuk kenyamanan, melainkan isolasi. Terukur
+``session.db_path()`` tetap menunjuk ke ``data/agent.sqlite`` milik pemakai
+BAIK di luar maupun di dalam pytest, dan berkasnya ada. Jadi melepas stub
+begitu saja berarti membiarkan test menulis ke data sesi sungguhan. Maka
+rencananya diubah: stub **diganti, bukan dihapus** — DB sesi dialihkan ke
+``tmp_path``. Terbukti aman: baris ``agent_sessions`` pemakai tetap 514
+sebelum dan sesudah, dan penulisan nyata benar-benar terjadi
+(``ROWS=[('hasil ukur', 1)]`` di tmp_path).
+
+**Perubahan:**
+- ``tests/test_command_plan.py`` — stub ``Session.finish`` diganti pengalihan
+  ``session.db_path`` ke tmp_path pada fixture ``wired``.
+- ``tests/test_phase2_dispatch.py`` — dua stub dihapus; ditambah fixture
+  autouse yang mengalihkan DB sesi untuk SELURUH berkas.
+
+**Pengukuran yang membatalkan kesimpulan Fase 66.** Setelah stub dilepas dan
+DB dialihkan, keempat mutan jalur sukses (``finish`` dihapus, ``ok=False``,
+klaim model, ``_learn_command`` dihapus) dijalankan ulang. Hasil: **masih
+HIDUP** selama test Fase 66 dinonaktifkan. Artinya pembersihan fixture
+sendiri **tidak menambah jaminan apa pun**. Yang membuat jalur ini kebal bukan
+stubnya, melainkan **tidak ada satu pun pemerhati atas efek penulisan sesi**.
+Ini cacat yang sama untuk kelima kalinya (Fase 62, 63, 64, 66, 67) dengan
+wujud berbeda: baris yang tidak diamati tidak bisa dibedakan dari baris yang
+benar.
+
+**Efek yang terlihat pemakai, ditemukan lewat pengukuran.** Sempat menyimpulkan
+``finish`` tidak punya pembaca. Itu juga keliru — ``search()`` memang hanya
+membaca ``agent_turns``, tetapi ``recent_sessions()`` membaca
+``agent_sessions``, dan ``management_surface._session_item`` menurunkan status
+darinya (``management_surface.py:53``). Terukur:
+
+| mutan | status yang terlihat operator |
+|---|---|
+| tanpa mutasi | ``completed`` |
+| ``finish`` dihapus | sesi **hilang sama sekali** dari snapshot |
+| ``ok=False`` | ``failed`` |
+| klaim model | arsip berisi ``"Selesai."``, bukan hasil terverifikasi |
+
+"Hilang sama sekali" terjadi karena ``_ensure_row`` hanya dipanggil dari dalam
+``finish`` — tanpa ``finish`` barisnya tidak pernah dipersist, sehingga
+operator melihat seolah tugas itu tidak pernah dijalankan.
+
+**Satu test baru** — ``test_sukses_berkontrak_tampil_selesai_di_permukaan_kelola``:
+mengamati ``management_surface.snapshot()`` (permukaan **publik**, sengaja
+bukan ``_session_item`` yang privat, agar test mengunci perilaku operator
+bukan penyusunan internal) dan mengassert status ``completed`` plus arsip
+berisi hasil terverifikasi. Dibuktikan dua arah: MATI dengan test aktif, HIDUP
+dengan semua test nonaktif.
+
+**Dua kesalahan instrumen saya pada fase ini, dicatat agar tidak terulang:**
+1. Probe pertama memakai bukti YouTube yang tidak memenuhi kontrak, sehingga
+   keempat mutan menempuh jalur contract-failed (``dispatch.py:1193``) bukan
+   jalur sukses (``1209``). Empat hasil identik yang seharusnya dicurigai
+   sejak awal.
+2. Percobaan suite penuh menghasilkan "5 errors" — karena saya mengosongkan
+   environment sehingga ``HOME``/``USERPROFILE`` hilang dan ``Path.home()``
+   gagal. Bukan cacat kode. Pola yang sama dengan Fase 65c (kesalahan cwd):
+   instrumen yang salah menghasilkan kegagalan palsu.
+
+**Celah yang DILAPORKAN, tidak ditutup — kini TERBUKTI bocor.**
+``loop.py:323`` menutup sesi untuk task TANPA kontrak — jalur berbeda, penjaga
+berbeda, dan mencakup sebagian besar task Jarvis. Awalnya saya hanya mengukur
+pada ``test_command_plan.py`` saja dan tidak bisa menyimpulkan, karena
+sebagian besar test men-stub ``agent_loop.run`` sehingga baris itu boleh jadi
+tidak pernah dituju. Maka diukur pada **suite penuh**: baseline 3932 passed,
+lalu kedua mutan (``finish`` dihapus, ``ok=False``) **HIDUP — 3932 passed,
+0 failed**. Jadi celah ini nyata: penutupan sesi untuk task tanpa kontrak
+bisa hilang atau berubah menjadi gagal tanpa satu test pun berkedip, dan
+permukaan kelola akan menampilkan status yang keliru.
+
+Belum ditutup pada fase ini karena menutupnya memerlukan test yang menempuh
+``loop.run`` sungguhan (tanpa stub), yang berarti menyentuh jalur model —
+bukan lagi langkah sempit dan aman. Dilaporkan sebagai temuan terukur, bukan
+diklaim tertutup.
+
+**Perubahan produksi: TIDAK ADA.** Hanya test dan fixture yang berubah,
+ditambah koreksi docstring Fase 66 yang kini kadaluarsa.
+
+**Verifikasi akhir Fase 67.** Ruff fokus bersih pada kedua berkas yang
+diubah, ``scripts/verify_frozen.py`` tetap ``094b696``, dan full suite
+**3932 passed, 1 skipped, 0 failed** dalam 1482,63 detik — naik dari 3931,
+selisih +1 sesuai satu test baru. Skip tetap symlink Windows tanpa privilege.
+DB sesi pemakai tetap 514 baris sebelum dan sesudah seluruh fase ini.
+
+Hanya tiga berkas yang berpindah: ``tests/test_command_plan.py``,
+``tests/test_phase2_dispatch.py``, dan ``jarvisfix.md``. Seluruh perubahan
+dirty milik pemakai (termasuk ``jarvis/agent/dispatch.py`` dan
+``jarvis/agent/loop.py``) dibiarkan utuh di working tree.

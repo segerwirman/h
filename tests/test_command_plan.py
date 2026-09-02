@@ -178,16 +178,27 @@ def wired(tmp_path, monkeypatch):
     """Dispatch dengan indeks + rencana terisolasi dan agent loop palsu."""
     from jarvis.agent import command_index, dispatch
     from jarvis.agent import loop as agent_loop
-    from jarvis.agent.session import Session
+    from jarvis.agent import session as session_module
 
     monkeypatch.setattr(command_plan, "_db_path",
                         lambda: tmp_path / "plan.sqlite")
     monkeypatch.setattr(command_index, "_db_path",
                         lambda: tmp_path / "index.sqlite")
+    # Fase 67 — dulu baris ini men-stub ``Session.finish`` menjadi no-op.
+    # Stub itu membuat SELURUH jalur sukses kebal terhadap mutasi: terukur
+    # ``session.finish(text, ok=True)`` di dispatch.py bisa dihapus tanpa satu
+    # test pun berkedip. Alasannya isolasi yang masuk akal -- tanpa stub,
+    # ``Session.finish`` menulis ke ``data/agent.sqlite`` milik pemakai
+    # (terbukti: db_path tetap menunjuk ke sana bahkan di dalam pytest).
+    # Maka stub diganti, bukan dihapus: DB sesi dialihkan ke tmp_path supaya
+    # penulisan NYATA tetap terjadi dan teramati, tetapi tidak menyentuh data
+    # pemakai. Terukur: baris agent_sessions pemakai tetap 514 sebelum dan
+    # sesudah pengalihan.
+    monkeypatch.setattr(session_module, "db_path",
+                        lambda: tmp_path / "session.sqlite")
     command_plan.reset()
     command_index.reset()
     monkeypatch.setattr(dispatch, "available", lambda: True)
-    monkeypatch.setattr(Session, "finish", lambda *a, **k: None)
     monkeypatch.setattr(agent_loop, "run", None)      # diisi tiap tes
     return dispatch
 
