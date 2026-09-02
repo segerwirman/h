@@ -234,6 +234,79 @@ def _record_valid_youtube_trace(session, events: list[str]):
     }))
 
 
+def test_youtube_sukses_menutup_sesi_dengan_hasil_terverifikasi(monkeypatch):
+    """Sesi sukses yang BERKONTRAK wajib ditutup dengan hasil terverifikasi.
+
+    RED untuk Fase 66. Uji mutasi membuktikan ``session.finish(text, ok=True)``
+    pada ``dispatch.py:1209`` bisa dihapus ATAU nilainya diubah tanpa satu test
+    pun berkedip — padahal ``Session.finish`` menulis ``ended_at``, ``result``,
+    dan ``ok`` ke ``agent_sessions``, yang menjadi sumber ``session_search``.
+
+    Mengapa ia tidak pernah ketahuan: ``_isolate`` di file ini (baris 243) dan
+    fixture ``wired`` di test_command_plan men-stub ``Session.finish`` menjadi
+    no-op. Stub itu membuat jalur sukses kebal terhadap kebocoran — pola yang
+    sama dengan ``_isolate_dispatch`` pada Fase 64.
+
+    Catatan batas: ``dispatch.py`` hanya memanggil ``session.finish`` untuk
+    task BERKONTRAK. Task tanpa kontrak ditutup oleh ``loop.py:323``. Karena
+    itu RED ini memakai task YouTube, bukan task biasa, agar benar-benar
+    menempuh baris 1209.
+    """
+    _isolate(monkeypatch)
+    from jarvis.agent import loop as agent_loop
+    from jarvis.agent.session import Session
+
+    finishes: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        Session, "finish",
+        lambda self, result, ok=True: finishes.append((str(result), bool(ok))),
+    )
+    events: list[str] = []
+    observed: dict[str, object] = {}
+    done = threading.Event()
+
+    async def fake_run(task, *, adapter, session, allowed_tools, **_kwargs):
+        _record_valid_youtube_trace(session, events)
+        await adapter.send("Selesai.")
+        return RunResult(ok=True, text="Selesai.", session_id=session.id)
+
+    monkeypatch.setattr(agent_loop, "run", fake_run)
+
+    assert dispatch.dispatch_async(
+        TASK,
+        on_done=lambda result: (observed.__setitem__("result", result),
+                                done.set()),
+        on_error=lambda error: (observed.__setitem__("error", error),
+                                done.set()),
+    ) is True
+    _wait(done)
+
+    # 1. Sesi HARUS ditutup pada jalur sukses berkontrak.
+    assert finishes, (
+        "sesi sukses tidak pernah ditutup — ended_at/result/ok tidak akan "
+        "pernah tercatat di agent_sessions dan session_search kehilangan jejak"
+    )
+
+    # 2. Ditutup sebagai SUKSES, bukan gagal.
+    result, ok = finishes[-1]
+    assert ok is True, f"sesi sukses ditutup dengan ok={ok}"
+
+    # 3. Yang tertulis adalah hasil TERVERIFIKASI kontrak, bukan klaim model.
+    #    Klaim modelnya adalah "Selesai."; hasil terverifikasi menyebut
+    #    channel dan kata "diputar".
+    assert result != "Selesai.", (
+        "sesi ditutup dengan klaim model mentah, bukan hasil terverifikasi "
+        f"kontrak: {result!r}"
+    )
+    assert "Deddy Corbuzier" in result.title(), (
+        f"hasil sesi tidak menyebut channel target: {result!r}"
+    )
+    assert result == str(observed.get("result")), (
+        f"hasil yang ditulis ke sesi tidak sama dengan yang dikirim pemanggil: "
+        f"{result!r} vs {observed.get('result')!r}"
+    )
+
+
 def test_youtube_dispatch_restricts_schema_and_reports_only_after_evidence(
         monkeypatch):
     _isolate(monkeypatch)

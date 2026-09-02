@@ -230,6 +230,52 @@ def test_dispatch_learns_a_plan_from_a_verified_success(wired, monkeypatch):
     assert steps[0]["args"] == {"name": "spotify"}
 
 
+def test_sukses_mencatat_perintah_yang_terbukti_berhasil(wired, monkeypatch):
+    """Perintah yang terbukti berhasil harus masuk indeks (§26).
+
+    RED untuk Fase 66. Uji mutasi membuktikan ``_learn_command(task, session)``
+    pada jalur sukses (``dispatch.py:1215``) bisa dilewati tanpa satu test pun
+    berkedip. Akibatnya Jarvis tidak pernah belajar dari keberhasilan, padahal
+    ``_learn_plan`` — yang berdiri TEPAT di sebelahnya — sudah terjaga oleh dua
+    test. Jadi cacatnya bukan "pembelajaran tidak diuji", melainkan
+    "setengah dari pembelajaran tidak diuji".
+
+    Diamati lewat efek yang terlihat pemakai: ``command_index.suggest``
+    mengembalikan tool untuk perintah yang serupa. Bukan lewat pencatatan
+    pemanggilan internal, agar test tidak mengunci implementasi.
+    """
+    from jarvis.agent import command_index
+    from jarvis.agent import loop as agent_loop
+    from jarvis.agent.loop import RunResult
+
+    async def fake_run(_task, *, adapter, session, **_kwargs):
+        # ``_learn_command`` membaca ``session.tool_calls`` — kanal yang sama
+        # yang dipakai registry sungguhan lewat ``record_tool``. Mengisi
+        # ``record_plan`` saja tidak cukup: itu kanal rencana, bukan kanal
+        # panggilan tool, sehingga indeks akan tetap kosong.
+        session.record_tool("open_app", {"name": "spotify"},
+                            ToolResult.success("dibuka", display="Spotify dibuka."),
+                            0.01)
+        await adapter.send("Spotify dibuka.")
+        return RunResult(ok=True, text="Spotify dibuka.", session_id=session.id)
+
+    monkeypatch.setattr(agent_loop, "run", fake_run)
+
+    assert command_index.count() == 0, "indeks harus mulai kosong"
+    _run(wired, "buka aplikasi spotify sekarang")
+
+    # Efek yang terukur: indeks bertambah DAN dapat menyarankan kembali.
+    assert command_index.count() >= 1, (
+        "perintah yang terbukti berhasil tidak pernah dicatat — Jarvis tidak "
+        "pernah belajar dari keberhasilan"
+    )
+    suggested = command_index.suggest("buka aplikasi spotify sekarang")
+    assert suggested, "perintah sudah dicatat tetapi tidak dapat disarankan"
+    assert "open_app" in suggested, (
+        f"saran tidak memuat tool yang benar-benar berhasil: {suggested}"
+    )
+
+
 def test_a_learned_plan_runs_without_the_model(wired, monkeypatch):
     """Inti fase ini: giliran kedua tidak menyentuh model sama sekali."""
     from jarvis.agent import loop as agent_loop, registry

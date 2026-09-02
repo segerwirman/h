@@ -11177,3 +11177,78 @@ Dua hal yang layak dicatat dari kejadian ini:
 Setelah dikembalikan ke akar repo: **3929 passed, 1 skipped, 0 failed**
 dalam 1285,25 detik. Selisih +1 dari 3928 pada Fase 65 adalah test timeout
 baru; perbaikan ``test_state.py`` tidak menambah jumlah test.
+
+## Fase 66 — Jalur sukses worker bocor pada dua dari lima efeknya; batal-antre dan result.ok sudah terkunci
+
+Fase 64 dan 65 mengunci blok ``finally`` dan jalur timeout. Langkah sempit
+Fase 66 mengukur tiga jalur keluar yang tersisa: **sukses**, **result.ok
+false**, dan **batal-saat-mengantre**.
+
+**Putaran pertama menipu.** Empat mutan — satu per jalur — semuanya MATI, dan
+nama test yang membunuhnya pun spesifik. Kesimpulan "ketiga jalur sudah
+terkunci" akan menjadi kesimpulan yang salah. Putaran kedua menguji tiap EFEK
+secara terpisah, bukan satu per jalur, dan hasilnya berubah:
+
+| Mutan | Hasil |
+|---|---|
+| sukses: ``session.finish`` dihapus | **HIDUP** |
+| sukses: ``_learn_command`` dilewati | **HIDUP** |
+| sukses: ``_learn_plan`` dihapus | MATI |
+| sukses: ``BUS.publish`` done dihapus | HIDUP |
+| result.ok false: ``BUS.publish`` failed dihapus | HIDUP |
+| result.ok false: kegagalan tidak dikirim ke ``on_error`` | MATI |
+| batal-antre: ``return`` dihapus (struktural) | MATI |
+
+Jadi jalur sukses, yang tampak paling aman, justru yang paling bocor: **dua
+dari lima efeknya** bisa hilang tanpa satu test pun berkedip.
+
+**Pelajaran utama: HIDUP belum tentu celah.** Dua mutan ``BUS.publish``
+menuntut kejujuran lebih lanjut. Mengganti ISI yang dipublikasikan — bukan
+menghapus barisnya — juga tidak membuat satu test pun gagal. Tanpa satu
+subscriber pun untuk ``agent.task.done`` / ``agent.task.failed`` (terukur:
+keduanya tidak ada di seluruh ``jarvis/``, dan tidak tercantum di daftar topik
+``bus.py``), publish itu adalah **baris mati**. Menghapusnya tidak mengubah
+perilaku yang dapat diamati — itu *mutan setara*, bukan celah. Menulis test
+untuknya hanya akan mengunci baris mati dan menambah waktu suite tanpa
+menambah jaminan. Keduanya dibiarkan terbuka dan dilaporkan apa adanya.
+
+**Dua celah nyata ditutup.** Keduanya punya akar yang sama: fixture test
+men-stub ``Session.finish`` menjadi no-op (``test_command_plan.py:190`` dan
+``test_phase2_dispatch.py:243``), sehingga jalur sukses kebal terhadap
+kebocoran — pola ketiga kalinya setelah ``_isolate_dispatch`` (Fase 64).
+
+1. ``test_youtube_sukses_menutup_sesi_dengan_hasil_terverifikasi`` — sesi
+   sukses wajib ditutup, sebagai sukses, dengan hasil **terverifikasi kontrak**
+   (bukan klaim model mentah).
+2. ``test_sukses_mencatat_perintah_yang_terbukti_berhasil`` — perintah yang
+   terbukti berhasil wajib masuk indeks, diamati lewat
+   ``command_index.suggest``, bukan lewat pencatatan pemanggilan internal.
+
+Keduanya dibuktikan dua arah: mutan MATI dengan test baru, HIDUP kembali
+tanpanya.
+
+**Satu temuan batas yang penting.** ``dispatch.py`` memanggil
+``session.finish`` HANYA untuk task BERKONTRAK; task tanpa kontrak ditutup
+oleh ``loop.py:323``. RED pertama saya salah sasaran karena memakai task biasa
+— ia gagal bukan karena produksi cacat, melainkan karena tidak menempuh baris
+yang dimutasi. Baru setelah membaca ``dispatch.py:1188-1209`` jalur berkontrak
+itu terlihat. Ini kesalahan arah yang mahal harganya bila tidak diukur.
+
+**Perubahan produksi: TIDAK ADA.** Hanya dua test yang bertambah.
+
+**Batas jujur.** Fase ini mengunci dua efek pada jalur sukses berkontrak.
+Baris mati ``agent.task.done`` / ``agent.task.failed`` sengaja TIDAK dikunci —
+mengujinya berarti mengunci perilaku yang tidak punya pemerhati. Bila kelak
+subscriber ditambahkan, kedua publish itu menjadi nyata dan perlu test. Selain
+itu, tiga jalur keluar masih menyisakan efek yang belum diuji satu per satu,
+dan urutan pelepasan resource belum dikunci di jalur mana pun.
+
+**Verifikasi akhir Fase 66.** Ruff fokus bersih pada kedua berkas yang
+diubah, ``scripts/verify_frozen.py`` tetap ``094b696``, dan full suite
+**3931 passed, 1 skipped, 0 failed** dalam 1532,15 detik — naik dari 3929,
+selisih +2 sesuai dua test baru. Skip tetap symlink Windows tanpa privilege.
+
+Hanya tiga berkas yang berpindah: ``tests/test_command_plan.py``,
+``tests/test_phase2_dispatch.py``, dan ``jarvisfix.md``. Seluruh perubahan
+dirty milik pemakai (termasuk ``jarvis/agent/dispatch.py``) dibiarkan utuh di
+working tree.
