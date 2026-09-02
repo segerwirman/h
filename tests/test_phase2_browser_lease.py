@@ -282,10 +282,19 @@ def test_dispatch_releases_browser_lease_for_every_terminal_outcome(
             self.adapter_name = adapter_name
             self.id = f"dispatch-{outcome}"
             self.cancelled = False
+            self.finished: list[tuple[str, bool]] = []
             created_sessions.append(self)
 
         def cancel(self) -> None:
             self.cancelled = True
+
+        def finish(self, result: str, ok: bool = True) -> None:
+            # Fase 68 — double ini ketinggalan kontrak ``Session``. Ketiadaan
+            # metode ini membuat test LOLOS sebelum perbaikan produksi (jalan
+            # timeout tidak memanggilnya) lalu GAGAL sesudahnya, meski
+            # perbaikan itu benar. Sebuah fake yang tidak memodelkan kontrak
+            # akan mendeteksi perubahan yang salah pada saat yang salah.
+            self.finished.append((str(result), bool(ok)))
 
     async def fake_agent_loop(_task, **_kwargs):
         if outcome == "timeout":
@@ -325,4 +334,18 @@ def test_dispatch_releases_browser_lease_for_every_terminal_outcome(
         f"release:dispatch-{outcome}",
     ]
     assert created_sessions[0].cancelled is (outcome == "timeout")
+    # Fase 68 — sesi yang berakhir GAGAL atau TIMEOUT wajib ditutup sebagai
+    # gagal. Tanpa ini baris arsipnya tetap ``ended_at=None`` dan permukaan
+    # kelola membacanya "running" selamanya.
+    if outcome == "success":
+        assert created_sessions[0].finished == [], (
+            "task ini tidak berkontrak, jadi penutupannya ada di loop.run — "
+            "dispatch tidak boleh menutupnya dua kali")
+    else:
+        assert created_sessions[0].finished, (
+            f"sesi outcome '{outcome}' tidak pernah ditutup — operator akan "
+            "melihatnya menggantung selamanya di permukaan kelola")
+        _result, ok = created_sessions[0].finished[-1]
+        assert ok is False, (
+            f"sesi outcome '{outcome}' ditutup sebagai SUKSES padahal gagal")
     assert dispatch.active_count() == 0

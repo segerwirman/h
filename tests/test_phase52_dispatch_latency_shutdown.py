@@ -101,6 +101,17 @@ def _isolate_dispatch(monkeypatch, registry: _Registry) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _alihkan_db_sesi(tmp_path, monkeypatch):
+    """Fase 68 — alihkan DB sesi ke tmp_path agar statusnya bisa diamati.
+
+    Tanpa ini, ``Session.finish``/``record_turn`` menulis ke
+    ``data/agent.sqlite`` milik pemakai. Pola yang sama dengan Fase 67.
+    """
+    monkeypatch.setattr(session_module, "db_path",
+                        lambda: tmp_path / "session.sqlite")
+
+
+@pytest.fixture(autouse=True)
 def _clean_state():
     latency.reset()
     with dispatch._active_lock:
@@ -110,6 +121,137 @@ def _clean_state():
     latency.reset()
     with dispatch._active_lock:
         dispatch._active.clear()
+
+
+def _status_sesi(session_id: str) -> str:
+    """Status sesi sebagaimana terlihat operator di permukaan kelola.
+
+    Diturunkan oleh ``management_surface._session_item`` dari ``ended_at``
+    dan ``ok`` (management_surface.py:53). Dipakai agar RED mengunci apa yang
+    terlihat operator, bukan struktur internalnya.
+    """
+    from jarvis.agent import management_surface
+
+    for row in session_module.recent_sessions(20):
+        if str(row.get("id")) == str(session_id):
+            return management_surface._session_item(row)["status"]
+    return "hilang"
+
+
+def test_timeout_tidak_membiarkan_sesi_terbaca_menggantung(monkeypatch):
+    """RED Fase 68 — sesi timeout tidak boleh terbaca "running" selamanya.
+
+    Terukur pada Fase 68: setelah timeout, ``session.cancelled`` benar
+    ``True`` dan ``on_error`` benar menyebut timeout, TETAPI baris sesinya
+    tetap ``ended_at=None`` sehingga permukaan kelola membacanya ``running``.
+    Padahal tugasnya sudah berakhir dengan gagal. Operator yang membuka
+    permukaan kelola melihat tugas yang tak pernah selesai.
+
+    Sebabnya: ``session.finish`` adalah satu-satunya pemanggil
+    ``_ensure_row``, dan ia tidak pernah dipanggil di jalur timeout
+    (``dispatch.py:1241-1253``) — hanya ``session.cancel()``, yang sebatas
+    menyetel flag di memori dan tidak menulis apa pun ke arsip.
+
+    Pembuktian dua arah pada Fase 68: menambahkan
+    ``session.finish(err, ok=False)`` pada jalur ini TIDAK TERDETEKSI oleh 69
+    test yang ada — jadi perbaikan kelak tidak akan dijaga tanpa test ini.
+    """
+    import asyncio
+
+    registry = _Registry(acquire=True)
+    _isolate_dispatch(monkeypatch, registry)
+
+    async def hang(*_args, **_kwargs):
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr("jarvis.agent.loop.run", hang)
+
+    made: list = []
+    real_session = session_module.Session
+
+    class SpySession(real_session):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            made.append(self)
+
+    monkeypatch.setattr("jarvis.agent.session.Session", SpySession)
+
+    errors: list[str] = []
+    dispatch.dispatch_task("offline timeout status", timeout_s=0.3,
+                           on_error=lambda text, **_kw: errors.append(
+                               str(text)))
+
+    assert _wait_until(lambda: bool(errors), timeout=5.0), (
+        "timeout tidak pernah mencapai on_error"
+    )
+    assert made, "sesi tidak pernah dibuat"
+    session = made[0]
+    # loop.run sungguhan mencatat giliran; itu yang mempersist barisnya.
+    session.record_turn("user", "offline timeout status")
+
+    status = _status_sesi(session.id)
+    assert status != "hilang", (
+        "sesi timeout tidak pernah dipersist sama sekali"
+    )
+    assert status == "failed", (
+        f"sesi yang sudah timeout terbaca '{status}' di permukaan kelola — "
+        "operator melihat tugas menggantung selamanya padahal tugasnya sudah "
+        "berakhir gagal"
+    )
+
+
+def test_kegagalan_agent_tidak_membiarkan_sesi_terbaca_menggantung(
+        monkeypatch):
+    """RED Fase 68 — sesi yang agent-nya gagal tidak boleh terbaca "running".
+
+    Sama dengan timeout, pada jalur ``result.ok`` false
+    (``dispatch.py:1229-1240``) ``session.finish`` tidak pernah dipanggil.
+    Terukur pada Fase 68: statusnya tetap ``running`` walau ``on_error`` sudah
+    menyampaikan kegagalan kepada pemakai.
+
+    Akibatnya arsip sesi tidak pernah mencatat kegagalan, dan operator tidak
+    bisa membedakan tugas yang sedang berjalan dari tugas yang sudah gagal.
+    """
+    registry = _Registry(acquire=True)
+    _isolate_dispatch(monkeypatch, registry)
+
+    async def fail_run(task, *, adapter, session, **_kwargs):
+        session.record_turn("user", task)
+        session.record_turn("assistant", "Gagal membuka.")
+        await adapter.send("Gagal membuka.")
+        from jarvis.agent.loop import RunResult
+        return RunResult(ok=False, text="Gagal membuka.",
+                         session_id=session.id)
+
+    monkeypatch.setattr("jarvis.agent.loop.run", fail_run)
+
+    made: list = []
+    real_session = session_module.Session
+
+    class SpySession(real_session):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            made.append(self)
+
+    monkeypatch.setattr("jarvis.agent.session.Session", SpySession)
+
+    errors: list[str] = []
+    dispatch.dispatch_task(
+        "offline agent gagal",
+        on_error=lambda text, **_kw: errors.append(str(text)))
+
+    assert _wait_until(lambda: bool(errors), timeout=5.0), (
+        "kegagalan agent tidak pernah mencapai on_error"
+    )
+    assert made, "sesi tidak pernah dibuat"
+
+    status = _status_sesi(made[0].id)
+    assert status != "hilang", "sesi yang gagal tidak pernah dipersist"
+    assert status == "failed", (
+        f"sesi yang agent-nya gagal terbaca '{status}' di permukaan kelola — "
+        "operator tidak bisa membedakan tugas berjalan dari tugas yang sudah "
+        "gagal"
+    )
 
 
 def test_cancel_saat_mengantre_menutup_turn_session(monkeypatch):

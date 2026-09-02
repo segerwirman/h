@@ -11351,3 +11351,101 @@ Hanya tiga berkas yang berpindah: ``tests/test_command_plan.py``,
 ``tests/test_phase2_dispatch.py``, dan ``jarvisfix.md``. Seluruh perubahan
 dirty milik pemakai (termasuk ``jarvis/agent/dispatch.py`` dan
 ``jarvis/agent/loop.py``) dibiarkan utuh di working tree.
+
+## Fase 68 — Sesi gagal dan timeout terbaca "running" selamanya; jalur ketiga ternyata bukan celah
+
+**Mengapa fase ini ada.** Anda tidak memberikan otorisasi untuk test yang
+menempuh ``loop.run`` tanpa stub, jadi celah ``loop.py:323`` dari Fase 67
+DITINGGALKAN dan diambil alternatifnya: mengukur tiga jalur keluar worker
+yang tersisa (``result.ok`` false, batal-saat-mengantre, timeout) untuk cacat
+"ada penulisan tapi tidak ada pembaca".
+
+**Putaran pertama menipu — lagi.** Lima mutan, satu per efek, semuanya MATI
+dengan nama test pembunuh yang spesifik. Mengulangi pelajaran Fase 66: itu
+akan menghasilkan kesimpulan palsu "sudah terkunci". Maka diukur arah yang
+BERBEDA — bukan "hapus efek, apakah ada yang berkedip", melainkan **"tambah
+perbaikan yang benar, apakah ada yang berkedip"**. Hasilnya berubah total:
+menambahkan ``session.finish(err, ok=False)`` pada jalur gagal dan timeout
+**TIDAK TERDETEKSI oleh 69 test**. Perbaikan kelak tidak akan dijaga.
+
+**Cacatnya, terukur.** ``session.finish`` adalah satu-satunya pemanggil
+``_ensure_row``, dan ia tidak pernah dipanggil di dua jalur itu. Yang dipanggil
+hanya ``session.cancel()`` — sebatas menyetel flag di memori, tidak menulis
+arsip. Akibatnya baris sesi tetap ``ended_at=None``, dan
+``management_surface`` membacanya ``running``:
+
+| jalur | status yang terlihat operator |
+|---|---|
+| agent gagal | ``running`` (seharusnya ``failed``) |
+| timeout | ``running`` (seharusnya ``failed``) |
+
+``cancelled`` memang benar ``True`` dan ``on_error`` memang menyampaikan
+kegagalan — jadi PEMAKAI diberitahu, tetapi OPERATOR yang membuka permukaan
+kelola melihat tugas yang tak pernah selesai, dan tidak bisa membedakan tugas
+berjalan dari tugas yang sudah gagal.
+
+**Satu kesalahan instrumen yang penting.** Probe pertama saya menyimpulkan
+"sesi tidak pernah dipersist sama sekali". Itu SALAH: ``fake_run`` tidak
+memanggil ``record_turn``, padahal ``loop.run`` sungguhan melakukannya, dan
+``record_turn`` ikut memanggil ``_ensure_row``. Setelah diulang dengan jejak
+realistis, kelihatan bahwa barisnya ADA — hanya tidak pernah DITUTUP. Dua
+kesimpulan yang berbeda, dan yang pertama akan menghasilkan perbaikan yang
+salah sasaran.
+
+**Perubahan produksi — pertama sejak Fase 60-an.** Dua baris pada
+``jarvis/agent/dispatch.py``: ``session.finish(err, ok=False)`` pada jalur
+``result.ok`` false dan pada jalur timeout. Dipilih minimal: tidak mengubah
+jalur alur, tidak menyentuh gate, config, atau browser. Verifikasi bahwa
+perubahan dirty milik pemakai pada berkas yang sama (blok S110 di baris 313)
+tetap utuh.
+
+**Dua test RED baru** di ``tests/test_phase52_dispatch_latency_shutdown.py``,
+keduanya gagal dulu dengan pesan ``'running' == 'failed'`` sebelum perbaikan,
+lalu hijau sesudahnya. Dibuktikan dua arah: ketiga mutan MATI dengan test
+aktif, HIDUP kembali dengan test nonaktif — termasuk mutan nilai
+(``ok=False`` -> ``ok=True``), jadi yang dikunci bukan sekadar "ada pemanggilan".
+
+**Jalur ketiga TERNYATA BUKAN CELAH — dilaporkan, tidak ditutup.** Pada
+batal-saat-mengantre, menambahkan penutupan sesi juga TIDAK TERDETEKSI. Tapi
+pengukuran menunjukkan sebabnya berbeda: worker tidak pernah hidup, tidak ada
+``record_turn``, dan terukur **0 baris sesi** dengan
+``registry.finished=True``. Tidak ada baris yang menggantung, jadi tidak ada
+yang perlu ditutup. Ini batas yang wajar, bukan cacat. Menulis test untuknya
+hanya akan mengunci baris mati — kesalahan yang sama dengan
+``agent.task.done``/``agent.task.failed`` pada Fase 66, kali ini berhasil
+dihindari.
+
+**Fake yang ketinggalan kontrak — ditemukan hanya oleh suite penuh.** Dua
+test RED baru hijau pada pengujian fokus, tetapi suite penuh menemukan
+``AttributeError: '_FakeSession' object has no attribute 'finish'`` pada
+``test_phase2_browser_lease.py``. Penyebabnya BUKAN cacat produksi:
+``_FakeSession`` di berkas itu hanya memodelkan ``cancel()``, tidak
+``finish()``. Sebuah double yang tidak memodelkan kontrak akan lolos SEBELUM
+perbaikan (karena jalurnya tidak memanggil metode itu) lalu gagal SESUDAHNYA,
+meski perbaikan itu benar — ia mendeteksi perubahan yang salah pada saat yang
+salah.
+
+Maka ``_FakeSession`` dilengkapi dengan ``finish()`` yang MENCATAT, dan
+asersi ditambahkan agar test itu ikut menjaga kontraknya: outcome gagal dan
+timeout wajib ditutup dengan ``ok=False``; outcome sukses justru TIDAK boleh
+ditutup dispatch (task ini tidak berkontrak, penutupnya ada di ``loop.run``).
+Terbukti peka: menghapus perbaikan produksi membuat kedua parameterisasi itu
+gagal. Ini pola cacat yang sama untuk keenam kalinya, kini pada test double
+bukan pada stub no-op.
+
+**Batas jujur.** Fase ini menutup dua dari tiga jalur. Celah ``loop.py:323``
+dari Fase 67 masih terbuka dan memerlukan otorisasi terpisah.
+
+**Verifikasi akhir Fase 68.** Ruff fokus bersih pada ketiga berkas yang
+diubah, ``scripts/verify_frozen.py`` tetap ``094b696``, dan full suite
+**3934 passed, 1 skipped, 0 failed** dalam 1410,96 detik — naik dari 3932,
+selisih +2 sesuai dua test RED baru. Skip tetap symlink Windows tanpa
+privilege.
+
+Tiga berkas berpindah, salah satunya PRODUKSI: ``jarvis/agent/dispatch.py``
+(2 baris + komentar), ``tests/test_phase52_dispatch_latency_shutdown.py``
+(2 test RED + fixture pengalihan DB), ``tests/test_phase2_browser_lease.py``
+(``_FakeSession`` dilengkapi ``finish`` + asersi kontrak), serta
+``jarvisfix.md``. Seluruh perubahan dirty milik pemakai pada
+``jarvis/agent/dispatch.py`` — khususnya blok S110 di baris 313 — dibiarkan
+utuh dan terverifikasi tidak tersentuh.

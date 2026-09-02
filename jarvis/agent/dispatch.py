@@ -1225,6 +1225,11 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
                             elapsed_s=elapsed)
             else:
                 err = result.text or "agent gagal"
+                # Fase 68 — tanpa ini sesi tidak pernah ditutup: ``finish``
+                # adalah satu-satunya pemanggil ``_ensure_row``, sehingga baris
+                # arsipnya tetap ``ended_at=None`` dan permukaan kelola
+                # membacanya "running" selamanya walau tugas sudah gagal.
+                session.finish(err, ok=False)
                 _finish_with_delivery(
                     REGISTRY,
                     bg_task.id,
@@ -1238,6 +1243,10 @@ def _dispatch(task: str, *, on_ack=None, on_done=None, on_error=None,
         except asyncio.TimeoutError:
             session.cancel()
             err = f"timeout {hard_timeout:.0f}s"
+            # Fase 68 — alasan yang sama dengan jalur result.ok false di atas:
+            # ``cancel()`` hanya menyetel flag di memori, tidak menulis arsip,
+            # sehingga sesi timeout terbaca "running" selamanya.
+            session.finish(err, ok=False)
             _logger.error("agent.dispatch.timeout", task=task[:80])
             _finish_with_delivery(
                 REGISTRY,
