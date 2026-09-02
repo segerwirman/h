@@ -49,6 +49,13 @@ def test_stage_timeout_falls_back_to_safe_state():
         while sm.state is PipelineState.PROCESSING and time.monotonic() < deadline:
             time.sleep(0.05)
         assert sm.state is PipelineState.LISTENING       # safe fallback
+        # Fase 65 — ``_watch`` memanggil ``to(fallback)`` DULU, baru
+        # ``_on_timeout`` (state.py:242-246). Jadi state sudah LISTENING BUKAN
+        # berarti callback sudah tercatat; menegaskan ``fired`` tepat setelah
+        # state berubah adalah balapan. Terbukti gagal 5/5 bila jendela antara
+        # keduanya dilebarkan, dan pernah gagal nyata pada suite penuh.
+        while not fired and time.monotonic() < deadline:
+            time.sleep(0.05)
         assert fired == [PipelineState.PROCESSING]
     finally:
         sm.stop_monitor()

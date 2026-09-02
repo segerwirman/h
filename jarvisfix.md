@@ -11030,3 +11030,150 @@ dengan argumen yang benar pada jalur exception — SATU jalur pasca-ownership.
 Ia tidak membuktikan semua jalur keluar worker (timeout, batal, kontrak gagal,
 sukses) melepas resource dengan benar, dan tidak membuktikan urutan
 pelepasannya tepat. Itu pekerjaan terpisah bila ingin dilanjutkan.
+
+## Fase 65 — Jalur timeout worker tidak pernah ditest; jalur kontrak gagal sudah terkunci
+
+Fase 64 mengunci blok ``finally`` worker, tetapi hanya pada SATU jalur keluar
+(exception). Lima jalur keluar lain tidak pernah diukur. Langkah sempit Fase 65
+mengukur dua yang paling mungkin menyimpan cacat: **kontrak gagal**
+(``dispatch.py:1188-1207``) dan **timeout** (``1241-1253``).
+
+**Hasilnya berlawanan, dan itulah gunanya pengukuran.**
+
+| Jalur | Mutan | Hasil |
+|---|---|---|
+| kontrak gagal | ``if not validation.ok`` → ``if False`` | **MATI** — sudah terkunci |
+| timeout | ``except asyncio.TimeoutError`` → penjaga lain | **HIDUP** — celah |
+
+Jalur kontrak gagal ternyata sudah dijaga
+``test_youtube_model_success_is_rejected_without_playback_evidence``. Saya tidak
+menambahkan apa pun untuknya: melaporkan "sudah terkunci" adalah hasil yang
+sama berharganya dengan menemukan celah, dan menulis test kedua untuk jalur
+yang sudah terjaga hanya menambah waktu suite tanpa menambah jaminan.
+
+**Celah timeout itu nyata dan berbobot.** Jalur ini adalah satu-satunya tempat
+``session.cancel()`` dipanggil. Karena penjaganya bisa diganti tanpa satu test
+pun gagal, berarti: bukan saja sesi tidak pernah benar-benar dibatalkan pada
+batas waktu, tetapi **tidak ada test yang membuktikan hal itu tidak terjadi**.
+Satu-satunya sinyal kegagalan adalah sunyi — persis pola cacat yang memulai
+siklus Fase 52-58 ini.
+
+**Mengapa begitu lama tidak ketahuan.** Tidak ada satu pun test yang pernah
+menyuap ``timeout_s`` ke worker. Grep atas seluruh ``tests/`` menemukan
+``timeout_s`` hanya pada argumen tidak relevan (breaker, HTTP, CDP); pada file
+dispatch sendiri kemunculannya justru berada di dalam *komentar* test
+(baris 394, 396) yang menjelaskan validasi non-numeric — bukan pemakaian nyata.
+
+**Perbaikan: satu test yang menempuh timeout sungguhan.**
+``test_timeout_worker_membatalkan_sesi_dan_melepas_resource`` menjalankan
+``dispatch_task(..., timeout_s=0.15)`` dengan ``loop.run`` yang menggantung 30
+detik, lalu menuntut tiga hal:
+
+1. ``session.cancelled is True`` — inti jalur ini, diamati lewat subclass
+   ``Session`` yang menangkap instance yang dibuat dispatch. Hanya penjaga
+   timeout yang memanggil ``cancel()``, jadi tanpa penjaga itu nilainya tetap
+   ``False``;
+2. ``on_error`` menerima keterangan yang menyebut timeout, bukan
+   "selesai tanpa status";
+3. keenam release dipanggil dan turn latency tertutup — resource tidak boleh
+   jadi yatim hanya karena jalurnya berbeda.
+
+**Bukti, bukan klaim.** Test ini lulus pada percobaan pertama, yang dengan
+sendirinya bukan bukti apa pun. Karena itu diukur dua arah:
+
+- dengan test baru, **kedua** mutan (penjaga diganti, ``session.cancel()``
+  dihapus) **MATI**;
+- dengan test baru dinonaktifkan, mutan **kembali HIDUP**.
+
+Kontrol dua arah itu yang membedakan "test ini mengunci sesuatu" dari "test ini
+kebetulan ikut lulus".
+
+**Perubahan produksi: TIDAK ADA.** Kode timeout memang sudah benar; yang hilang
+adalah pembuktiannya. Hanya ``tests/test_phase52_dispatch_latency_shutdown.py``
+yang bertambah.
+
+**Batas jujur.** Test ini mengunci jalur timeout pada registry palsu dengan
+waktu 0,15 detik buatan. Ia tidak membuktikan timeout 900 detik di produksi
+berperilaku sama, tidak membuktikan ``asyncio.wait_for`` membatalkan pekerjaan
+di dalam ``_execute()`` (hanya bahwa wait_for melempar dan sesi ditandai
+batal), dan tidak membuktikan sisa tiga jalur keluar — sukses, ``result.ok``
+false, dan pembatalan-saat-mengantre — melepas resource dengan benar. Itu
+pekerjaan terpisah bila ingin dilanjutkan.
+
+## Fase 65b — Kegagalan suite penuh bukan flake: balapan nyata di test_state.py
+
+Suite penuh sesudah Fase 65 menghasilkan **1 failed, 3928 passed, 1 skipped**.
+Kegagalannya ``tests/test_state.py::test_stage_timeout_falls_back_to_safe_state``
+dengan ``assert [] == [<PipelineState.PROCESSING>]``.
+
+Godaan pertamanya adalah menganggap ini flake dan lapor "unrelated". Itu tidak
+dilakukan, karena **sunyi bukti bukan bukti**. Tiga ukuran diambil:
+
+| Ukuran | Hasil |
+|---|---|
+| ``test_state.py`` terisolasi, 15× | 0/15 gagal |
+| bersama test Fase 65, 3× | 0/3 gagal |
+| di bawah beban 11 thread pembakar CPU, 20× | 0/20 gagal |
+
+Jadi beban CPU biasa **tidak** menjelaskannya, dan hipotesis awal saya (balapan
+yang melebar karena beban) **tidak terdukung** oleh pengukuran itu. Mengubah
+hipotesis bukan kegagalan; mempertahankan yang salah adalah.
+
+**Log kegagalan memuat petunjuk yang menentukan.** Ketiga fakta ini bersamaan:
+
+1. ``WARNING pipeline.stage_timeout`` — timeout SUNGGUH terdeteksi;
+2. ``pipeline.transition`` PROCESSING → LISTENING dengan ``outcome: timeout``;
+3. ``fired == []`` — ``on_timeout`` tidak pernah tercatat.
+
+Monitor bekerja; yang gagal adalah ASUMSI di test, bukan produksinya.
+
+**Akar penyebab (terbaca di sumber, bukan ditebak).** ``_watch``
+(``state.py:242-246``) memanggil ``to(fallback, ...)`` LEBIH DULU, barulah
+``_on_timeout(state, rid)``. Test menghentikan loop-nya begitu state berubah,
+lalu langsung menegaskan ``fired``. Karena ``to()`` mempublikasikan transisi
+sebelum callback dipanggil, "state sudah LISTENING" **bukan** berarti
+"callback sudah tercatat" — ada jendela balapan di antaranya.
+
+**Pembuktian deterministik, bukan pengejaran flake.** Karena beban gagal
+memunculkannya, strukturnya yang diuji: jendela itu dilebarkan secara paksa
+dengan menunda ``BUS.publish`` sebesar 1,5 detik setelah transisi state
+(disuntikkan lewat monkeypatch pada salinan test — **produksi tidak disentuh**).
+
+- sebelum perbaikan: **5/5 gagal** → balapan TERBUKTI;
+- sesudah perbaikan: **0/5 gagal** → perbaikan TERBUKTI menutupnya.
+
+**Perbaikan: tiga baris pada test.** Menunggu ``fired`` terisi dengan batas
+waktu yang sama, bukan menegaskannya seketika setelah state berubah. Tidak ada
+perubahan pada ``jarvis/core/state.py``: urutan ``to()`` lalu ``_on_timeout``
+di dalam ``_watch`` adalah desain yang sah, dan memindahkannya hanya demi
+kenyamanan test akan mengubah semantik produksi tanpa alasan.
+
+**Pelajaran yang dicatat.** Ini kejadian keempat kalinya pada proyek ini sebuah
+test gagal bukan karena produksinya salah, melainkan karena test-nya
+menegaskan sesuatu yang belum dijaminnya — pola yang sama dengan Fase 62, 63,
+dan 64. Bedanya kali ini buktinya deterministik, bukan sekadar kecurigaan.
+
+### Fase 65c — 98 "kegagalan" yang dibuat oleh saya sendiri
+
+Suite penuh kedua menghasilkan **98 failed, 3831 passed**. Angka sebesar itu
+pada perubahan tiga baris tentu mencurigakan, dan memang benar: **nol** di
+antaranya cacat kode.
+
+Penyebabnya adalah direktori kerja. Saya menjalankan ``rm`` pada berkas probe
+sementara dan tidak mengembalikan direktori, sehingga pytest berikutnya
+berjalan dari ``.claude/scratch``. Akibatnya ``main`` tidak dapat diimpor
+(``ModuleNotFoundError: No module named 'main'``) dan path tampil sebagai
+``..\..\tests\...`` — petunjuk yang seharusnya langsung terbaca.
+
+Dua hal yang layak dicatat dari kejadian ini:
+
+1. **Signature kegagalan palsu bisa meniru kegagalan nyata.** 98 test gagal
+   dengan traceback yang tampak meyakinkan. Yang membedakan hanyalah
+   kesediaan membaca akarnya, bukan jumlahnya.
+2. **Kegagalan instrumen harus dicurigai lebih dulu.** Menghapus berkas
+   sementara lalu lanjut menjalankan suite tanpa memverifikasi direktori
+   adalah kesalahan urutan, bukan kesalahan kode.
+
+Setelah dikembalikan ke akar repo: **3929 passed, 1 skipped, 0 failed**
+dalam 1285,25 detik. Selisih +1 dari 3928 pada Fase 65 adalah test timeout
+baru; perbaikan ``test_state.py`` tidak menambah jumlah test.

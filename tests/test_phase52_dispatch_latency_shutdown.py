@@ -249,6 +249,107 @@ def test_worker_melepas_seluruh_resource_setelah_mengambil_ownership(monkeypatch
     )
 
 
+def test_timeout_worker_membatalkan_sesi_dan_melepas_resource(monkeypatch):
+    """Jalur TIMEOUT worker tidak pernah ditest — mutan di penjaganya HIDUP.
+
+    Fase 64 mengunci blok ``finally``, tetapi hanya pada jalur exception.
+    Uji mutasi Fase 65 membuktikan jalur ``except asyncio.TimeoutError``
+    (``dispatch.py:1241-1253``) sama sekali tidak terkunci: mengganti
+    ``except asyncio.TimeoutError`` menjadi penjaga lain membuat **nol** test
+    gagal. Jadi tidak ada satu pun test yang pernah menjalankan timeout
+    sungguhan — padahal inilah satu-satunya jalur yang memanggil
+    ``session.cancel()``.
+
+    RED ini menempuhnya dengan ``timeout_s`` nyata dan loop yang menggantung,
+    lalu menuntut tiga hal yang hanya mungkin bila penjaga timeout benar-benar
+    berjalan: sesi terbukti dibatalkan, pemanggil menerima keterangan timeout,
+    dan tidak ada resource yang jadi yatim.
+    """
+    import asyncio
+
+    registry = _Registry(acquire=True)
+    _isolate_dispatch(monkeypatch, registry)
+    delivered: list[str] = []
+
+    async def no_replay(*_args, **_kwargs):
+        return None
+
+    async def hang(*_args, **_kwargs):
+        """Menggantung lebih lama dari timeout agar wait_for benar-benar batas."""
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr(dispatch, "_replay_plan", no_replay)
+    monkeypatch.setattr("jarvis.agent.loop.run", hang)
+
+    # Tangkap sesi yang dibuat dispatch — ``session.cancel()`` hanya terjadi
+    # di penjaga timeout, jadi ini satu-satunya pengamatan langsung atasnya.
+    made: list = []
+    real_session = session_module.Session
+
+    class SpySession(real_session):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            made.append(self)
+
+    monkeypatch.setattr("jarvis.agent.session.Session", SpySession)
+
+    calls: list[tuple[str, str]] = []
+    for name in (
+        "_release_browser_session",
+        "_release_computer_session",
+        "_clear_desktop_safe_session",
+        "_clear_captcha_handoff_session",
+        "_release_screen_control_session",
+    ):
+        monkeypatch.setattr(
+            dispatch, name,
+            lambda sid, _n=name: calls.append((_n, str(sid))),
+        )
+    monkeypatch.setattr(
+        dispatch, "_revoke_execution_grants",
+        lambda tid: calls.append(("_revoke_execution_grants", str(tid))),
+    )
+
+    dispatch.dispatch_task(
+        "offline timeout worker",
+        timeout_s=0.15,
+        on_error=lambda text, **_kwargs: delivered.append(str(text)),
+    )
+
+    assert _wait_until(lambda: dispatch.active_count() == 0, timeout=5.0), (
+        "timeout membuat worker menggantung tanpa pernah terminal"
+    )
+    assert _wait_until(lambda: bool(delivered), timeout=5.0), (
+        "timeout tidak pernah mencapai on_error — pemakai hanya mendapat sunyi"
+    )
+
+    # 1. inti jalur ini: sesi HARUS dibatalkan. Hanya penjaga timeout yang
+    #    melakukannya, jadi tanpa penjaga itu nilai ini tetap False.
+    assert made, "sesi tidak pernah dibuat — dispatch tidak mencapai worker"
+    assert made[0].cancelled is True, (
+        "session.cancel() tidak berjalan: penjaga timeout tidak menangani "
+        "asyncio.TimeoutError, sehingga sesi dibiarkan hidup walau batas waktu "
+        "sudah terlampaui"
+    )
+
+    # 2. keterangannya harus menjelaskan timeout, bukan "selesai tanpa status".
+    assert "timeout" in delivered[0], (
+        f"callback terminal tidak menjelaskan timeout: {delivered}"
+    )
+
+    # 3. resource tidak boleh jadi yatim hanya karena jalurnya berbeda.
+    released = {name for name, _sid in calls}
+    assert released == {
+        "_release_browser_session",
+        "_release_computer_session",
+        "_clear_desktop_safe_session",
+        "_clear_captcha_handoff_session",
+        "_release_screen_control_session",
+        "_revoke_execution_grants",
+    }, f"timeout melewatkan pelepasan resource: {sorted(released)}"
+    assert latency.active_count() == 0, "timeout melewati penutup latency"
+
+
 def test_turn_berprogres_tidak_dievict_oleh_turn_tanpa_progres():
     """Turn dengan tahap terukur harus menang atas kandidat tanpa progres.
 
