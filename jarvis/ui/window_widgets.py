@@ -340,6 +340,10 @@ class ApiKeySheet(QWidget):
         self._activate.clicked.connect(self._submit)
         lay.addWidget(self._activate)
         self._busy = False
+        # Nilai yang sudah diserahkan ke pemilik, disimpan terpisah dari
+        # kolom yang terlihat agar jalur "Coba lagi" tetap mungkin. Dibuang
+        # permanen oleh clear_secret() saat pemilik mengonfirmasi keberhasilan.
+        self._pending_secret = ""
 
     @property
     def busy(self) -> bool:
@@ -368,6 +372,27 @@ class ApiKeySheet(QWidget):
 
     def clear_secret(self) -> None:
         self._key.clear()
+        self._pending_secret = ""
+
+    def retry_secret(self) -> str:
+        """Kembalikan secret ke kolom setelah pemilik melaporkan kegagalan.
+
+        Fase 63 — jalur gagal tidak boleh berakhir buntu. ``_submit()`` kini
+        mengosongkan kolom segera setelah hand-off agar secret tidak berlama-
+        lama di dalam widget, tetapi ``window_voice.py:420`` menampilkan
+        "Coba lagi" bila penyimpanan terenkripsi gagal. Tanpa pengembalian
+        ini pesan itu bohong: kolomnya sudah kosong dan pemakai harus
+        mengetik ulang seluruh key.
+
+        Karena itu nilai yang diserahkan disimpan terpisah di
+        ``_pending_secret`` — BUKAN di kolom yang terlihat — dan hanya
+        dimasukkan kembali ke kolom saat pemilik secara eksplisit meminta
+        retry. Nilai dihapus permanen oleh ``clear_secret()``.
+        """
+        pending = str(self._pending_secret or "")
+        if pending:
+            self._key.setText(pending)
+        return self._key.text()
 
     def _submit(self):
         if self._busy:
@@ -378,4 +403,10 @@ class ApiKeySheet(QWidget):
             return
         self.set_busy(True)
         self.set_status("Memverifikasi provider …", "info")
+        # Secret tidak boleh terbaca dari widget setelah diserahkan. Nilai
+        # yang diserahkan disimpan terpisah agar jalur "Coba lagi" tetap
+        # mungkin, lalu dibuang permanen oleh clear_secret() saat pemilik
+        # mengonfirmasi keberhasilan.
+        self._pending_secret = key
+        self._key.clear()
         self.done.emit(key)

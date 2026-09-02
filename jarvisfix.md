@@ -10901,3 +10901,72 @@ area credential.
 
 **Status:** dilaporkan dan dieskalasi ke pemakai, tidak diubah, tidak
 dilewati, dan tidak diklaim hijau. Full suite dicatat apa adanya: 1 failed.
+
+## Fase 63 — Secret API key tidak boleh terbaca dari widget, tanpa merusak jalur "Coba lagi"
+
+Fase 62 mengeskalasi kegagalan
+``test_api_sheet_emits_once_and_clears_secret_after_emit`` karena menyentuh
+credential flow. Pemakai memberi otorisasi terpisah. Fase 63 memperbaikinya —
+tetapi **bukan** dengan cara yang saya usulkan, karena pengukuran membuktikan
+usulan itu salah.
+
+**Usulan awal: kosongkan ``_key`` di dalam ``_submit()`` segera setelah emit.**
+Pengukuran alur nyata menolaknya. Terukur pada ``window_voice.py:420`` bahwa
+jalur penyimpanan terenkripsi yang gagal menampilkan status
+``"API key gagal disimpan terenkripsi. Coba lagi."``. Bila secret dibuang
+mentah-mentah di ``_submit()``, pesan itu menjadi bohong: kolom sudah kosong
+dan pemakai harus mengetik ulang seluruh key. Ini regresi kegunaan yang
+diciptakan oleh perbaikan keamanan.
+
+**Desain yang diukur benar.** Secret disimpan terpisah di
+``self._pending_secret`` — bukan di kolom yang terlihat — lalu kolom
+langsung dikosongkan setelah hand-off:
+
+| Titik | Keadaan kolom | Keadaan ``_pending_secret`` |
+|---|---|---|
+| sebelum submit | berisi | kosong |
+| setelah ``_submit()`` | **kosong** | berisi |
+| pemilik gagal menyimpan → ``retry_secret()`` | terisi kembali | berisi |
+| pemilik berhasil → ``clear_secret()`` | kosong | **dibuang** |
+
+Jadi secret tidak pernah terbaca dari widget setelah diserahkan, DAN jalur
+"Coba lagi" tetap bisa dipakai tanpa mengetik ulang.
+
+**RED diukur dulu.** Dua test baru, keduanya gagal sebelum produksi diubah
+(terukur: 3 failed pada file itu, dua lama dan satu baru):
+``test_api_sheet_secret_tidak_terbaca_dari_widget_setelah_handoff`` menuntut
+kolom kosong setelah emit; ``test_api_sheet_gagal_simpan_masih_bisa_dicoba_
+lagi_tanpa_ketik_ulang`` adalah **pagar** untuk test pertama — ia menuntut
+``retry_secret()`` mengembalikan nilai, agar pembersihan tidak boleh
+diimplementasikan dengan membuang secret begitu saja.
+
+**Uji mutasi: tiga mutan MATI.** (A) kolom tidak dikosongkan, (B)
+``_pending_secret`` tidak disimpan, (C) ``retry_secret()`` tidak
+mengembalikan nilai — semuanya terdeteksi. Produksi terverifikasi pulih
+identik setelah seluruh mutasi.
+
+**Inisialisasi.** ``_pending_secret`` tidak hanya diandalkan dari
+``_submit()``: atributnya kini diinisialisasi eksplisit di ``__init__``
+sehingga ``retry_secret()`` tidak bergantung pada ``getattr`` defensif.
+Terukur aman pada seluruh urutan: segar dari init, ``clear_secret()`` sebelum
+submit pernah terjadi, submit dengan kolom kosong, submit valid, dan
+``clear_secret()`` setelah berhasil.
+
+**Perubahan produksi:** hanya ``jarvis/ui/window_widgets.py`` (3 metode:
+``clear_secret``, ``retry_secret`` baru, ``_submit``, plus satu inisialisasi).
+Tidak ada perubahan pada enkripsi, penyimpanan, atau alur credential —
+``window_voice.py`` tidak disentuh sama sekali.
+
+**Full suite: 3927 passed, 1 skipped, 0 failed** dalam 1113,39 detik. Ini
+kali pertama suite hijau penuh sejak kegagalan itu mulai muncul; sebelumnya
+3924 passed + 1 failed. Selisih +3 = dua test baru di atas dan satu test
+karakterisasi Fase 62. Skip tetap symlink Windows tanpa privilege.
+
+**Batas jujur.** Perbaikan ini mengurangi jendela waktu secret berada di dalam
+widget, tetapi tidak menghapusnya dari memori proses — nilai yang sama masih
+diteruskan sebagai argumen sinyal ``done`` dan masih hidup di
+``_pending_secret`` sampai ``clear_secret()`` dipanggil. Penghapusan
+sesungguhnya di memori (zeroisasi string Python) tidak dilakukan: ``str`` di
+Python bersifat immutable, sehingga tidak ada cara yang dapat diandalkan untuk
+menghapus nilai yang sudah pernah dibuat tanpa mengubah kontrak tipe. Ini
+batas yang melekat pada Python, bukan pada slice ini.

@@ -426,6 +426,69 @@ def test_api_sheet_emits_once_and_clears_secret_after_emit():
     assert got == ["fake-key-value"]
 
 
+def test_api_sheet_secret_tidak_terbaca_dari_widget_setelah_handoff():
+    """Secret tidak boleh terbaca dari widget setelah diserahkan.
+
+    RED untuk Fase 63. Terukur: ``_submit()`` memancarkan ``done`` tetapi
+    membiarkan teksnya tersimpan di ``self._key``. Selama jendela antara emit
+    dan ``clear_secret()`` — yang dipanggil dari ``window_voice.py:425``
+    HANYA setelah penyimpanan terenkripsi berhasil — secret berada di dalam
+    widget yang masih hidup di memori.
+    """
+    _app()
+    from jarvis.ui.window_widgets import ApiKeySheet
+    host = QWidget()
+    sheet = ApiKeySheet(host)
+    got: list[str] = []
+    sheet.done.connect(got.append)
+
+    sheet._key.setText("  fake-key-value  ")
+    sheet._submit()
+
+    assert got == ["fake-key-value"], "key harus tetap sampai ke pemiliknya"
+    assert sheet._key.text() == "", (
+        f"secret masih terbaca di widget setelah hand-off: "
+        f"{sheet._key.text()!r}"
+    )
+
+
+def test_api_sheet_gagal_simpan_masih_bisa_dicoba_lagi_tanpa_ketik_ulang():
+    """Jalur gagal harus tetap bisa diulang tanpa mengetik ulang key.
+
+    Ini pagar untuk RED di atas. Mengosongkan ``_key`` secara mentah di dalam
+    ``_submit()`` akan membuat status "Coba lagi" menjadi bohong: terukur pada
+    ``window_voice.py:420`` bahwa jalur penyimpanan gagal menampilkan "Coba
+    lagi", tetapi kolomnya sudah kosong bila secret dibuang di ``_submit()``.
+
+    Karena itu pembersihan tidak boleh membuang nilai yang bisa dikembalikan
+    saat pemilik melaporkan kegagalan.
+    """
+    _app()
+    from jarvis.ui.window_widgets import ApiKeySheet
+    host = QWidget()
+    sheet = ApiKeySheet(host)
+    got: list[str] = []
+    sheet.done.connect(got.append)
+
+    sheet._key.setText("  fake-key-value  ")
+    sheet._submit()
+    assert sheet._key.text() == ""
+
+    # Pemilik melaporkan gagal menyimpan -> sheet harus kembali siap menerima.
+    sheet.set_busy(False)
+    sheet.set_status("API key gagal disimpan terenkripsi. Coba lagi.", "error")
+
+    assert sheet.busy is False
+    assert sheet._key.isEnabled() is True
+    assert sheet._activate.isEnabled() is True
+    assert sheet.retry_secret() == "fake-key-value", (
+        "jalur 'Coba lagi' kehilangan secret — pemakai harus mengetik ulang"
+    )
+    assert sheet._key.text() == "fake-key-value", (
+        "secret harus kembali ke kolom agar pemakai bisa memperbaiki dan mencoba lagi"
+    )
+
+
 def test_api_sheet_rejects_empty_key_without_emitting():
     _app()
     from jarvis.ui.window_widgets import ApiKeySheet
